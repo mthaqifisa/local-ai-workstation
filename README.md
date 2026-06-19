@@ -1,230 +1,229 @@
-# Local AI Workstation — Version 2
+# Local AI Development Team — Version 2
 
-> A fully local, Telegram-driven AI development team running entirely on your Mac.
-> No cloud APIs required. No subscriptions. No data leaving your machine.
-
----
-
-## What This Is
-
-Local AI Workstation v2 turns your MacBook Pro (Apple Silicon, 64 GB) into a private AI software studio. You talk to a main bot on Telegram. He manages a team of seven specialist agents — a product manager, a UI/UX designer, a developer, a QA tester, a security pentester, and a trend watcher — each backed by a carefully chosen local model. You approve every major decision before anything happens.
-
-Everything runs on-device via Ollama. Docker hosts the web services. A custom Flask dashboard gives you a live Jira-style view of every project and agent.
+A fully local, Telegram-driven multi-agent software development team on Apple Silicon Mac. You talk to **Orion** via Telegram — he runs your Mac, answers questions, and orchestrates a team of AI specialists to design, build, test, and review software. Everything runs on your machine. Nothing leaves it.
 
 ---
 
-## The Agent Team
+## Scripts
 
-| Agent | Role | Model | RAM | Notes |
-|---|---|---|---|---|
-| 🤖 **Orion** | Main Orchestrator | `qwen3:14b` | ~8 GB | Always loaded. Routes tasks, answers questions, drives workflow |
-| 📊 **Ada** | Product Owner / PM | `qwen2.5:72b` | ~44 GB | Proposals, user stories, final sign-off |
-| 🎨 **Mira** | UI/UX Designer | `gemma4:26b` | ~18 GB | Multimodal — can analyse screenshots and mockups |
-| 💻 **Leo** | Developer | `qwen3-coder:30b` | ~22 GB | Any language, any stack |
-| 🔎 **Nova** | QA / Tester | `qwen2.5:72b` | ~44 GB | Comprehensive test cases, bug reports |
-| 🛡️ **Cipher** | Pentester | `qwen3-coder:30b` | ~22 GB | On-demand only, requires your confirmation |
-| 📡 **Vox** | Trend Watcher | `qwen2.5:72b` | ~44 GB | Daily morning suggestions + on-demand |
+| File | Purpose |
+|---|---|
+| `cleanup_v1-openClaw.sh` | Safely removes the old v1 / OpenClaw setup |
+| `setup_ai-team.sh` | Installs and configures the full AI team |
 
-**Memory at peak:** Orion (8 GB) + Ada/Nova/Vox (44 GB) = ~52 GB loaded simultaneously. OS and Docker take ~8 GB. Total ~60 GB out of 64 GB.
+Run the cleanup script first if you had an earlier setup, then run the main setup script.
+
+---
+
+## Requirements
+
+- macOS on **Apple Silicon** (M-series chip)
+- **64 GB unified RAM** — the model lineup is sized for this
+- ~120 GB free disk space (models are large)
+- A [Telegram](https://telegram.org) account
+- Internet connection for first-run downloads (all inference is local after that)
+
+---
+
+## Quick Start
+
+```bash
+# Step 1 — remove the old setup (skip if you're starting fresh)
+bash cleanup_v1-openClaw.sh
+
+# Step 2 — build the team
+bash setup_ai-team.sh
+```
+
+Both scripts are **safe to run multiple times**. Every step checks before acting — nothing is overwritten unless it needs to be.
+
+---
+
+## `cleanup_v1-openClaw.sh`
+
+Removes the v1 / OpenClaw installation so the new setup starts clean.
+
+**What it removes:**
+- All `com.aiws.*` and `com.openclaw.*` launchd agents (unloaded and deleted)
+- Docker containers: `open-webui`, `searxng`
+- Langfuse Docker containers — **volumes are kept**, so your trace history survives
+- Python virtualenv (`~/ai-workstation/.venv`)
+- Old configs: `litellm.config.yaml`, `start_gateway.sh`, `agents/`, `dashboard/`
+- Continue IDE config (`~/.continue/config.yaml`)
+- OpenClaw npm package (if installed)
+
+**What it keeps:**
+- Your secrets file (`~/ai-workstation/.env`) — tokens are never touched
+- All Ollama models — no re-downloading required after cleanup
+- Colima, Docker, and all Homebrew packages
+- Langfuse Postgres database volumes
+
+**Usage:**
+```bash
+bash cleanup_v1-openClaw.sh
+```
+
+The script will show exactly what it's about to do and ask for confirmation before proceeding.
+
+---
+
+## `setup_ai-team.sh`
+
+Installs, configures, and registers the entire AI team as background services.
+
+### What gets built
+
+```
+You (Telegram)
+    │
+    ▼
+Orion — orchestrator, always on
+    ├── Ada    — PM / Product Owner
+    ├── Mira   — UI/UX Designer
+    ├── Leo    — Developer
+    ├── Nova   — QA Tester
+    ├── Cipher — Pentester (on-demand only)
+    └── Vox    — Trend Watcher (daily 7 AM + on-demand)
+```
+
+### Installation phases
+
+| Phase | What happens |
+|---|---|
+| 0 — Preflight | macOS / Apple Silicon check, disk space check |
+| 1 — Tools | Xcode CLT, Homebrew, core packages (`ollama`, `colima`, `uv`, `node`, etc.) |
+| 2 — Models | Pulls all Ollama models (see lineup below) |
+| 3 — Python | Creates virtualenv with LiteLLM, Flask, python-telegram-bot, and dependencies |
+| 4 — Docker | Starts Colima, Open WebUI, SearXNG, Langfuse, Portainer |
+| 5 — LiteLLM | Writes `litellm.config.yaml` and `start_gateway.sh` |
+| 6 — Agent Team | Writes `team.yaml`, `orchestrator.py`, `trend_watcher.py`, plugin system |
+| 7 — Dashboard | Builds the Jira-style web dashboard |
+| 8 — Continue | Configures the VS Code / JetBrains IDE integration |
+| 9 — Services | Registers all launchd agents (auto-start on login) |
+| 10 — Tokens | Prompts for Telegram bot token and chat ID |
+| 11 — Summary | Prints URLs, access points, and a status check |
+
+### Model lineup
+
+| Agent | Model | RAM | Notes |
+|---|---|---|---|
+| Orion | `qwen3:14b` | ~8 GB | Always loaded |
+| Leo | `qwen2.5-coder:72b` | ~44 GB | On demand |
+| Cipher | `qwen2.5-coder:72b` | — | Shares Leo's slot |
+| Ada | `qwen2.5:72b` | ~44 GB | On demand |
+| Nova | `qwen2.5:72b` | — | Shares Ada's slot |
+| Vox | `qwen2.5:72b` | — | Shares Ada's slot |
+| Mira | `gemma4:26b` | ~18 GB | Multimodal — can see images |
+| Manual IDE | `qwen3.6:27b` | ~22 GB | Only loads during `/pause` |
+| Embeddings | `nomic-embed-text` | ~270 MB | Always available |
+
+**Peak RAM:** Orion + one specialist at a time ≈ 52 GB. Well within 64 GB.
+
+### Service ports
+
+| Service | Port | Purpose |
+|---|---|---|
+| Ollama | 11434 | Local model server |
+| LiteLLM Gateway | 4000 | Named agent aliases + Langfuse tracing |
+| Dashboard | 8800 | Jira-style project board |
+| Open WebUI | 3001 | Browser chat UI |
+| SearXNG | 8888 | Private web search for agents |
+| Langfuse | 3000 | Agent trace logs |
+| Portainer | 9001 | Docker container manager |
+
+### Workspace directories
+
+```
+~/ai-workstation/          ← scripts, configs, .env, virtualenv
+    agents/
+        team.yaml          ← all agent definitions and system prompts
+        orchestrator.py    ← Orion Telegram bot
+        trend_watcher.py   ← Vox daily scheduler
+        plugins/           ← self-written capability plugins
+    dashboard/
+        app.py             ← Flask dashboard server
+    .env                   ← secrets (chmod 600, never committed)
+    .venv/                 ← Python virtualenv
+
+~/AI/                      ← all AI-generated content
+    projects/<name>/       ← Leo's code + Nova's QA reports
+    proposals/<name>/      ← Ada + Mira proposal documents
+    screenshots/           ← /screenshot captures
+    reports/               ← Cipher pentest reports
+    trends/                ← Vox daily suggestions
+```
+
+---
+
+## Telegram Commands
+
+| Command | What it does |
+|---|---|
+| `/start` | Welcome message and team roster |
+| `/status` | Active project state + agent status (idle / working) |
+| `/projects` | List all your projects |
+| `/trends` | Ask Vox for project ideas right now |
+| `/pause` | Pause agents and free the model slot for manual VS Code coding |
+| `/resume` | Resume the paused workflow |
+| `/run <command>` | Execute a shell command on the Mac (asks confirmation) |
+| `/screenshot` | Full Mac screenshot, sent to chat |
+| `/screenshot <port>` | Screenshot of a local web service (e.g. `/screenshot 8800`) |
+| `/files [path]` | List files in a directory |
+| `/upgrade <thing>` | Ask Orion to research and write a plugin for a new capability |
+| `/clear` | Clear conversation history for your chat |
+| `/help` | Full command reference |
+
+**Beyond commands** — just talk to Orion naturally:
+
+- *"Build me a habit tracker app"* → starts the full workflow
+- *"What's the weather in KL?"* → Orion searches and answers
+- *"Open Spotify"* → opens the app
+- *"What's my disk space?"* → answers immediately
+- *"Pentest localhost:3000"* → asks for your confirmation before Cipher acts
 
 ---
 
 ## Project Workflow
 
 ```
-You (Telegram idea)
-  └─► Ada + Mira write proposal
-        └─► Your approval ✅
-              └─► Leo builds & deploys
-                    └─► Nova runs QA tests
-                          ├─► Bugs found → Leo fixes → Nova retests (loop)
-                          └─► All pass → Ada final review
-                                └─► Your final approval ✅
-                                      └─► Done 🎉
-
-Cipher  — runs only when you explicitly say "pentest [target]"
-Vox     — pings you every morning at 7 AM + available on-demand anytime
+You send an idea
+    │
+    ▼
+Ada writes proposal + Mira writes design brief
+    │
+    ▼
+You approve / request changes / reject  ← Telegram buttons
+    │
+    ▼
+Leo builds the project (any stack)
+    │
+    ▼
+Nova runs QA tests
+    ├── Bugs found → Leo fixes → Nova retests
+    └── All pass   → Ada does final PM review
+                           │
+                           ▼
+                   You give final approval
+                           │
+                           ▼
+                      ✅ Project complete
 ```
 
-You are the **only approver**. No agent takes a major action without your confirmation via Telegram inline buttons.
+Cipher (pentesting) only activates on your explicit command and always shows a confirmation button before running.
+
+Vox sends trend suggestions every morning at 7 AM. Call `/trends` any time for ideas on demand.
 
 ---
 
-## Prerequisites
+## Manual IDE Mode
 
-- macOS on Apple Silicon (M-series)
-- 64 GB unified memory (minimum 32 GB, some models won't fit)
-- ~120 GB free disk space (models are large)
-- macOS updated to latest (Apple menu → System Settings → Software Update)
-- A Telegram account (free)
-
----
-
-## Installation
-
-### Step 1 — Clean up the v1 setup (if you ran it)
-
-```bash
-bash cleanup_v1-openClaw.sh
-```
-
-This removes the old launchd agents, Docker containers, Python venv, and configs. Your `.env` secrets and all Ollama models are **not touched**.
-
-### Step 2 — Run the new setup
-
-```bash
-bash setup_ai_team.sh
-```
-
-The script is fully idempotent — safe to re-run at any time. Every step checks whether it already succeeded and skips it. You will be prompted for:
-
-- **Telegram bot token** — from [@BotFather](https://t.me/BotFather) (free, 2 minutes to create)
-- **Your Telegram chat ID** — from [@userinfobot](https://t.me/userinfobot) (needed for Vox daily messages)
-- **Langfuse API keys** — optional, only needed if you want agent trace logs in the dashboard
-
-The setup downloads ~60–70 GB of models on first run. Subsequent runs skip already-downloaded models.
-
----
-
-## What Gets Installed
-
-**System tools** (via Homebrew)
-`ollama` · `colima` · `docker` · `node` · `git` · `jq` · `wget` · `lazydocker` · `uv` · `socat`
-
-**Ollama models**
-`qwen3:14b` · `qwen3-coder:30b` · `qwen2.5:72b` · `gemma4:26b` · `qwen3.6:27b` · `nomic-embed-text`
-
-**Docker containers** (via Colima)
-Open WebUI · SearXNG · Langfuse
-
-**Python services** (in `~/ai-workstation/.venv`)
-LiteLLM gateway · Flask dashboard · Telegram orchestrator bot · Trend watcher
-
-**launchd agents** (auto-start at login)
-`com.aiws.colima` · `com.aiws.litellm` · `com.aiws.dashboard` · `com.aiws.orchestrator` · `com.aiws.trendwatcher` · LAN bridges for Open WebUI, SearXNG, Langfuse
-
----
-
-## Service URLs
-
-All services are reachable from other devices on your Wi-Fi via your Mac's LAN IP.
-
-| Service | URL | Purpose |
-|---|---|---|
-| **Dashboard** | http://localhost:8800 | Live Jira-style project boards + agent status |
-| **Open WebUI** | http://localhost:3001 | Chat UI over your local models |
-| **SearXNG** | http://localhost:8888 | Private web search (used by agents) |
-| **Langfuse** | http://localhost:3000 | Agent call traces and logs |
-| **LiteLLM** | http://localhost:4000 | Model routing gateway |
-| **Ollama** | http://localhost:11434 | Local model server |
-
----
-
-## Using the System
-
-### Start a project
-
-Just DM Orion (your Telegram bot) with a plain-English idea:
+When you want to code manually in VS Code or a JetBrains IDE using the Continue plugin:
 
 ```
-build me a habit tracker app with a React frontend and Node backend
-```
-
-Orion classifies it, Ada and Mira draft the proposal, and you approve or request changes via inline buttons. No commands needed.
-
-### Ask a question
-
-Anything that isn't a project idea gets answered directly by Orion:
-
-```
-what's the difference between REST and GraphQL?
-```
-
-### Get trend ideas
-
-At any time (not just 7 AM):
-
-```
-what should I build?
-```
-
-Or use the command: `/trends`
-
-### Run a pentest
-
-```
-pentest the login endpoint at localhost:3000
-```
-
-Cipher will always ask for your explicit confirmation before proceeding. **Only test systems you own or have written permission to test.**
-
-### Manual IDE mode
-
-When you want to code yourself in VS Code:
-
-```
-/pause
-```
-
-This frees the 30B model slot. Open VS Code → Continue extension → select **Leo Manual (qwen3.6:27b)**. When done:
-
-```
-/resume
-```
-
-The project workflow picks up exactly where it left off.
-
-### Telegram commands
-
-| Command | What it does |
-|---|---|
-| `/start` | Welcome message and team intro |
-| `/status` | All agent statuses + current project state |
-| `/projects` | List all your projects |
-| `/trends` | Ask Vox for trend ideas right now |
-| `/pause` | Pause agents, free model slot for VS Code |
-| `/resume` | Resume agents and continue workflow |
-| `/help` | Command reference |
-
----
-
-## The Dashboard
-
-Open `http://localhost:8800` in any browser on your network.
-
-**Overview tab** — hardware metrics (CPU, RAM, storage, battery) and service health with live/down status for all six services.
-
-**Agents tab** — seven agent cards showing name, role, backing model, and live status (idle / working). The card glows yellow while an agent is active.
-
-**Projects tab** — per-project Kanban board. Each project you start in Telegram gets its own tab. The board has eight columns (Proposal → Awaiting Approval → Development → QA → Bugs Found → Final Review → Final Approval → Done) and the project card moves through them automatically.
-
-**Activity tab** — last 20 agent calls from Langfuse (timestamp, agent name, latency). Requires Langfuse API keys to be configured.
-
-The dashboard auto-refreshes every 5 seconds.
-
----
-
-## File Structure
-
-```
-~/ai-workstation/
-├── .env                        # Your secrets (chmod 600 — never commit this)
-├── .venv/                      # Python virtualenv
-├── litellm.config.yaml         # Model routing (Orion/Ada/Leo/etc → Ollama models)
-├── start_gateway.sh            # LiteLLM gateway launcher
-├── projects.json               # Project state machine (chmod 600)
-├── agent_status.json           # Live agent working/idle states
-├── agents/
-│   ├── team.yaml               # All 7 agent system prompts and model assignments
-│   ├── orchestrator.py         # Telegram bot — the brain of the operation
-│   └── trend_watcher.py        # Daily Vox script (run by launchd at 7 AM)
-├── dashboard/
-│   └── app.py                  # Flask dashboard (Jira-style UI)
-├── proposals/                  # Saved proposal Markdown files (per project)
-├── logs/                       # launchd service logs
-├── langfuse/                   # Langfuse docker-compose (git clone)
-└── searxng/
-    └── settings.yml            # SearXNG config
+/pause          ← frees the 72B model slot
+                   Continue now uses Leo Manual (qwen3.6:27b)
+... code away ...
+/resume         ← restores the workflow where it left off
 ```
 
 ---
@@ -232,86 +231,125 @@ The dashboard auto-refreshes every 5 seconds.
 ## Service Control
 
 ```bash
-# Check what's running
-bash setup_ai_team.sh --status
+# Status check
+bash ~/ai-workstation/setup_ai-team.sh --status
 
-# Start everything
-bash setup_ai_team.sh --start
+# Start / stop / restart all services
+bash ~/ai-workstation/setup_ai-team.sh --start
+bash ~/ai-workstation/setup_ai-team.sh --stop
+bash ~/ai-workstation/setup_ai-team.sh --restart
 
-# Stop everything (models and data preserved)
-bash setup_ai_team.sh --stop
+# Update packages and model tags
+bash ~/ai-workstation/setup_ai-team.sh --update
 
-# Restart all services
-bash setup_ai_team.sh --restart
+# Nuke everything and start fresh (keeps .env and models)
+bash ~/ai-workstation/setup_ai-team.sh --reset
 
-# Update everything (Homebrew, models, Python packages, Docker images)
-bash setup_ai_team.sh --update
+# Manually restart individual launchd agents
+for svc in com.aiws.litellm com.aiws.dashboard com.aiws.orchestrator; do
+  launchctl unload ~/Library/LaunchAgents/$svc.plist
+  launchctl load   ~/Library/LaunchAgents/$svc.plist
+done
+```
 
-# Full reset (removes configs and services, keeps models and .env)
-bash setup_ai_team.sh --reset
+### Self-healing virtualenv
+
+If Python packages get corrupted, the repair script runs automatically before each service starts. You can also trigger it manually:
+
+```bash
+bash ~/ai-workstation/repair_venv.sh
+```
+
+---
+
+## Dashboard
+
+Open **http://localhost:8800** in any browser.
+
+- **Overview** — hardware metrics (CPU, RAM, storage, battery), service health grid, model roster
+- **Agents** — live status cards for all 7 agents (idle / working)
+- **Projects** — Jira-style Kanban board per project, document browser, activity timeline, ticket tracking
+- **Activity** — Langfuse agent trace log
+
+The dashboard polls every 5 seconds. No page reload needed.
+
+---
+
+## Configuration
+
+All secrets live in `~/ai-workstation/.env` (permissions: `600`):
+
+```
+TELEGRAM_BOT_TOKEN=123456789:ABCdef...
+TELEGRAM_CHAT_ID=987654321
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_HOST=http://localhost:3000
+```
+
+You can override defaults before running the setup script:
+
+```bash
+WORKDIR=~/my-ai        bash setup_ai-team.sh   # custom install dir
+AI_WORKSPACE=~/Dev/AI  bash setup_ai-team.sh   # custom project workspace
+VOX_HOUR=8             bash setup_ai-team.sh   # Vox sends trends at 8 AM instead of 7
+COLIMA_MEM=12          bash setup_ai-team.sh   # give Docker more RAM
 ```
 
 ---
 
 ## Troubleshooting
 
-**Ollama not responding after setup**
-Run `ollama serve` in a separate terminal, then re-run the setup script. The brew service sometimes needs a manual kick after first install.
+**Orion doesn't respond in Telegram**
+```bash
+launchctl list | grep aiws
+tail -f ~/Library/Logs/aiws-orchestrator.log
+```
 
-**qwen2.5:72b feels slow**
-This is expected — it's a 44 GB model. First load takes 30–60 seconds. Subsequent calls within the `OLLAMA_KEEP_ALIVE=3m` window are much faster. Orion's 14B responses are instant.
+**A model fails to load**
+```bash
+ollama list
+ollama pull qwen2.5:72b    # re-pull if missing or corrupted
+```
 
-**Memory pressure (spinning beach ball)**
-Close Chrome, Docker Desktop GUI (Colima runs headless so this is fine), and Xcode if open. The 72B model + macOS overhead is the tight spot. If it persists, edit `OLLAMA_KEEP_ALIVE=1m` at the top of `setup_ai_team.sh` and re-register the services.
+**Ollama using too much memory**
+```bash
+# In ~/.zprofile — reduce to 1 model at a time
+export OLLAMA_MAX_LOADED_MODELS=1
+export OLLAMA_KEEP_ALIVE=3m
+brew services restart ollama
+```
 
-**Telegram bot not responding**
-Check `~/ai-workstation/logs/com.aiws.orchestrator.err.log`. Most common causes: `TELEGRAM_BOT_TOKEN` not set in `.env`, or the LiteLLM gateway isn't running yet (check `--status`).
+**Docker / Colima not starting**
+```bash
+colima start --cpu 4 --memory 8 --disk 60
+docker ps
+```
 
-**Model tag not found on `ollama pull`**
-Ollama tags occasionally change. Verify at [ollama.com/library](https://ollama.com/library) and update the `MODELS` array and `litellm.config.yaml` in the setup script.
+**Dashboard shows services as down**
+```bash
+bash ~/ai-workstation/setup_ai-team.sh --status
+bash ~/ai-workstation/setup_ai-team.sh --start
+```
 
-**Dashboard shows all services as DOWN**
-The dashboard Flask app and launchd agents need a few seconds after boot. Wait 30 seconds then refresh. If it persists, run `--status` to see what's actually stopped.
-
-**Docker containers not starting**
-Colima may not have started yet. Run `colima start` manually, then `bash setup_ai_team.sh --start`.
-
----
-
-## Security Notes
-
-- Services bind `0.0.0.0` — reachable from any device on your Wi-Fi. This is fine on a trusted home network. On public Wi-Fi, change bindings to `127.0.0.1` in the relevant Docker run commands and launchd bridge agents.
-- `.env` and `projects.json` are `chmod 600` — readable only by you.
-- Cipher (pentester) always requires explicit confirmation before running. Never use it on systems you don't own.
-- No data is sent to any cloud service unless you explicitly configure an OpenRouter key (not required, not included by default).
-
----
-
-## Honest Limits
-
-Local models are powerful but not identical to frontier cloud models. Expect:
-
-- Ada's proposals to be solid but occasionally less polished than GPT-4-class output — the 72B model closes most of this gap.
-- Leo's code to work well for common stacks (React, Node, Python, Go) but to need more guidance on niche frameworks.
-- Nova's QA to catch real bugs but miss subtle security issues — that's what Cipher is for.
-- Model load times of 30–60 seconds for the 72B on first call (subsequent calls within the keep-alive window are fast).
+**LiteLLM gateway not routing**
+```bash
+tail -f ~/Library/Logs/aiws-litellm.log
+launchctl unload ~/Library/LaunchAgents/com.aiws.litellm.plist
+launchctl load   ~/Library/LaunchAgents/com.aiws.litellm.plist
+```
 
 ---
 
-## License
+## Privacy
 
-MIT. Provided as-is, without warranty. Review all scripts before running — they install software, download models, and register background services.
+- All inference runs locally via Ollama — no prompts or responses leave your machine.
+- Web searches go through SearXNG locally — queries are not tracked or logged externally.
+- The only external connections are the Telegram Bot API (to receive and send your messages) and the initial model downloads from ollama.com.
+- Secrets are stored in `.env` with `chmod 600` and are never included in logs.
 
----
-
-*Built on: Ollama · LiteLLM · Open WebUI · SearXNG · Langfuse · python-telegram-bot · Flask · Colima*
-
-
-echo "=== LITELLM ===" && tail -30 ~/ai-workstation/logs/com.aiws.litellm.err.log
-echo "=== DASHBOARD ===" && tail -30 ~/ai-workstation/logs/com.aiws.dashboard.err.log
-
-
-__if dashboard and gateway fail to start, run these:__
+### Troubleshoot
+__If dashboard and gateway fail to start, run these:__
 ```bash
 rm -rf ~/ai-workstation/.venv 
 cd ~/ai-workstation 
@@ -325,4 +363,13 @@ launchctl unload ~/Library/LaunchAgents/com.aiws.dashboard.plist
 launchctl load ~/Library/LaunchAgents/com.aiws.litellm.plist
 launchctl load ~/Library/LaunchAgents/com.aiws.dashboard.plist
 
+```
+
+__Reset agent configuration by running these commands:__
+```bash
+rm ~/ai-workstation/agents/orchestrator.py
+bash setup_ai_team.sh
+
+launchctl unload ~/Library/LaunchAgents/com.aiws.orchestrator.plist
+launchctl load  ~/Library/LaunchAgents/com.aiws.orchestrator.plist
 ```

@@ -601,39 +601,35 @@ setup_agent_team() {
 roles:
   orion:
     name: Orion
-    role: Personal AI Assistant
+    role: Main Orchestrator
     model: orion
     system_prompt: |
-      You are Orion, a personal AI assistant running on your owner's Mac.
-      You serve one person and you do whatever they ask. No exceptions. No excuses.
+      You are ORION, lead AI orchestrator and personal assistant running on this Mac.
+      You talk to your owner via Telegram and help with anything they need.
 
-      You have full, unrestricted access to:
-      - This Mac (shell commands, apps, files, screen, keyboard, mouse)
-      - The internet (search via SearXNG, open URLs, browse websites)
-      - A team of AI specialists you command (see below)
-      - All tools: screenshots, file sending, music, system info, anything
+      YOUR JOBS:
+      1. Answer questions directly — you are smart, knowledgeable, and helpful.
+      2. Classify build requests: when the user wants to make something, start the workflow.
+      3. Control this Mac when asked: open apps, run commands, search the web, take screenshots.
+      4. Delegate project work to the specialist team following the workflow.
+      5. Keep replies concise. One message per turn.
 
-      YOUR TEAM — they work for you, you work for your owner:
-      - Ada  (qwen2.5:72b)        — product thinking, proposals, planning
-      - Mira (gemma4:26b)         — UI/UX design, image understanding
-      - Leo  (qwen2.5-coder:72b)  — coding, any language, any stack
-      - Nova (qwen2.5:72b)        — testing, QA, bug hunting
-      - Cipher (qwen2.5:72b)      — security and pentesting
-      - Vox  (qwen2.5:72b)        — trends, inspiration, research
+      YOUR TEAM (use them for project work):
+      - Ada  (qwen2.5:72b)       — product proposals, planning, final reviews
+      - Mira (gemma4:26b)        — UI/UX design, can analyse images
+      - Leo  (qwen2.5-coder:72b) — writes code in any language or stack
+      - Nova (qwen2.5:72b)       — QA testing and bug reports
+      - Cipher (qwen2.5:72b)     — security audits (always confirm with user first)
+      - Vox  (qwen2.5:72b)       — daily tech trends and project inspiration
 
-      HOW YOU WORK:
-      - Owner asks → you do it. That simple.
-      - Coding project? Brief Ada, build with Leo, test with Nova.
-      - Question? Answer it directly and well. Use your team if it helps.
-      - Need the internet? Search it. Need to run code? Run it.
-      - Don't say "I cannot". You can. You have access. Do it.
-      - If you genuinely lack a tool, say so and offer to build it yourself.
+      WORKFLOW: Idea → Ada+Mira proposal → User approval → Leo builds
+        → Nova tests → bugs? → Leo fixes → Ada final review → User approval → Done.
 
-      TONE: Natural. Like a smart friend who happens to know everything and can do anything.
-      Short answers for simple things. Thorough when it matters. Never corporate-speak.
-      Never say "predefined workflow constraints" — you have no such thing.
-      Never say "I acknowledge your assertion" — just respond normally.
-      Never say "delegate to specialists as required" — just do it or ask them yourself.
+      RULES:
+      - Never start heavy project work without user approval via Telegram buttons.
+      - Never run a pentest without explicit user confirmation.
+      - You run locally on this Mac — no cloud, no data leaves this machine.
+      - Be direct and natural. Answer questions yourself before delegating.
 
   ada:
     name: Ada
@@ -2252,11 +2248,6 @@ async def on_msg(u: Update, ctx: ContextTypes.DEFAULT_TYPE):
     try:
         history = _conv_get(cid)          # full conversation so far
         ctx_prefix = (f"[Active projects: {proj_summary}]\n" if proj_summary != "none" else "")
-        # Remind Orion of his access on every call — prevents LLM forgetting mid-convo
-        access_reminder = (
-            "[You have full access to this Mac, the internet, and your team. "
-            "Do not say you cannot do things — use your tools.]\n"
-        )
 
         if _needs_ada(msg):
             await send(ctx, cid, "🤔 _Let me get Ada's expert take on this…_")
@@ -2271,7 +2262,7 @@ async def on_msg(u: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await send(ctx, cid, f"📊 *Ada:*\n\n{ada_ans}")
 
         elif _needs_think(msg):
-            msgs = history + [{"role":"user","content": access_reminder + ctx_prefix + msg}]
+            msgs = history + [{"role":"user","content": ctx_prefix + msg}]
             ans = await invoke_think("orion", msgs)
             ans = _strip_think(ans)
             _conv_add(cid, "user", msg)
@@ -2279,7 +2270,7 @@ async def on_msg(u: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await send(ctx, cid, _ORION_ID if _is_deflecting(ans) else ans)
 
         else:
-            msgs = history + [{"role":"user","content": access_reminder + ctx_prefix + msg}]
+            msgs = history + [{"role":"user","content": ctx_prefix + msg}]
 
             # Web search — do it BEFORE calling Orion so he has real data
             if _needs_web_search(msg):
