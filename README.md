@@ -39,17 +39,17 @@ The next evolution of the workstation, transitioning key automation features int
    git clone [https://github.com/mthaqifisa/local-ai-workstation.git](https://github.com/mthaqifisa/local-ai-workstation.git)
    cd local-ai-workstation
 
-```
+    ```
 
 2. Switch to your desired branch:
-```bash
-# For Branch 1
-git checkout v1-openClaw
+    ```bash
+    # For Branch 1
+    git checkout v1-openClaw
 
-# OR For Branch 2
-git checkout v2-pythonScript
+    # OR For Branch 2
+    git checkout v2-pythonScript
 
-```
+    ```
 
 
 3. Follow the respective branch's README instructions to execute your initialization scripts!
