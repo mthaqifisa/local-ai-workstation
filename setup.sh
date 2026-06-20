@@ -24,11 +24,11 @@ DOCS_WORKSPACE="${HOME}/OneDrive/AI-Agent"
 CODE_WORKSPACE="${HOME}/OneDrive/SourceCode"
 MASTER_EMAIL="mthaqifisa@pm.me"
 
-COLIMA_CPU="${COLIMA_CPU:-4}"
-COLIMA_MEM="${COLIMA_MEM:-8}"
-COLIMA_DISK="${COLIMA_DISK:-60}"
+COLIMA_CPU="${COLIMA_CPU:-8}"
+COLIMA_MEM="${COLIMA_MEM:-16}"
+COLIMA_DISK="${COLIMA_DISK:-120}"
 
-OLLAMA_MAX_LOADED="${OLLAMA_MAX_LOADED:-2}"
+OLLAMA_MAX_LOADED="${OLLAMA_MAX_LOADED:-1}"
 OLLAMA_KEEP_ALIVE="${OLLAMA_KEEP_ALIVE:-3m}"
 
 PORT_OLLAMA=11434; PORT_OPENWEBUI=3001; PORT_LANGFUSE=3000
@@ -166,7 +166,7 @@ preflight() {
     ok "macOS $(sw_vers -productVersion 2>/dev/null) on $(uname -m)"
     ensure_env_file
     local free_gb; free_gb=$(df -g "$HOME" 2>/dev/null | awk 'NR==2{print $4}' || echo 999)
-    [ "$free_gb" -lt 60 ] && warn "Low disk: ${free_gb} GB free (need ~120 GB for models)" \
+    [ "$free_gb" -lt 150 ] && warn "Low disk: ${free_gb} GB free (need ~150 GB for models + workspace)" \
                            || ok "Disk: ${free_gb} GB free"
     cat <<BANNEREOF
 
@@ -271,7 +271,7 @@ setup_ollama() {
 venv_ok() {
     [ -x "$WORKDIR/.venv/bin/python" ] && [ -x "$WORKDIR/.venv/bin/litellm" ] \
     && "$WORKDIR/.venv/bin/python" -c \
-       "import litellm,flask,requests,psutil,telegram,yaml,playwright,weasyprint,markdown" >/dev/null 2>&1
+       "import litellm,flask,requests,psutil,telegram,yaml,playwright,weasyprint,markdown,cairosvg" >/dev/null 2>&1
 }
 
 setup_python() {
@@ -467,7 +467,7 @@ LOG="[repair_venv $(date '+%H:%M:%S')]"
 venv_healthy() {
     [ -x "$VENV/bin/python" ] && [ -x "$VENV/bin/litellm" ] \
     && "$VENV/bin/python" -c \
-       "import litellm,flask,requests,psutil,telegram,yaml,weasyprint,markdown" >/dev/null 2>&1
+       "import litellm,flask,requests,psutil,telegram,yaml,weasyprint,markdown,cairosvg" >/dev/null 2>&1
 }
 
 venv_healthy && exit 0
