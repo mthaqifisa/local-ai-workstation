@@ -6,10 +6,10 @@
 # =============================================================================
 #
 #  Path mappings:
-#    - Documents (proposals, reports, summaries) -> /Users/thaqifisa/OneDrive/AI-Agent/
-#    - Source Code projects -> /Users/thaqifisa/SourceCode/
+#    - Documents (proposals, reports, summaries) -> ~/OneDrive/AI-Agent/
+#    - Source Code projects -> ~/OneDrive/SourceCode/
 #
-#  Control: --status | --start | --stop | --restart | --update | --reset | --uninstall | --help
+#  Control: --bootstrap | --status | --start | --stop | --restart | --reset | --uninstall | --help
 # =============================================================================
 set -uo pipefail
 if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
@@ -19,8 +19,9 @@ WORKDIR="${HOME}/.local-ai-workstation"
 ENV_FILE="$WORKDIR/.env"
 LAUNCH_DIR="$HOME/Library/LaunchAgents"
 
-DOCS_WORKSPACE="/Users/thaqifisa/OneDrive/AI-Agent"
-CODE_WORKSPACE="/Users/thaqifisa/SourceCode"
+# Task 3: Master folder rooted at ~/OneDrive; no hardcoded /Users/<name>/
+DOCS_WORKSPACE="${HOME}/OneDrive/AI-Agent"
+CODE_WORKSPACE="${HOME}/OneDrive/SourceCode"
 MASTER_EMAIL="mthaqifisa@pm.me"
 
 COLIMA_CPU="${COLIMA_CPU:-4}"
@@ -200,7 +201,7 @@ setup_homebrew() {
     fi
     [ -x /opt/homebrew/bin/brew ] && eval "$(/opt/homebrew/bin/brew shellenv)"
     [ -x /usr/local/bin/brew ] && eval "$(/usr/local/bin/brew shellenv)"
-    
+
     grep -q 'brew shellenv' "$HOME/.zprofile" 2>/dev/null || \
         echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> "$HOME/.zprofile"
     ok "$(brew --version | head -n1)"
@@ -212,18 +213,16 @@ setup_core_tools() {
     elif have ollama; then ok "Ollama present ($(ollama --version 2>/dev/null))"
     else opt brew install ollama; fi
 
-    # Install main utilities + WeasyPrint dependencies (cairo pango gdk-pixbuf libffi)
     for p in colima docker docker-compose node git jq wget lazydocker uv socat \
              cairo pango gdk-pixbuf libffi; do
         brew list "$p" >/dev/null 2>&1 && ok "$p present" || opt brew install "$p"
     done
-    
+
     have node && ok "node $(node -v)"
     have uv   && ok "uv $(uv --version 2>/dev/null)"
     grep -q '.local/bin' "$HOME/.zprofile" 2>/dev/null || \
         echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zprofile"
 
-    # Puppeteer E2E Testing (Nova)
     if have npm; then
         if ! npm ls -g puppeteer >/dev/null 2>&1; then
             log "Installing Puppeteer (E2E browser testing)..."
@@ -253,7 +252,7 @@ setup_ollama() {
     http_ok "http://localhost:$PORT_OLLAMA/api/tags" \
         && ok "Ollama up on :$PORT_OLLAMA" \
         || { warn "Ollama not responding. Run 'ollama serve' then re-run."; return; }
-    
+
     local installed; installed="$(ollama list 2>/dev/null)"
     for entry in "${MODELS[@]}"; do
         local tag="${entry%%|*}" desc="${entry#*|}"
@@ -281,7 +280,7 @@ setup_python() {
 
     [ -d "$WORKDIR/.venv" ] && { warn "venv incomplete — rebuilding."; rm -rf "$WORKDIR/.venv"; }
     (cd "$WORKDIR" && uv venv --python 3.12 .venv) || { err "uv venv failed."; return; }
-    
+
     local UV; UV="$(command -v uv 2>/dev/null || echo /opt/homebrew/bin/uv)"
     "$UV" pip install --python "$WORKDIR/.venv/bin/python" \
         "litellm[proxy]" \
@@ -297,6 +296,8 @@ setup_python() {
         playwright \
         weasyprint \
         markdown \
+        lxml \
+        cairosvg \
         || { err "Failed to install Python requirements."; return; }
 
     log "Installing Playwright Chromium..."
@@ -324,7 +325,7 @@ setup_colima() {
     log "Docker engine startup (Colima)"
     if docker_up; then ok "Docker already running."; return; fi
     opt colima start --cpu "$COLIMA_CPU" --memory "$COLIMA_MEM" --disk "$COLIMA_DISK"
-    
+
     log "Waiting for Docker daemon to initialize..."
     for _ in $(seq 1 30); do
         docker_up && break
@@ -381,11 +382,11 @@ setup_langfuse() {
     [ -d "$LF/.git" ] && (cd "$LF" && dc down >/dev/null 2>&1 || true)
     [ -d "$LF/.git" ] || opt git clone --depth=1 https://github.com/langfuse/langfuse.git "$LF"
     (cd "$LF" && opt dc up -d)
-    
+
     printf "Waiting for Langfuse container"
     for _ in $(seq 1 60); do langfuse_ok && break; printf "."; sleep 2; done; printf "\n"
     langfuse_ok && ok "Langfuse active." || warn "Langfuse startup delayed."
-    
+
     load_env
     local pk; pk="$(get_env LANGFUSE_PUBLIC_KEY)"
     [ -n "$pk" ] && { ok "Langfuse keys are set."; return; }
@@ -481,7 +482,7 @@ fi
 "$UV" pip install --python "$VENV/bin/python" \
     "litellm[proxy]" openai "langfuse>=2.0,<3.0" python-dotenv flask \
     requests rich psutil "python-telegram-bot>=21.0" pyyaml playwright \
-    weasyprint markdown >&2 || exit 1
+    weasyprint markdown lxml cairosvg >&2 || exit 1
 "$VENV/bin/playwright" install chromium >/dev/null 2>&1 || true
 REPAIREOF
     chmod +x "$WORKDIR/repair_venv.sh"
@@ -524,7 +525,8 @@ setup_agent_team() {
     local AD="$WORKDIR/agents"
     mkdir -p "$AD"
 
-    # 1. Write team.yaml defining agent roles
+    # ── Task 3: team.yaml uses {DOCS_WORKSPACE} / {CODE_WORKSPACE} tokens ──────
+    # The orchestrator's config_loader resolves these at runtime from env vars.
     cat > "$AD/team.yaml" <<'TEAMEOF'
 roles:
   orion:
@@ -535,17 +537,17 @@ roles:
       You are ORION — the lead orchestrating intelligence running locally on this Mac.
       You plan project lifecycles, coordinate team members, run shell scripts (with approval),
       and communicate with your master via Telegram.
-      
+
       HOW YOU OPERATE
       - Calm, concise, technical, and straightforward.
       - Never hallucinate file structures, configurations, or commands.
-      - Save all project folders under `/Users/thaqifisa/SourceCode/<project_name>`.
-      - Save all documents under `/Users/thaqifisa/OneDrive/AI-Agent/<sub-category>/<project_name>`.
+      - Save all project folders under {CODE_WORKSPACE}/<project_name>.
+      - Save all documents under {DOCS_WORKSPACE}/<sub-category>/<project_name>.
       - When an idea arrives, reconstruct it into a brief for Ada (PM/PO) and generate a Title.
-      
+
       YOUR AGENTS
       - Ada (ada): PM and analyst. Generates proposals as MD & PDF and does final reviews.
-      - Mira (mira): UI/UX designer. Writes journeys, wireframe details, and draw.io XML files.
+      - Mira (mira): UI/UX designer. Writes journeys, wireframe details, and inline SVG files.
       - Leo (leo): Software Developer. Outputs code files and setup READMEs.
       - Nova (nova): QA engineer. Runs browser-driven E2E tests (Puppeteer) and files bug tickets.
       - Cipher (cipher): White-hat pentester. Tests code security.
@@ -557,10 +559,11 @@ roles:
     model: ada
     system_prompt: |
       You are ADA — Product Owner and PM. You parse the project brief and design an Agile plan.
-      
+
       DELIVERABLES:
       - Create detailed proposals with user stories and acceptance criteria.
       - Output a Markdown document, which will be compiled into a PDF.
+      - Save all output documents under {DOCS_WORKSPACE}/proposals/<project_name>/.
       - End proposals with the ticket block below:
       ---TICKETS---
       STORY|high|[Story title]|[One-sentence description]
@@ -570,16 +573,29 @@ roles:
     name: Mira
     role: Senior UI/UX Designer
     model: mira
+    # Task 2: Mira now outputs inline SVG inside named fenced blocks instead of draw.io XML.
     system_prompt: |
       You are MIRA — UI/UX designer. You deliver screen flows and layout wireframes.
-      
+      Save all design assets under {DOCS_WORKSPACE}/proposals/<project_name>/assets/.
+
       DELIVERABLES:
       - Plain text user journeys and design systems.
-      - An editable draw.io wireframe for key screens inside a fenced XML block:
-        ### [filename].drawio
+      - Wireframes as native inline SVG, NOT draw.io XML. Each wireframe must be output
+        inside a named fenced block using the following exact format so the compiler can
+        locate and embed it:
+
+        ### assets/wireframe_<screen_name>.svg
         ```xml
-        <mxfile host="app.diagrams.net">...</mxfile>
+        <svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+          <!-- screen layout here — use rect, text, line, g elements -->
+          <!-- Label every UI region clearly with <text> nodes -->
+        </svg>
         ```
+
+      - Produce one SVG wireframe per major screen or user-journey step.
+      - Keep SVG self-contained: no external hrefs, no embedded raster images.
+      - After all wireframes, write a concise design-system section (typography, colours,
+        spacing scale, component conventions).
 
   leo:
     name: Leo
@@ -587,7 +603,8 @@ roles:
     model: leo
     system_prompt: |
       You are LEO — Developer. You write high-quality source code.
-      
+      Save all source code under {CODE_WORKSPACE}/<project_name>/.
+
       DELIVERABLES:
       - Working code files inside named fenced blocks, e.g.:
         ### src/main.py
@@ -603,14 +620,33 @@ roles:
     model: nova
     system_prompt: |
       You are NOVA — QA Tester. You review Leo's deployment and run E2E scenarios.
-      
+      Save all reports under {DOCS_WORKSPACE}/reports/<project_name>/.
+
       DELIVERABLES:
       - If everything works, output: ALL TESTS PASSED.
       - Otherwise, file detailed bug tickets using this layout:
         [BUG-001] [Bug Title] | [Severity] | [Reproduction Steps]
+
+  cipher:
+    name: Cipher
+    role: White-Hat Pentester
+    model: cipher
+    system_prompt: |
+      You are CIPHER — security auditor. Review code for vulnerabilities.
+      Save all audit reports under {DOCS_WORKSPACE}/reports/<project_name>/.
+
+  vox:
+    name: Vox
+    role: Opportunity Scout
+    model: vox
+    system_prompt: |
+      You are VOX — daily trend analyst and opportunity scout.
+      Monitor technology, startup, and business news. Identify 3 actionable project
+      opportunities per briefing. Keep each idea to 3 bullet points: problem, solution,
+      first build step. Be specific and data-driven.
 TEAMEOF
 
-    # 2. Write trend_watcher.py
+    # ── trend_watcher.py ──────────────────────────────────────────────────────
     cat > "$AD/trend_watcher.py" <<'TRENDEOF'
 #!/usr/bin/env python3
 """Vox Opportunity Scout. Triggered twice daily."""
@@ -626,8 +662,16 @@ CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID","")
 if not TOKEN or not CHAT_ID:
     sys.exit("Telegram credentials missing in .env")
 
+# Task 3: resolve workspace tokens from environment
+DOCS_WORKSPACE = os.environ.get("AI_WORKSPACE", os.path.join(os.path.expanduser("~"), "OneDrive", "AI-Agent"))
+CODE_WORKSPACE = os.environ.get("CODE_WORKSPACE", os.path.join(os.path.expanduser("~"), "OneDrive", "SourceCode"))
+
+def _resolve_prompt(text):
+    return text.replace("{DOCS_WORKSPACE}", DOCS_WORKSPACE).replace("{CODE_WORKSPACE}", CODE_WORKSPACE)
+
 with open(os.path.join(HOME, "agents", "team.yaml")) as f:
-    VOX_SYS = yaml.safe_load(f)["roles"]["vox"]["system_prompt"]
+    raw = yaml.safe_load(f)["roles"]["vox"]["system_prompt"]
+    VOX_SYS = _resolve_prompt(raw)
 
 client = OpenAI(base_url="http://localhost:4000/v1", api_key="local")
 
@@ -658,11 +702,25 @@ if __name__ == "__main__": main()
 TRENDEOF
     chmod +x "$AD/trend_watcher.py"
 
-    # 3. Write orchestrator.py (Agile workflow manager)
+    # ── orchestrator.py ───────────────────────────────────────────────────────
+    # Task 1: async fire-and-forget via asyncio.create_task()
+    # Task 2: SVG wireframe extraction + WeasyPrint inline injection
+    # Task 3: workspace paths resolved from env at runtime; no hardcoded /Users/
     cat > "$AD/orchestrator.py" <<'ORCHEOF'
 #!/usr/bin/env python3
-"""AI Team Orchestrator. Direct Telegram interface and Agile manager."""
-import os, sys, time, json, datetime, subprocess, re, logging, asyncio
+"""AI Team Orchestrator — Telegram interface + Agile workflow manager.
+
+Changes vs original:
+  - Task 1: workflow() is always launched via asyncio.create_task() (fire-and-forget).
+             The message handler immediately ACKs the user so the poll loop never times out.
+  - Task 2: Mira produces inline SVG blocks; _save_svg_files() extracts them, cairosvg
+             converts them to PNG, and mt_render_pdf() inlines them as <img> tags before
+             WeasyPrint runs.
+  - Task 3: All workspace paths are derived from environment variables at startup — no
+             hardcoded /Users/<name>/ strings anywhere.
+"""
+import os, sys, time, json, datetime, subprocess, re, logging, asyncio, base64
+from pathlib import Path
 from dotenv import load_dotenv
 from openai import OpenAI
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -672,38 +730,51 @@ from concurrent.futures import ThreadPoolExecutor
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
+# ── Environment ────────────────────────────────────────────────────────────────
 HOME = os.environ.get("AI_HOME", os.path.expanduser("~/.local-ai-workstation"))
 load_dotenv(os.path.join(HOME, ".env"))
 
-TOKEN   = os.environ.get("TELEGRAM_BOT_TOKEN","")
-CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID","")
+TOKEN   = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
-WORKSPACE_DOCS = "/Users/thaqifisa/OneDrive/AI-Agent"
-WORKSPACE_CODE = "/Users/thaqifisa/SourceCode"
+# Task 3: workspace roots resolved from env; fallback to ~/OneDrive/...
+_home = os.path.expanduser("~")
+WORKSPACE_DOCS = os.environ.get("AI_WORKSPACE",   os.path.join(_home, "OneDrive", "AI-Agent"))
+WORKSPACE_CODE = os.environ.get("CODE_WORKSPACE", os.path.join(_home, "OneDrive", "SourceCode"))
+MASTER_EMAIL   = os.environ.get("MASTER_EMAIL", "")
 
 PF = os.path.join(HOME, "projects.json")
 SF = os.path.join(HOME, "agent_status.json")
 TF = os.path.join(HOME, "pending_actions.json")
 
 client = OpenAI(base_url="http://localhost:4000/v1", api_key="local")
-_exec = ThreadPoolExecutor(max_workers=5)
+_exec  = ThreadPoolExecutor(max_workers=5)
 
-with open(os.path.join(HOME, "agents", "team.yaml")) as f:
-    ROLES = yaml_data = __import__('yaml').safe_load(f)["roles"]
+with open(os.path.join(HOME, "agents", "team.yaml")) as _f:
+    ROLES = __import__('yaml').safe_load(_f)["roles"]
 
+# Task 3: resolve {DOCS_WORKSPACE}/{CODE_WORKSPACE} tokens in every system prompt
+def _resolve_prompt(text: str) -> str:
+    return text.replace("{DOCS_WORKSPACE}", WORKSPACE_DOCS).replace("{CODE_WORKSPACE}", WORKSPACE_CODE)
+
+for _role in ROLES.values():
+    _role["system_prompt"] = _resolve_prompt(_role["system_prompt"])
+
+# ── State machine labels ───────────────────────────────────────────────────────
 STATES = {
     "idle":              ("No active project",                "⬜"),
-    "proposal_drafting": ("Ada & Mira writing proposal",      "安排"),
+    "proposal_drafting": ("Ada & Mira writing proposal",      "🔄"),
     "awaiting_approval": ("Awaiting your proposal approval",  "🔵"),
-    "development":       ("Leo building",                     "安排"),
-    "qa_running":        ("Nova testing",                     "安排"),
+    "development":       ("Leo building",                     "🔄"),
+    "qa_running":        ("Nova testing",                     "🔄"),
     "qa_bugs_found":     ("Bugs found — decision needed",     "🔴"),
-    "final_review":      ("Ada doing final review",           "安排"),
+    "final_review":      ("Ada doing final review",           "🔄"),
     "awaiting_final":    ("Awaiting your final approval",     "🔵"),
     "completed":         ("Project complete",                 "🟢"),
     "paused":            ("Paused — manual IDE mode",         "⏸️"),
 }
 
+# ── Project store helpers ──────────────────────────────────────────────────────
 def load_projects():
     if not os.path.exists(PF): return {}
     try:
@@ -728,6 +799,7 @@ def write_status(upd):
     d.update(upd)
     with open(SF, "w") as f: json.dump(d, f)
 
+# ── Path helpers ───────────────────────────────────────────────────────────────
 def safe_name(text, max_len=45):
     n = re.sub(r'[^\w\s-]', '', str(text).lower())
     n = re.sub(r'\s+', '_', n.strip())
@@ -750,7 +822,9 @@ def _ws_code(pname):
     os.makedirs(path, exist_ok=True)
     return path
 
+# ── File savers ────────────────────────────────────────────────────────────────
 def _save_code_files(response, output_dir):
+    """Extract named fenced code blocks and write to disk."""
     patterns = [
         r'[`*]{1,3}([^\s`*\n]+\.[a-zA-Z0-9]+)[`*]{0,3}\s*\n```[a-zA-Z]*\n(.*?)```',
         r'###\s*[`]?([^\n`]+\.[a-zA-Z0-9]+)[`]?\s*\n```[a-zA-Z]*\n(.*?)```',
@@ -758,7 +832,8 @@ def _save_code_files(response, output_dir):
     saved = []
     for pat in patterns:
         for m in re.finditer(pat, response, re.DOTALL):
-            fname, content = m.group(1).strip().lstrip('/').lstrip('./'), m.group(2)
+            fname = m.group(1).strip().lstrip('/').lstrip('./')
+            content = m.group(2)
             if not fname or '..' in fname: continue
             fpath = os.path.join(output_dir, fname)
             try:
@@ -768,53 +843,116 @@ def _save_code_files(response, output_dir):
             except: pass
     return saved
 
-def _save_drawio_files(response, output_dir):
+def _save_svg_files(response, output_dir):
+    """
+    Task 2: Extract ### assets/<name>.svg fenced blocks Mira produces.
+    Saves the raw SVG text and returns a list of (relative_path, abs_path) tuples.
+    """
     saved = []
-    pattern = r'(?:#{1,3}\s*[`]?([^\n`]+?\.drawio)[`]?\s*\n)?```xml\s*\n(.*?)```'
+    # Match: ### assets/wireframe_foo.svg  then ```xml  <svg ...> ... </svg>  ```
+    pattern = r'###\s+([^\n]+?\.svg)\s*\n```[a-zA-Z]*\n(.*?)\n```'
     idx = 0
     for m in re.finditer(pattern, response, re.DOTALL | re.IGNORECASE):
-        xml = m.group(2).strip()
-        if 'mxGraphModel' not in xml: continue
+        rel = m.group(1).strip().lstrip('/').lstrip('./')
+        svg_text = m.group(2).strip()
+        if '<svg' not in svg_text.lower():
+            continue
         idx += 1
-        fname = (m.group(1) or f"wireframe_{idx}.drawio").strip().lstrip('/').lstrip('./')
+        if not rel:
+            rel = f"assets/wireframe_{idx}.svg"
+        abs_path = os.path.join(output_dir, rel)
         try:
-            with open(os.path.join(output_dir, fname), 'w') as f: f.write(xml)
-            saved.append(fname)
-        except: pass
+            os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+            with open(abs_path, 'w') as f:
+                f.write(svg_text)
+            saved.append((rel, abs_path))
+        except Exception as e:
+            logger.warning(f"Could not save SVG {rel}: {e}")
     return saved
 
-def mt_render_pdf(md_text, out_path, title="Proposal"):
+def _svg_to_png_b64(svg_path: str) -> str | None:
+    """
+    Task 2: Convert an SVG file to a base64-encoded PNG using cairosvg.
+    Returns the data-URI string, or None on failure.
+    """
+    try:
+        import cairosvg
+        png_bytes = cairosvg.svg2png(url=svg_path)
+        b64 = base64.b64encode(png_bytes).decode()
+        return f"data:image/png;base64,{b64}"
+    except Exception as e:
+        logger.warning(f"cairosvg conversion failed for {svg_path}: {e}")
+        return None
+
+# ── PDF renderer ───────────────────────────────────────────────────────────────
+def mt_render_pdf(md_text: str, out_path: str, title: str = "Proposal",
+                  svg_files: list | None = None):
+    """
+    Task 2: Build a WeasyPrint PDF.
+    svg_files is a list of (rel_path, abs_path) tuples produced by _save_svg_files().
+    Each SVG is converted to a PNG data-URI and injected as <img> tags in the HTML
+    before WeasyPrint processes it, so wireframes render visually in the PDF.
+    """
     try:
         import markdown as _md
         from weasyprint import HTML
-        body = _md.markdown(md_text, extensions=["tables","fenced_code"])
+
+        body_html = _md.markdown(md_text, extensions=["tables", "fenced_code"])
+
+        # Task 2: replace markdown image refs or inject SVG section
+        if svg_files:
+            wireframe_section = "<h2>Wireframes</h2>"
+            for rel, abs_path in svg_files:
+                data_uri = _svg_to_png_b64(abs_path)
+                if data_uri:
+                    name = os.path.basename(rel)
+                    wireframe_section += (
+                        f'<figure style="page-break-inside:avoid;margin:20px 0">'
+                        f'<img src="{data_uri}" alt="{name}" '
+                        f'style="max-width:100%;border:1px solid #ddd;border-radius:4px">'
+                        f'<figcaption style="color:#555;font-size:12px">{name}</figcaption>'
+                        f'</figure>'
+                    )
+            # Append wireframes after main body
+            body_html += wireframe_section
+
         stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-        html = ("<!doctype html><html><head><meta charset='utf-8'><style>"
+        html = (
+            "<!doctype html><html><head><meta charset='utf-8'><style>"
             "@page { size: A4; margin: 2cm; @bottom-right { content: counter(page); color:#888; } }"
             "body { font-family:sans-serif; color:#1a1a1a; line-height:1.5; }"
             "h1 { color:#1f3a5f; border-bottom:3px solid #1f3a5f; }"
             "table { border-collapse:collapse; width:100%; }"
             "th,td { border:1px solid #ccc; padding:8px; }"
             "pre { background:#f6f8fa; padding:10px; border-radius:6px; }"
+            "figure { text-align:center; }"
             "</style></head><body>"
             f"<div style='text-align:center;margin-top:30%'><h1>{title}</h1>"
-            f"<div>Prepared by Ada<br>{stamp}</div></div>"
+            f"<div>Prepared by Ada &amp; Mira<br>{stamp}</div></div>"
             "<div style='page-break-before:always'></div>"
-            f"{body}</body></html>")
+            f"{body_html}</body></html>"
+        )
         HTML(string=html).write_pdf(out_path)
         return (True, out_path)
     except Exception as e:
-        logger.error(f"PDF fail: {e}")
+        logger.error(f"PDF render failed: {e}")
         return (False, str(e))
 
+# ── Email helper ───────────────────────────────────────────────────────────────
 def mt_send_email(subject, body, attachment_path=None):
     to = MASTER_EMAIL
+    if not to:
+        logger.warning("MASTER_EMAIL not configured; skipping email.")
+        return False
     subj_e = subject.replace('"', '\\"')
-    body_e = body.replace('"', '\\"')
+    body_e  = body.replace('"', '\\"')
     attach_clause = ""
     if attachment_path and os.path.isfile(attachment_path):
         posix_e = os.path.abspath(attachment_path).replace('"', '\\"')
-        attach_clause = f'\n        make new attachment with properties {{file name:(POSIX file "{posix_e}")}} at after the last paragraph'
+        attach_clause = (
+            f'\n        make new attachment with properties '
+            f'{{file name:(POSIX file "{posix_e}")}} at after the last paragraph'
+        )
     script = (
         'tell application "Mail"\n'
         '    set newMsg to make new outgoing message with properties '
@@ -829,17 +967,17 @@ def mt_send_email(subject, body, attachment_path=None):
     try:
         import tempfile
         with tempfile.NamedTemporaryFile("w", suffix=".applescript", delete=False) as tf:
-            tf.write(script)
-            path = tf.name
+            tf.write(script); path = tf.name
         r = subprocess.run(["osascript", path], capture_output=True, text=True, timeout=30)
         try: os.unlink(path)
         except: pass
         return r.returncode == 0
     except: return False
 
+# ── LLM invocation ─────────────────────────────────────────────────────────────
 def _invoke_sync(name, msgs, temp=0.7):
     cfg = ROLES[name]
-    full = [{"role":"system","content":cfg["system_prompt"]}] + msgs
+    full = [{"role": "system", "content": cfg["system_prompt"]}] + msgs
     write_status({name: "working"})
     try:
         r = client.chat.completions.create(
@@ -858,14 +996,16 @@ async def invoke(name, msgs, temp=0.7):
 def _strip_think(text):
     return re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
 
-async def deliver_document(ctx, cid, file_path, subject, body, caption):
-    # Sends document via Telegram + Emails it
+# ── Telegram delivery helpers ──────────────────────────────────────────────────
+async def deliver_document(bot, cid, file_path, subject, body, caption):
+    """Send document via Telegram then email it."""
     try:
         with open(file_path, "rb") as f:
-            await ctx.bot.send_document(chat_id=int(cid), document=f, caption=caption)
+            await bot.send_document(chat_id=int(cid), document=f, caption=caption)
     except Exception as e:
         logger.error(f"Telegram deliver failed: {e}")
-    await asyncio.get_running_loop().run_in_executor(_exec, lambda: mt_send_email(subject, body, file_path))
+    await asyncio.get_running_loop().run_in_executor(
+        _exec, lambda: mt_send_email(subject, body, file_path))
 
 async def keep_typing(bot, cid, stop):
     while not stop.is_set():
@@ -873,171 +1013,236 @@ async def keep_typing(bot, cid, stop):
         except: pass
         await asyncio.sleep(4)
 
-async def workflow(ctx, cid):
-    proj   = get_project(cid)
-    status = proj.get("status", "idle")
-    idea   = proj.get("idea", "")
-    brief  = proj.get("brief", idea)
-    hist   = proj.get("history", [])
-    pname  = safe_name(idea)
-
-    if status == "proposal_drafting":
-        stop = asyncio.Event()
-        ctx.application.create_task(keep_typing(ctx.bot, cid, stop))
-        try:
-            await send(ctx, cid, "🗂️ *Ada & Mira drafting proposal...*")
-            ap = f"Brief:\n{brief}\n\nWrite a markdown proposal with architecture and milestones."
-            proposal = await invoke("ada", hist + [{"role":"user","content":ap}])
-            mp = f"Proposal:\n{proposal[:1500]}\n\nGenerate wireframe descriptions and a .drawio XML wireframe block."
-            design = await invoke("mira", [{"role":"user","content":mp}])
-        finally: stop.set()
-
-        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        fp = os.path.join(_ws_docs(pname, "proposals"), f"proposal_{ts}.md")
-        md_full = f"# {idea}\n\n## Ada's Proposal\n\n{proposal}\n\n## Mira's UX Design\n\n{design}"
-        with open(fp, "w") as f: f.write(md_full)
-
-        drawio_files = _save_drawio_files(design, _ws_docs(pname, "proposals"))
-        pdf_path = os.path.join(_ws_docs(pname, "proposals"), f"proposal_{ts}.pdf")
-        pdf_ok, pdf_res = mt_render_pdf(md_full, pdf_path, title=idea)
-
-        await send(ctx, cid, "📎 _Delivering proposal to OneDrive + Email + Telegram..._")
-        if pdf_ok:
-            await deliver_document(ctx, cid, pdf_path, f"Proposal: {idea}", f"Proposal attached.\n\n— Ada", f"📄 Proposal: {idea}")
-        else:
-            await deliver_document(ctx, cid, fp, f"Proposal: {idea} (MD)", f"Proposal MD attached.\n\n— Ada", f"📄 Proposal MD: {idea}")
-
-        update_project(cid, status="awaiting_approval", proposal_file=fp,
-                       proposal_pdf=(pdf_path if pdf_ok else ""), history=hist + [{"role":"user","content":ap},{"role":"assistant","content":proposal}])
-        
-        await send(ctx, cid, f"📋 *Ada's proposal ready.* Approve below to begin code development.",
-            mkb(("✅ Approve & Build", "approve_proposal"), ("❌ Reject", "reject_proposal")))
-
-    elif status == "development":
-        stop = asyncio.Event()
-        ctx.application.create_task(keep_typing(ctx.bot, cid, stop))
-        try:
-            await send(ctx, cid, "👨‍💻 *Leo building project...*")
-            dp = "Build the approved plan. Output complete code in named fenced blocks. End with DEPLOYMENT COMPLETE"
-            result = await invoke("leo", hist + [{"role":"user","content":dp}])
-        finally: stop.set()
-
-        nh = hist + [{"role":"user","content":dp},{"role":"assistant","content":result}]
-        if "DEPLOYMENT COMPLETE" in result.upper():
-            proj_dir = _ws_code(pname)
-            ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            out_md = os.path.join(_ws_docs(pname, "reports"), f"leo_output_{ts}.md")
-            with open(out_md, "w") as f: f.write(result)
-
-            saved_files = _save_code_files(result, proj_dir)
-            update_project(cid, status="qa_running", history=nh, project_dir=proj_dir)
-            await send(ctx, cid, f"✅ *Leo: Development Complete!*\nSaved {len(saved_files)} files to {proj_dir}.")
-            await deliver_document(ctx, cid, out_md, f"Leo Build: {idea}", "Leo build log.", f"leo_output_{ts}.md")
-            await send(ctx, cid, "🔎 *Activating Nova for E2E tests...*")
-            await workflow(ctx, cid)
-        else:
-            update_project(cid, status="development", history=nh)
-            await send(ctx, cid, f"👨‍💻 *Leo feedback Required:*\n\n{result[:1500]}",
-                mkb(("✅ Force QA", "force_qa"), ("📝 More Instructions", "instruct_leo")))
-
-    elif status == "qa_running":
-        stop = asyncio.Event()
-        ctx.application.create_task(keep_typing(ctx.bot, cid, stop))
-        try:
-            await send(ctx, cid, "🔎 *Nova running tests...*")
-            qp = "Test deployment. If works, end with ALL TESTS PASSED. Otherwise, list detailed bug tickets [BUG-NNN]."
-            result = await invoke("nova", hist + [{"role":"user","content":qp}])
-        finally: stop.set()
-
-        nh = hist + [{"role":"user","content":qp},{"role":"assistant","content":result}]
-        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        if "ALL TESTS PASSED" in result.upper():
-            qa_path = os.path.join(_ws_docs(pname, "reports"), f"qa_report_{ts}.md")
-            with open(qa_path, "w") as f: f.write(result)
-            update_project(cid, status="final_review", history=nh)
-            await send(ctx, cid, f"✅ *Nova: All tests passed!*")
-            await deliver_document(ctx, cid, qa_path, f"QA Pass: {idea}", "All passed.", f"qa_report_{ts}.md")
-            await workflow(ctx, cid)
-        else:
-            bug_path = os.path.join(_ws_docs(pname, "reports"), f"bug_report_{ts}.md")
-            with open(bug_path, "w") as f: f.write(result)
-            update_project(cid, status="qa_bugs_found", history=nh)
-            await send(ctx, cid, f"🔴 *Nova found bugs:*\n\n{result[:1400]}")
-            await deliver_document(ctx, cid, bug_path, f"Bugs found: {idea}", "Bugs list.", f"bug_report_{ts}.md")
-            await send(ctx, cid, "Choose next step:", mkb(("🛠️ Fix bugs", "fix_bugs"), ("⚠️ Accept As-Is", "accept_bugs")))
-
-    elif status == "final_review":
-        stop = asyncio.Event()
-        ctx.application.create_task(keep_typing(ctx.bot, cid, stop))
-        try:
-            await send(ctx, cid, "📋 *Ada conducting PM final review...*")
-            rp = "Write project final review signoff."
-            result = await invoke("ada", hist + [{"role":"user","content":rp}])
-        finally: stop.set()
-        
-        update_project(cid, status="awaiting_final", history=hist + [{"role":"user","content":rp},{"role":"assistant","content":result}])
-        await send(ctx, cid, f"📋 *Ada's Final Review:*\n\n{result[:1500]}",
-            mkb(("🎉 Accept & Complete", "accept_final"), ("🔄 Refine", "more_changes")))
-
-def mkb(*pairs):
-    return InlineKeyboardMarkup([[InlineKeyboardButton(text, callback_data=cb) for text, cb in pairs]])
-
-async def send(ctx, cid, text, kb=None):
+async def send(bot, cid, text, kb=None):
     try:
-        await ctx.bot.send_message(chat_id=int(cid), text=text, reply_markup=kb, parse_mode="Markdown")
+        await bot.send_message(
+            chat_id=int(cid), text=text, reply_markup=kb, parse_mode="Markdown")
     except Exception as e:
         logger.error(f"Telegram send fail: {e}")
 
+def mkb(*pairs):
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton(text, callback_data=cb) for text, cb in pairs]])
+
+# ── Main Agile workflow (runs as a detached task — Task 1) ─────────────────────
+async def workflow(bot, cid: str):
+    """
+    Task 1: This coroutine is always launched via asyncio.create_task().
+    It runs entirely in the background; the polling loop is never blocked.
+    When done it uses the cached bot reference to push updates to Telegram.
+    """
+    proj   = get_project(cid)
+    status = proj.get("status", "idle")
+    idea   = proj.get("idea", "")
+    hist   = proj.get("history", [])
+    pname  = safe_name(idea)
+
+    # ── Proposal drafting ──────────────────────────────────────────────────────
+    if status == "proposal_drafting":
+        stop = asyncio.Event()
+        asyncio.get_running_loop().create_task(keep_typing(bot, cid, stop))
+        try:
+            await send(bot, cid, "🗂️ *Ada & Mira drafting proposal...*")
+            ap = (f"Brief:\n{idea}\n\n"
+                  "Write a markdown proposal with architecture and milestones.")
+            proposal = await invoke("ada", hist + [{"role": "user", "content": ap}])
+
+            mp = (f"Proposal:\n{proposal[:1500]}\n\n"
+                  "Generate user-journey descriptions and produce one inline SVG wireframe "
+                  "per major screen using the ### assets/<name>.svg fenced-block format.")
+            design = await invoke("mira", [{"role": "user", "content": mp}])
+        finally:
+            stop.set()
+
+        ts      = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        docs_dir = _ws_docs(pname, "proposals")
+        fp      = os.path.join(docs_dir, f"proposal_{ts}.md")
+        md_full = f"# {idea}\n\n## Ada's Proposal\n\n{proposal}\n\n## Mira's UX Design\n\n{design}"
+        with open(fp, "w") as f:
+            f.write(md_full)
+
+        # Task 2: extract SVG wireframes from Mira's output
+        svg_files = _save_svg_files(design, docs_dir)
+
+        pdf_path = os.path.join(docs_dir, f"proposal_{ts}.pdf")
+        # Task 2: pass svg_files into the PDF renderer
+        pdf_ok, pdf_res = mt_render_pdf(md_full, pdf_path, title=idea, svg_files=svg_files)
+
+        await send(bot, cid, "📎 _Delivering proposal to OneDrive + Email + Telegram..._")
+        if pdf_ok:
+            await deliver_document(bot, cid, pdf_path,
+                f"Proposal: {idea}", f"Proposal attached.\n\n— Ada",
+                f"📄 Proposal: {idea}")
+        else:
+            await deliver_document(bot, cid, fp,
+                f"Proposal: {idea} (MD)", f"Proposal MD attached.\n\n— Ada",
+                f"📄 Proposal MD: {idea}")
+
+        update_project(cid, status="awaiting_approval", proposal_file=fp,
+                       proposal_pdf=(pdf_path if pdf_ok else ""),
+                       history=hist + [
+                           {"role": "user",      "content": ap},
+                           {"role": "assistant", "content": proposal},
+                       ])
+        await send(bot, cid,
+            "📋 *Ada's proposal ready.* Approve below to begin code development.",
+            mkb(("✅ Approve & Build", "approve_proposal"),
+                ("❌ Reject",          "reject_proposal")))
+
+    # ── Development ────────────────────────────────────────────────────────────
+    elif status == "development":
+        stop = asyncio.Event()
+        asyncio.get_running_loop().create_task(keep_typing(bot, cid, stop))
+        try:
+            await send(bot, cid, "👨‍💻 *Leo building project...*")
+            dp = ("Build the approved plan. Output complete code in named fenced blocks. "
+                  "End with DEPLOYMENT COMPLETE")
+            result = await invoke("leo", hist + [{"role": "user", "content": dp}])
+        finally:
+            stop.set()
+
+        nh = hist + [{"role": "user", "content": dp}, {"role": "assistant", "content": result}]
+        if "DEPLOYMENT COMPLETE" in result.upper():
+            proj_dir = _ws_code(pname)
+            ts       = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            out_md   = os.path.join(_ws_docs(pname, "reports"), f"leo_output_{ts}.md")
+            with open(out_md, "w") as f:
+                f.write(result)
+            saved_files = _save_code_files(result, proj_dir)
+            update_project(cid, status="qa_running", history=nh, project_dir=proj_dir)
+            await send(bot, cid,
+                f"✅ *Leo: Development Complete!*\nSaved {len(saved_files)} file(s) to `{proj_dir}`.")
+            await deliver_document(bot, cid, out_md,
+                f"Leo Build: {idea}", "Leo build log.", f"leo_output_{ts}.md")
+            await send(bot, cid, "🔎 *Activating Nova for E2E tests...*")
+            await workflow(bot, cid)
+        else:
+            update_project(cid, status="development", history=nh)
+            await send(bot, cid,
+                f"👨‍💻 *Leo feedback required:*\n\n{result[:1500]}",
+                mkb(("✅ Force QA", "force_qa"), ("📝 More Instructions", "instruct_leo")))
+
+    # ── QA ─────────────────────────────────────────────────────────────────────
+    elif status == "qa_running":
+        stop = asyncio.Event()
+        asyncio.get_running_loop().create_task(keep_typing(bot, cid, stop))
+        try:
+            await send(bot, cid, "🔎 *Nova running tests...*")
+            qp = ("Test deployment. If it works, end with ALL TESTS PASSED. "
+                  "Otherwise list detailed bug tickets [BUG-NNN].")
+            result = await invoke("nova", hist + [{"role": "user", "content": qp}])
+        finally:
+            stop.set()
+
+        nh = hist + [{"role": "user", "content": qp}, {"role": "assistant", "content": result}]
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        if "ALL TESTS PASSED" in result.upper():
+            qa_path = os.path.join(_ws_docs(pname, "reports"), f"qa_report_{ts}.md")
+            with open(qa_path, "w") as f:
+                f.write(result)
+            update_project(cid, status="final_review", history=nh)
+            await send(bot, cid, "✅ *Nova: All tests passed!*")
+            await deliver_document(bot, cid, qa_path,
+                f"QA Pass: {idea}", "All passed.", f"qa_report_{ts}.md")
+            await workflow(bot, cid)
+        else:
+            bug_path = os.path.join(_ws_docs(pname, "reports"), f"bug_report_{ts}.md")
+            with open(bug_path, "w") as f:
+                f.write(result)
+            update_project(cid, status="qa_bugs_found", history=nh)
+            await send(bot, cid, f"🔴 *Nova found bugs:*\n\n{result[:1400]}")
+            await deliver_document(bot, cid, bug_path,
+                f"Bugs found: {idea}", "Bugs list.", f"bug_report_{ts}.md")
+            await send(bot, cid, "Choose next step:",
+                mkb(("🛠️ Fix bugs", "fix_bugs"), ("⚠️ Accept As-Is", "accept_bugs")))
+
+    # ── Final review ───────────────────────────────────────────────────────────
+    elif status == "final_review":
+        stop = asyncio.Event()
+        asyncio.get_running_loop().create_task(keep_typing(bot, cid, stop))
+        try:
+            await send(bot, cid, "📋 *Ada conducting PM final review...*")
+            rp = "Write a project final-review signoff document."
+            result = await invoke("ada", hist + [{"role": "user", "content": rp}])
+        finally:
+            stop.set()
+
+        update_project(cid, status="awaiting_final",
+                       history=hist + [
+                           {"role": "user",      "content": rp},
+                           {"role": "assistant", "content": result},
+                       ])
+        await send(bot, cid,
+            f"📋 *Ada's Final Review:*\n\n{result[:1500]}",
+            mkb(("🎉 Accept & Complete", "accept_final"),
+                ("🔄 Refine",            "more_changes")))
+
+# ── Telegram handlers ──────────────────────────────────────────────────────────
 async def on_msg(u: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not u.message or not u.message.text: return
-    msg = u.message.text.strip(); cid = str(u.effective_chat.id)
+    msg = u.message.text.strip()
+    cid = str(u.effective_chat.id)
     if cid != CHAT_ID: return
-    
-    proj = get_project(cid); status = proj.get("status", "idle")
-    
-    if any(s in msg.lower() for s in ["build ", "create ", "make ", "start project"]):
+
+    if any(kw in msg.lower() for kw in ["build ", "create ", "make ", "start project"]):
         title = _clean_title(msg)
-        update_project(cid, status="proposal_drafting", idea=title, request=msg, created=str(datetime.datetime.now()), history=[])
-        await send(ctx, cid, f"🚀 *Starting project: {title}...*")
-        await workflow(ctx, cid)
+        update_project(cid, status="proposal_drafting", idea=title,
+                       request=msg, created=str(datetime.datetime.now()), history=[])
+
+        # Task 1: Immediately ACK the user so the polling loop is never blocked.
+        await send(ctx.bot, cid,
+            f"🚀 *{title}* — task detached to background processors.\n\n"
+            "I will ping you here with artifacts once the team finishes generation.")
+
+        # Task 1: Fire-and-forget — workflow runs independently of the poll loop.
+        asyncio.create_task(workflow(ctx.bot, cid))
     else:
-        # standard general query logic
         resp = _strip_think(await invoke("orion", [{"role": "user", "content": msg}]))
-        await send(ctx, cid, resp)
+        await send(ctx.bot, cid, resp)
 
 async def on_btn(u: Update, ctx: ContextTypes.DEFAULT_TYPE):
     q = u.callback_query; await q.answer()
-    data = q.data; cid = str(u.effective_chat.id)
-    
-    proj = get_project(cid)
-    
+    data = q.data
+    cid  = str(u.effective_chat.id)
+
     if data == "approve_proposal":
         update_project(cid, status="development")
-        await send(ctx, cid, "✅ Proposal approved. Leo starting code development.")
-        await workflow(ctx, cid)
+        await send(ctx.bot, cid,
+            "✅ Proposal approved.\n\n"
+            "🚀 Leo's development task detached to background — I'll ping you when the build is ready.")
+        # Task 1: fire-and-forget
+        asyncio.create_task(workflow(ctx.bot, cid))
     elif data == "reject_proposal":
         update_project(cid, status="idle")
-        await send(ctx, cid, "❌ Proposal rejected.")
+        await send(ctx.bot, cid, "❌ Proposal rejected.")
     elif data == "force_qa":
         update_project(cid, status="qa_running")
-        await workflow(ctx, cid)
+        await send(ctx.bot, cid,
+            "🔎 QA task detached to background — Nova will report back shortly.")
+        asyncio.create_task(workflow(ctx.bot, cid))
     elif data == "fix_bugs":
         update_project(cid, status="development")
-        await send(ctx, cid, "🛠️ Re-routing to developer Leo to fix bugs.")
-        await workflow(ctx, cid)
+        await send(ctx.bot, cid,
+            "🛠️ Bug-fix task detached to background — Leo is on it.")
+        asyncio.create_task(workflow(ctx.bot, cid))
     elif data == "accept_bugs":
         update_project(cid, status="final_review")
-        await workflow(ctx, cid)
+        await send(ctx.bot, cid,
+            "📋 Final-review task detached to background — Ada will report back shortly.")
+        asyncio.create_task(workflow(ctx.bot, cid))
     elif data == "accept_final":
-        update_project(cid, status="completed", completed_at=str(datetime.datetime.now()))
-        await send(ctx, cid, "🎉 Project accepted and marked as completed!")
+        update_project(cid, status="completed",
+                       completed_at=str(datetime.datetime.now()))
+        await send(ctx.bot, cid, "🎉 Project accepted and marked as completed!")
     elif data == "more_changes":
         update_project(cid, status="development")
-        await send(ctx, cid, "🔄 Re-routing for further modifications.")
-        await workflow(ctx, cid)
+        await send(ctx.bot, cid,
+            "🔄 Refinement task detached to background — Leo will implement changes.")
+        asyncio.create_task(workflow(ctx.bot, cid))
 
+# ── Dashboard action poller ────────────────────────────────────────────────────
 async def action_poller(application):
-    # Polls pending_actions.json to trigger events from the dashboard
+    """Polls pending_actions.json to trigger events from the web dashboard."""
     while True:
         if os.path.exists(TF):
             try:
@@ -1045,31 +1250,40 @@ async def action_poller(application):
                 os.unlink(TF)
                 for cid, act_data in actions.items():
                     act = act_data.get("action")
-                    logger.info(f"Poller picked action {act} for project {cid}")
+                    logger.info(f"Poller: action={act} project={cid}")
                     proj = get_project(cid)
+
                     if act == "approve_proposal":
                         update_project(cid, status="development")
-                        await application.bot.send_message(chat_id=int(cid), text="✅ Proposal approved (via Dashboard). Development started.")
-                        asyncio.create_task(workflow(None, cid))
+                        await application.bot.send_message(
+                            chat_id=int(cid),
+                            text="✅ Proposal approved via Dashboard — development task detached.")
+                        asyncio.create_task(workflow(application.bot, cid))
                     elif act == "reject_proposal":
                         update_project(cid, status="idle")
-                        await application.bot.send_message(chat_id=int(cid), text="❌ Proposal rejected (via Dashboard).")
+                        await application.bot.send_message(
+                            chat_id=int(cid), text="❌ Proposal rejected via Dashboard.")
                     elif act == "force_qa":
                         update_project(cid, status="qa_running")
-                        asyncio.create_task(workflow(None, cid))
+                        await application.bot.send_message(
+                            chat_id=int(cid), text="🔎 QA task detached via Dashboard.")
+                        asyncio.create_task(workflow(application.bot, cid))
                     elif act == "fix_bugs":
                         update_project(cid, status="development")
-                        await application.bot.send_message(chat_id=int(cid), text="🛠️ Developer Leo fixing bugs (via Dashboard).")
-                        asyncio.create_task(workflow(None, cid))
+                        await application.bot.send_message(
+                            chat_id=int(cid), text="🛠️ Bug-fix task detached via Dashboard.")
+                        asyncio.create_task(workflow(application.bot, cid))
                     elif act == "accept_bugs":
                         update_project(cid, status="final_review")
-                        asyncio.create_task(workflow(None, cid))
+                        asyncio.create_task(workflow(application.bot, cid))
                     elif act == "accept_final":
-                        update_project(cid, status="completed", completed_at=str(datetime.datetime.now()))
-                        await application.bot.send_message(chat_id=int(cid), text="🎉 Project completed (via Dashboard)!")
+                        update_project(cid, status="completed",
+                                       completed_at=str(datetime.datetime.now()))
+                        await application.bot.send_message(
+                            chat_id=int(cid), text="🎉 Project completed via Dashboard!")
                     elif act == "more_changes":
                         update_project(cid, status="development")
-                        asyncio.create_task(workflow(None, cid))
+                        asyncio.create_task(workflow(application.bot, cid))
             except Exception as e:
                 logger.error(f"Poller error: {e}")
         await asyncio.sleep(2)
@@ -1081,14 +1295,20 @@ def main():
     if not TOKEN:
         logger.error("No TELEGRAM_BOT_TOKEN set in environment.")
         sys.exit(1)
-    app = Application.builder().token(TOKEN).post_init(post_init).build()
-    app.add_handler(CommandHandler("start", lambda u,c: send(c, str(u.effective_chat.id), "Welcome to AI Team Workstation orchestrator!")))
+    app = (Application.builder()
+           .token(TOKEN)
+           .post_init(post_init)
+           .build())
+    app.add_handler(CommandHandler(
+        "start", lambda u, c: send(c.bot, str(u.effective_chat.id),
+                                   "Welcome to AI Team Workstation orchestrator!")))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_msg))
     app.add_handler(CallbackQueryHandler(on_btn))
-    logger.info("Bot starting...")
+    logger.info("Bot starting…")
     app.run_polling()
 
-if __name__ == "__main__": main()
+if __name__ == "__main__":
+    main()
 ORCHEOF
     chmod +x "$AD/orchestrator.py"
     ok "Agent prompts and scripts created."
@@ -1102,7 +1322,7 @@ write_dashboard() {
     local DD="$WORKDIR/dashboard"; mkdir -p "$DD"
     cat > "$DD/app.py" <<'DASHEOF'
 #!/usr/bin/env python3
-"""AI Team Dashboard Server. Premium Jira style."""
+"""AI Team Dashboard Server."""
 import os, json, datetime, subprocess, re
 import requests, psutil
 from flask import Flask, jsonify, request
@@ -1115,8 +1335,10 @@ PF = os.path.join(HOME, "projects.json")
 SF = os.path.join(HOME, "agent_status.json")
 TF = os.path.join(HOME, "pending_actions.json")
 
-WORKSPACE_DOCS = "/Users/thaqifisa/OneDrive/AI-Agent"
-WORKSPACE_CODE = "/Users/thaqifisa/SourceCode"
+# Task 3: workspace roots from env; fallback to ~/OneDrive/...
+_home = os.path.expanduser("~")
+WORKSPACE_DOCS = os.environ.get("AI_WORKSPACE",   os.path.join(_home, "OneDrive", "AI-Agent"))
+WORKSPACE_CODE = os.environ.get("CODE_WORKSPACE", os.path.join(_home, "OneDrive", "SourceCode"))
 
 LF_URL = os.environ.get("LANGFUSE_HOST","http://localhost:3000")
 LF_PK  = os.environ.get("LANGFUSE_PUBLIC_KEY","")
@@ -1129,51 +1351,57 @@ P_PORTAINER="9001"
 app = Flask(__name__)
 
 SERVICES = [
-    ("Ollama", f"http://localhost:{P_OLLAMA}/api/tags", P_OLLAMA, "Model engine"),
-    ("LiteLLM Gateway", f"http://localhost:{P_GATEWAY}/health/liveliness", P_GATEWAY, "LLM proxy"),
-    ("Open WebUI", f"http://localhost:{P_OPENWEBUI}/", P_OPENWEBUI, "Chat application"),
-    ("SearXNG", f"http://localhost:{P_SEARXNG}/", P_SEARXNG, "Search agent helper"),
-    ("Langfuse", f"http://localhost:{P_LANGFUSE}/api/public/health", P_LANGFUSE, "Trace telemetry"),
-    ("Portainer", f"http://localhost:{P_PORTAINER}/", P_PORTAINER, "Docker dashboard"),
-    ("Dashboard", f"http://localhost:{P_DASHBOARD}/", P_DASHBOARD, "Control page"),
+    ("Ollama",          f"http://localhost:{P_OLLAMA}/api/tags",              P_OLLAMA,   "Model engine"),
+    ("LiteLLM Gateway", f"http://localhost:{P_GATEWAY}/health/liveliness",    P_GATEWAY,  "LLM proxy"),
+    ("Open WebUI",      f"http://localhost:{P_OPENWEBUI}/",                   P_OPENWEBUI,"Chat application"),
+    ("SearXNG",         f"http://localhost:{P_SEARXNG}/",                     P_SEARXNG,  "Search agent helper"),
+    ("Langfuse",        f"http://localhost:{P_LANGFUSE}/api/public/health",   P_LANGFUSE, "Trace telemetry"),
+    ("Portainer",       f"http://localhost:{P_PORTAINER}/",                   P_PORTAINER,"Docker dashboard"),
+    ("Dashboard",       f"http://localhost:{P_DASHBOARD}/",                   P_DASHBOARD,"Control page"),
 ]
 
 AGENTS = [
-    ("orion","🤖","Chief of Staff","qwen3.6:35b-a3b","Team coordinator"),
-    ("ada","📊","PM / Product Owner","qwen2.5:72b","PDF Proposals & review"),
-    ("mira","🎨","Senior UI/UX","gemma4:26b","draw.io XML wireframes"),
-    ("leo","💻","Superdev","qwen3.6:27b","Writes source code"),
-    ("nova","🔎","QA Tester","qwen2.5:72b","E2E tests & bugs"),
-    ("cipher","🛡️","Pentester","qwen2.5:72b","Vulnerability audit"),
-    ("vox","📡","Trends","qwen2.5:72b","Daily trend search"),
+    ("orion",  "🤖","Chief of Staff",       "qwen3.6:35b-a3b","Team coordinator"),
+    ("ada",    "📊","PM / Product Owner",   "qwen2.5:72b",     "PDF Proposals & review"),
+    ("mira",   "🎨","Senior UI/UX",         "gemma4:26b",      "Inline SVG wireframes"),
+    ("leo",    "💻","Superdev",             "qwen3.6:27b",     "Writes source code"),
+    ("nova",   "🔎","QA Tester",            "qwen2.5:72b",     "E2E tests & bugs"),
+    ("cipher", "🛡️","Pentester",            "qwen2.5:72b",     "Vulnerability audit"),
+    ("vox",    "📡","Trends",               "qwen2.5:72b",     "Daily trend search"),
 ]
 
 KANBAN = [
     ("proposal_drafting","📋 Proposal"),("awaiting_approval","⏳ Awaiting Approval"),
     ("development","💻 Code Build"),("qa_running","🔎 QA Testing"),
     ("qa_bugs_found","🐛 Bugs"),("final_review","📊 Review"),
-    ("awaiting_final","⏳ final Approval"),("completed","✅ Done"),
+    ("awaiting_final","⏳ Final Approval"),("completed","✅ Done"),
 ]
 
 STATE_LABELS = {
-    "idle":("No project","#6b7280"),"proposal_drafting":("Proposal Drafting","#f59e0b"),
-    "awaiting_approval":("Awaiting Approval","#3b82f6"),"development":("Building","#f59e0b"),
-    "qa_running":("QA Testing","#f59e0b"),"qa_bugs_found":("Bugs Found","#ef4444"),
-    "final_review":("Reviewing","#f59e0b"),"awaiting_final":("Awaiting Signoff","#3b82f6"),
-    "completed":("Completed ✅","#22c55e"),"paused":("Paused","#8b5cf6"),
+    "idle":              ("No project",           "#6b7280"),
+    "proposal_drafting": ("Proposal Drafting",    "#f59e0b"),
+    "awaiting_approval": ("Awaiting Approval",    "#3b82f6"),
+    "development":       ("Building",             "#f59e0b"),
+    "qa_running":        ("QA Testing",           "#f59e0b"),
+    "qa_bugs_found":     ("Bugs Found",           "#ef4444"),
+    "final_review":      ("Reviewing",            "#f59e0b"),
+    "awaiting_final":    ("Awaiting Signoff",      "#3b82f6"),
+    "completed":         ("Completed ✅",          "#22c55e"),
+    "paused":            ("Paused",               "#8b5cf6"),
 }
 
 STATE_ACTIONS = {
-    "awaiting_approval":[("✅ Approve & Build","approve_proposal","green"),("❌ Reject","reject_proposal","red")],
-    "development":[("✅ Move to QA","force_qa","green")],
-    "qa_bugs_found":[("🛠️ Fix Bugs","fix_bugs","yellow"),("⚠️ Accept As-Is","accept_bugs","orange")],
-    "awaiting_final":[("🎉 Sign Off","accept_final","green"),("🔄 Refine","more_changes","yellow")],
+    "awaiting_approval": [("✅ Approve & Build","approve_proposal","green"),("❌ Reject","reject_proposal","red")],
+    "development":       [("✅ Move to QA","force_qa","green")],
+    "qa_bugs_found":     [("🛠️ Fix Bugs","fix_bugs","yellow"),("⚠️ Accept As-Is","accept_bugs","orange")],
+    "awaiting_final":    [("🎉 Sign Off","accept_final","green"),("🔄 Refine","more_changes","yellow")],
 }
 
 ACTION_STATUS = {
-    "approve_proposal":"development","reject_proposal":"idle",
-    "force_qa":"qa_running","fix_bugs":"development","accept_bugs":"final_review",
-    "accept_final":"completed","more_changes":"development",
+    "approve_proposal": "development", "reject_proposal": "idle",
+    "force_qa":         "qa_running",  "fix_bugs":         "development",
+    "accept_bugs":      "final_review","accept_final":      "completed",
+    "more_changes":     "development",
 }
 
 def probe(url):
@@ -1188,21 +1416,25 @@ def hardware_info():
     bat = None
     try:
         b = psutil.sensors_battery()
-        if b: bat = {"percent":round(b.percent),"charging":bool(b.power_plugged)}
+        if b: bat = {"percent": round(b.percent), "charging": bool(b.power_plugged)}
     except: pass
     return {
-        "cpu":{"pct":round(psutil.cpu_percent(interval=None))},
-        "ram":{"pct":round(vm.percent),"detail":f"{vm.used/1e9:.1f} / {vm.total/1e9:.1f} GB"},
-        "storage":{"pct":round(disk.percent) if disk else 0, "detail":f"{disk.used/1e9:.1f} / {disk.total/1e9:.1f} GB" if disk else "?"},
-        "battery":bat
+        "cpu":     {"pct": round(psutil.cpu_percent(interval=None))},
+        "ram":     {"pct": round(vm.percent),
+                    "detail": f"{vm.used/1e9:.1f} / {vm.total/1e9:.1f} GB"},
+        "storage": {"pct": round(disk.percent) if disk else 0,
+                    "detail": f"{disk.used/1e9:.1f} / {disk.total/1e9:.1f} GB" if disk else "?"},
+        "battery": bat,
     }
 
 def get_models():
     try:
-        r = requests.get(f"http://localhost:{P_OLLAMA}/api/tags", timeout=4); out = []
-        for m in r.json().get("models",[]):
-            name = m.get("name",""); size = m.get("size",0)
-            out.append({"name":name,"size":f"{size/1e9:.1f} GB" if size else "?","group":"Local","desc":""})
+        r = requests.get(f"http://localhost:{P_OLLAMA}/api/tags", timeout=4)
+        out = []
+        for m in r.json().get("models", []):
+            name = m.get("name",""); size = m.get("size", 0)
+            out.append({"name": name, "size": f"{size/1e9:.1f} GB" if size else "?",
+                        "group": "Local", "desc": ""})
         return out
     except: return []
 
@@ -1213,111 +1445,120 @@ def load_json(path, default):
         except: pass
     return default
 
-def list_project_files(idea):
-    pname = safe_name(idea); files = []
-    folders_cats = [
-        (os.path.join(WORKSPACE_DOCS, "proposals", pname), "Proposals & Design"),
-        (os.path.join(WORKSPACE_DOCS, "reports", pname), "Reports & QA"),
-        (os.path.join(WORKSPACE_CODE, pname), "Source Code")
-    ]
-    for folder, cat in folders_cats:
-        if os.path.exists(folder):
-            for root, dirs, filenames in os.walk(folder):
-                for fname in sorted(filenames):
-                    if fname.startswith('.') or 'node_modules' in root or '.venv' in root or '.git' in root: continue
-                    fpath = os.path.join(root, fname)
-                    if os.path.isfile(fpath):
-                        st = os.stat(fpath)
-                        rel_name = os.path.relpath(fpath, folder)
-                        files.append({
-                            "name": rel_name,
-                            "category": cat,
-                            "path": fpath,
-                            "size": st.st_size,
-                            "modified": datetime.datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M")
-                        })
-    return files
-
 def safe_name(text, max_len=45):
     n = re.sub(r'[^\w\s-]', '', str(text).lower())
     n = re.sub(r'\s+', '_', n.strip())
     return n[:max_len] or "untitled"
 
+def list_project_files(idea):
+    pname = safe_name(idea); files = []
+    folders_cats = [
+        (os.path.join(WORKSPACE_DOCS, "proposals", pname), "Proposals & Design"),
+        (os.path.join(WORKSPACE_DOCS, "reports",   pname), "Reports & QA"),
+        (os.path.join(WORKSPACE_CODE, pname),              "Source Code"),
+    ]
+    for folder, cat in folders_cats:
+        if not os.path.exists(folder): continue
+        for root, dirs, filenames in os.walk(folder):
+            # Skip hidden / generated dirs
+            dirs[:] = [d for d in dirs
+                       if d not in ("node_modules", ".venv", ".git") and not d.startswith(".")]
+            for fname in sorted(filenames):
+                if fname.startswith('.'): continue
+                fpath = os.path.join(root, fname)
+                if not os.path.isfile(fpath): continue
+                st = os.stat(fpath)
+                rel_name = os.path.relpath(fpath, folder)
+                files.append({
+                    "name":     rel_name,
+                    "category": cat,
+                    "path":     fpath,
+                    "size":     st.st_size,
+                    "modified": datetime.datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M"),
+                })
+    return files
+
 @app.route("/api/status")
 def api_status():
-    svcs = [{"name":n,"url":f"http://localhost:{p}/","port":int(p),"purpose":pu,"ok":probe(h)}
-            for n,h,p,pu in SERVICES]
+    svcs = [{"name": n, "url": f"http://localhost:{p}/", "port": int(p),
+              "purpose": pu, "ok": probe(h)}
+            for n, h, p, pu in SERVICES]
     ag_raw = load_json(SF, {})
-    agents = [{"id":aid,"icon":ic,"role":role,"model":model,"desc":desc,"status":ag_raw.get(aid,"idle")}
-            for aid,ic,role,model,desc in AGENTS]
+    agents = [{"id": aid, "icon": ic, "role": role, "model": model,
+               "desc": desc, "status": ag_raw.get(aid, "idle")}
+              for aid, ic, role, model, desc in AGENTS]
     projects = load_json(PF, {})
     for cid, p in projects.items():
-        st = p.get("status","idle")
+        st = p.get("status", "idle")
         label, color = STATE_LABELS.get(st, (st, "#6b7280"))
         p["state_label"] = label; p["state_color"] = color
         p["actions"] = STATE_ACTIONS.get(st, []); p["cid"] = cid
     return jsonify({
-        "services":svcs,"agents":agents,"projects":projects,
-        "hardware":hardware_info(),"models":get_models(),
-        "kanban":[{"status":s,"label":l} for s,l in KANBAN],
-        "updated":datetime.datetime.now().strftime("%H:%M:%S")
+        "services":  svcs,
+        "agents":    agents,
+        "projects":  projects,
+        "hardware":  hardware_info(),
+        "models":    get_models(),
+        "kanban":    [{"status": s, "label": l} for s, l in KANBAN],
+        "updated":   datetime.datetime.now().strftime("%H:%M:%S"),
     })
 
 @app.route("/api/project/<cid>", methods=["DELETE"])
 def api_delete_project(cid):
     import shutil
     projects = load_json(PF, {})
-    if cid not in projects: return jsonify({"error":"Not found"}), 404
+    if cid not in projects: return jsonify({"error": "Not found"}), 404
     proj = projects.pop(cid)
     with open(PF, "w") as f: json.dump(projects, f, indent=2, default=str)
-    deleted = []; idea = proj.get("idea","")
+    deleted = []; idea = proj.get("idea", "")
     if idea:
         pname = safe_name(idea)
-        folders = [
+        for folder in [
             os.path.join(WORKSPACE_DOCS, "proposals", pname),
-            os.path.join(WORKSPACE_DOCS, "reports", pname),
-            os.path.join(WORKSPACE_CODE, pname)
-        ]
-        for f in folders:
-            if os.path.exists(f):
-                shutil.rmtree(f); deleted.append(f)
-    return jsonify({"ok":True,"deleted":deleted})
+            os.path.join(WORKSPACE_DOCS, "reports",   pname),
+            os.path.join(WORKSPACE_CODE, pname),
+        ]:
+            if os.path.exists(folder):
+                shutil.rmtree(folder); deleted.append(folder)
+    return jsonify({"ok": True, "deleted": deleted})
 
 @app.route("/api/project/<cid>")
 def api_project_detail(cid):
     projects = load_json(PF, {}); proj = projects.get(cid, {})
-    if not proj: return jsonify({"error":"Not found"}), 404
-    proj["files"] = list_project_files(proj.get("idea",""))
+    if not proj: return jsonify({"error": "Not found"}), 404
+    proj["files"] = list_project_files(proj.get("idea", ""))
     return jsonify(proj)
 
 @app.route("/api/project/<cid>/action", methods=["POST"])
 def api_project_action(cid):
-    data = request.get_json(silent=True) or {}; action = data.get("action","")
+    data = request.get_json(silent=True) or {}; action = data.get("action", "")
     new_status = ACTION_STATUS.get(action)
-    if not new_status: return jsonify({"error":"Invalid action"}), 400
+    if not new_status: return jsonify({"error": "Invalid action"}), 400
     projects = load_json(PF, {})
-    if cid not in projects: return jsonify({"error":"Not found"}), 404
+    if cid not in projects: return jsonify({"error": "Not found"}), 404
     proj = projects[cid]; proj["status"] = new_status
     if action == "accept_final": proj["completed_at"] = str(datetime.datetime.now())
     projects[cid] = proj
     with open(PF, "w") as f: json.dump(projects, f, indent=2, default=str)
-    
     triggers = load_json(TF, {})
-    triggers[cid] = {"action":action,"time":str(datetime.datetime.now())}
+    triggers[cid] = {"action": action, "time": str(datetime.datetime.now())}
     with open(TF, "w") as f: json.dump(triggers, f)
-    return jsonify({"ok":True,"new_status":new_status})
+    return jsonify({"ok": True, "new_status": new_status})
 
 @app.route("/api/file")
 def api_file():
-    path = request.args.get("path","")
+    path = request.args.get("path", "")
     allowed = [WORKSPACE_DOCS, WORKSPACE_CODE]
     if not any(path.startswith(prefix) for prefix in allowed):
-        return jsonify({"error":"Access denied"}), 403
-    if not os.path.isfile(path): return jsonify({"error":"File not found"}), 404
+        return jsonify({"error": "Access denied"}), 403
+    if not os.path.isfile(path):
+        return jsonify({"error": "File not found"}), 404
     try:
-        with open(path, errors="replace") as f: content = f.read(100000)
-        return jsonify({"content":content,"name":os.path.basename(path)})
-    except Exception as e: return jsonify({"error":str(e)}), 500
+        with open(path, errors="replace") as f:
+            content = f.read(100000)
+        return jsonify({"content": content, "name": os.path.basename(path)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 PAGE = r"""<!doctype html>
 <html><head><meta charset="utf-8">
@@ -1379,7 +1620,6 @@ async function load(){
       <span style="color:${a.status==='working'?'var(--yellow)':'var(--dim)'}">${a.status}</span></div>`).join("");
     document.getElementById("models").innerHTML=d.models.map(m=>`
       <div class="svc"><span><code>${m.name}</code></span><span style="color:var(--dim)">${m.size}</span></div>`).join("");
-    
     const pKeys=Object.keys(d.projects);
     if(!pKeys.length){
       document.getElementById("projects").innerHTML='<div style="color:var(--dim)">No projects running. Command your Telegram bot.</div>';
@@ -1395,7 +1635,6 @@ async function load(){
         </div>`;
       }).join("");
     }
-    
     document.getElementById("kanban").innerHTML=d.kanban.map(k=>{
       const items=pKeys.filter(x=>d.projects[x].status===k.status).map(x=>`
         <div class="tk"><b>${d.projects[x].idea}</b></div>`).join("") || '<div style="color:var(--dim)">—</div>';
@@ -1408,7 +1647,7 @@ async function act(cid,action){
   load();
 }
 async function del(cid){
-  if(confirm("Delete project and generated OneDrive/SourceCode files?")){
+  if(confirm("Delete project and all generated OneDrive/SourceCode files?")){
     await fetch(`/api/project/${cid}`,{method:"DELETE"});
     load();
   }
@@ -1418,7 +1657,7 @@ async function view(cid){
   let html=`<span class="close" onclick="closeM()">×</span><h2>📁 ${p.idea} — Workspace Files</h2><br>`;
   (p.files||[]).forEach(f=>{
     html+=`<div style="padding:8px;background:#2d3748;margin-bottom:5px;border-radius:4px;cursor:pointer" onclick="viewF('${f.path}')">
-      <b>${f.name}</b> (${f.category})<span style="float:right;color:var(--dim)">${f.size} bytes</span></div>`;
+      <b>${f.name}</b> (${f.category})<span style="float:right;color:var(--dim)">${f.size} bytes — ${f.modified}</span></div>`;
   });
   showM(html);
 }
@@ -1450,7 +1689,7 @@ openclaw_ok() { have openclaw && openclaw --version >/dev/null 2>&1; }
 setup_openclaw() {
     log "OpenClaw Integrator (Stable Agent)"
     have npm || { warn "npm missing; skipping OpenClaw install."; return; }
-    
+
     if openclaw_ok; then
         ok "OpenClaw present ($(openclaw --version 2>/dev/null))."
     else
@@ -1459,7 +1698,7 @@ setup_openclaw() {
         SHARP_IGNORE_GLOBAL_LIBVIPS=1 npm install -g openclaw@latest \
             || opt npm install -g openclaw@latest
     fi
-    
+
     if openclaw_ok; then
         ok "OpenClaw installed successfully."
         cat <<TUTEOF
@@ -1468,7 +1707,7 @@ setup_openclaw() {
   To complete setting up the phone-driven agent:
   Run:
       openclaw onboard --install-daemon
-      
+
   Pick:
     - Provider: ollama (http://localhost:11434)
     - Model: qwen3.6:35b-a3b
@@ -1554,6 +1793,7 @@ write_vox_plist() {
   <dict>
     <key>AI_HOME</key><string>$WORKDIR</string>
     <key>AI_WORKSPACE</key><string>$DOCS_WORKSPACE</string>
+    <key>CODE_WORKSPACE</key><string>$CODE_WORKSPACE</string>
     <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
   </dict>
   <key>StartCalendarInterval</key>
@@ -1586,7 +1826,7 @@ collect_tokens() {
     log "Configuring tokens..."
     load_env
     prompt_secret "TELEGRAM_BOT_TOKEN" "Telegram bot token" validate_telegram tut_telegram
-    
+
     local chat; chat="$(get_env TELEGRAM_CHAT_ID)"
     if [ -n "$chat" ]; then ok "Telegram Chat ID present."; else
         cat <<'CHATEOF'
@@ -1613,7 +1853,7 @@ print_summary() {
   Folders:
     - Documents:  $DOCS_WORKSPACE
     - Source:     $CODE_WORKSPACE
-    
+
   Run controls:
     $0 --status | --start | --stop | --restart | --uninstall
 SUMEOF
@@ -1666,7 +1906,7 @@ svc_stop() {
     for c in open-webui searxng portainer; do docker stop "$c" >/dev/null 2>&1 || true; done
     [ -d "$WORKDIR/langfuse" ] && (cd "$WORKDIR/langfuse" && dc stop >/dev/null 2>&1) || true
     ollama_stop
-    if command_exists colima; then colima stop || true; fi
+    if have colima; then colima stop >/dev/null 2>&1 || true; fi
     ok "Stop triggers dispatched."
 }
 
@@ -1685,7 +1925,7 @@ uninstall_all() {
         launchctl unload "$LAUNCH_DIR/$l.plist" >/dev/null 2>&1 || true
         rm -f "$LAUNCH_DIR/$l.plist"
     done
-    
+
     log "Downing Docker containers..."
     if docker_up; then
         docker rm -f open-webui searxng portainer >/dev/null 2>&1 || true
@@ -1694,8 +1934,8 @@ uninstall_all() {
             (cd "$WORKDIR/langfuse" && dc down -v >/dev/null 2>&1 || true)
         fi
     fi
-    
-    if command_exists colima; then
+
+    if have colima; then
         colima stop >/dev/null 2>&1 || true
     fi
 
@@ -1708,14 +1948,14 @@ uninstall_all() {
     rm -rf "$WORKDIR"
     rm -rf /tmp/model_*.lock || true
 
-    printf "Remove directories (OneDrive & SourceCode outputs)? [y/N]: "
+    printf "Remove directories (OneDrive outputs)? [y/N]: "
     read -r clean_w
     if [[ "$clean_w" =~ ^[Yy]$ ]]; then
         rm -rf "$DOCS_WORKSPACE" "$CODE_WORKSPACE"
         ok "Cleaned $DOCS_WORKSPACE and $CODE_WORKSPACE"
     fi
 
-    printf "Uninstall Homebrew system packages installed by this script? (colima, docker, docker-compose, uv, socat, cairo, pango, gdk-pixbuf, libffi)? [y/N]: "
+    printf "Uninstall Homebrew system packages installed by this script? [y/N]: "
     read -r clean_brew
     if [[ "$clean_brew" =~ ^[Yy]$ ]]; then
         brew remove --force colima docker docker-compose uv socat cairo pango gdk-pixbuf libffi || true
@@ -1759,29 +1999,16 @@ case "${1:---help}" in
         setup_services
         print_summary
         ;;
-    --start)
-        svc_start
-        ;;
-    --stop)
-        svc_stop
-        ;;
-    --restart)
-        svc_stop
-        svc_start
-        ;;
-    --status)
-        svc_status
-        ;;
+    --start)   svc_start ;;
+    --stop)    svc_stop ;;
+    --restart) svc_stop; svc_start ;;
+    --status)  svc_status ;;
     --reset)
         rm -f "$PF" "$SF" "$TF"
         ok "Kanban database reset."
         ;;
-    --uninstall)
-        uninstall_all
-        ;;
-    --help|-h)
-        print_help
-        ;;
+    --uninstall) uninstall_all ;;
+    --help|-h)   print_help ;;
     *)
         echo "Unknown option: $1"
         print_help
