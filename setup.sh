@@ -60,7 +60,7 @@ MODELS=(
 #   ollama pull <tag>     or     ./script3.sh --pull-models
 SWAPPABLE_MODELS=(
   "qwen3-coder:30b-a3b-q4_K_M|Coding|Agentic coding, MoE 3.3B active, fast on 64GB (~18 GB)"
-  "qwen3-coder:30b-a3b|Coding|Same model, default quant — slightly larger (~19 GB)"
+  "qwen3-coder:30b-a3b-q8_0|Coding|Same model, q8_0 quant — higher quality, more RAM (~32 GB)"
   "qwen2.5-coder:32b|Coding|Accuracy leader: GPT-4o-level HumanEval, tops EvalPlus/LiveCodeBench (~20 GB)"
   "qwen2.5-coder:72b|Coding|Heavyweight coder, max quality, slow swap (~45 GB)"
   "qwen3.6:27b|Coding|Best dense coder on consumer HW, 77% SWE-bench (~22 GB)"
@@ -572,8 +572,8 @@ model_list:
   # then reference one of these names from OpenClaw to switch.
   - model_name: coder-qwen3-30b
     litellm_params: { model: ollama/qwen3-coder:30b-a3b-q4_K_M, api_base: http://0.0.0.0:11434 }
-  - model_name: coder-qwen3-30b-default
-    litellm_params: { model: ollama/qwen3-coder:30b-a3b,        api_base: http://0.0.0.0:11434 }
+  - model_name: coder-qwen3-30b-q8
+    litellm_params: { model: ollama/qwen3-coder:30b-a3b-q8_0,   api_base: http://0.0.0.0:11434 }
   - model_name: coder-qwen25-32b
     litellm_params: { model: ollama/qwen2.5-coder:32b,          api_base: http://0.0.0.0:11434 }
   - model_name: coder-qwen25-72b
@@ -720,7 +720,7 @@ MODEL_CATALOG = {
     ],
     "Coding": [
         ("qwen3-coder:30b-a3b-q4_K_M", "Default coder. Best balance of speed + agentic coding on 64GB. Daily driver."),
-        ("qwen3-coder:30b-a3b",        "Same model, default quant. Marginally higher quality, a bit more RAM."),
+        ("qwen3-coder:30b-a3b-q8_0",   "Same model, q8_0 quant. Higher quality, ~32 GB. Use when accuracy beats speed."),
         ("qwen2.5-coder:32b",          "Accuracy leader. GPT-4o-level HumanEval, tops EvalPlus/LiveCodeBench. Best for correctness."),
         ("qwen2.5-coder:72b",          "Heavyweight coder. Highest quality, slow to load. Use for gnarly refactors."),
         ("qwen3.6:27b",                "Best dense coder on consumer HW (77% SWE-bench). One model for code + chat."),
