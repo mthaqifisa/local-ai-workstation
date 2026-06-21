@@ -62,7 +62,6 @@ SWAPPABLE_MODELS=(
   "qwen3-coder:30b-a3b-q4_K_M|Coding|Agentic coding, MoE 3.3B active, fast on 64GB (~18 GB)"
   "qwen3-coder:30b-a3b-q8_0|Coding|Same model, q8_0 quant — higher quality, more RAM (~32 GB)"
   "qwen2.5-coder:32b|Coding|Accuracy leader: GPT-4o-level HumanEval, tops EvalPlus/LiveCodeBench (~20 GB)"
-  "qwen2.5-coder:72b|Coding|Heavyweight coder, max quality, slow swap (~45 GB)"
   "qwen3.6:27b|Coding|Best dense coder on consumer HW, 77% SWE-bench (~22 GB)"
   "devstral:24b|Coding|Best agentic coder in class, 68% SWE-bench Verified, Apache 2.0 (~14 GB)"
   "deepseek-coder-v2:16b|Coding|Lightweight fast coder, great Python/JS (~9 GB)"
@@ -71,7 +70,7 @@ SWAPPABLE_MODELS=(
   "deepseek-r1:14b|Reasoning|Chain-of-thought debugging & code analysis, MIT (~9 GB)"
   "deepseek-r1:32b|Reasoning|Larger CoT reasoner for harder algorithmic problems (~20 GB)"
   "deepseek-r1:70b|Reasoning|70B CoT reasoner (Llama3.3 distill), max reasoning, fits 64GB solo (~43 GB)"
-  "phi-4:14b|Reasoning|Microsoft Phi-4, best reasoning-per-GB, strong math/logic, MIT (~9 GB)"
+  "phi4:14b|Reasoning|Microsoft Phi-4, best reasoning-per-GB, strong math/logic, MIT (~9 GB)"
   "glm-4.7-flash|Reasoning|GLM strongest in 30B class, lightweight agentic"
   "llama3.3:70b|General|Meta's flagship 70B, strong all-round chat/coding, fits 64GB solo (~43 GB)"
   "mistral:7b|General|Mistral 7B v0.3 — fast, low-hallucination lightweight general model (~4 GB)"
@@ -576,8 +575,6 @@ model_list:
     litellm_params: { model: ollama/qwen3-coder:30b-a3b-q8_0,   api_base: http://0.0.0.0:11434 }
   - model_name: coder-qwen25-32b
     litellm_params: { model: ollama/qwen2.5-coder:32b,          api_base: http://0.0.0.0:11434 }
-  - model_name: coder-qwen25-72b
-    litellm_params: { model: ollama/qwen2.5-coder:72b,          api_base: http://0.0.0.0:11434 }
   - model_name: coder-qwen36-27b
     litellm_params: { model: ollama/qwen3.6:27b,                api_base: http://0.0.0.0:11434 }
   - model_name: coder-devstral-24b
@@ -595,7 +592,7 @@ model_list:
   - model_name: reason-deepseek-r1-70b
     litellm_params: { model: ollama/deepseek-r1:70b,            api_base: http://0.0.0.0:11434 }
   - model_name: reason-phi4-14b
-    litellm_params: { model: ollama/phi-4:14b,                  api_base: http://0.0.0.0:11434 }
+    litellm_params: { model: ollama/phi4:14b,                   api_base: http://0.0.0.0:11434 }
   - model_name: reason-glm-47-flash
     litellm_params: { model: ollama/glm-4.7-flash,              api_base: http://0.0.0.0:11434 }
   - model_name: general-llama33-70b
@@ -722,7 +719,6 @@ MODEL_CATALOG = {
         ("qwen3-coder:30b-a3b-q4_K_M", "Default coder. Best balance of speed + agentic coding on 64GB. Daily driver."),
         ("qwen3-coder:30b-a3b-q8_0",   "Same model, q8_0 quant. Higher quality, ~32 GB. Use when accuracy beats speed."),
         ("qwen2.5-coder:32b",          "Accuracy leader. GPT-4o-level HumanEval, tops EvalPlus/LiveCodeBench. Best for correctness."),
-        ("qwen2.5-coder:72b",          "Heavyweight coder. Highest quality, slow to load. Use for gnarly refactors."),
         ("qwen3.6:27b",                "Best dense coder on consumer HW (77% SWE-bench). One model for code + chat."),
         ("devstral:24b",               "Best agentic coder in its class (68% SWE-bench Verified). Apache 2.0, runs in 32GB."),
         ("deepseek-coder-v2:16b",      "Lightweight + fast. Great for quick Python/JS edits and autocomplete on low RAM."),
@@ -734,7 +730,7 @@ MODEL_CATALOG = {
         ("deepseek-r1:14b",    "Chain-of-thought debugging & code analysis. Shows its reasoning. MIT, fits 16GB."),
         ("deepseek-r1:32b",    "Larger CoT reasoner for harder algorithmic / math problems. MIT."),
         ("deepseek-r1:70b",    "70B CoT reasoner (Llama3.3 distill). Max reasoning depth; fits 64GB on its own."),
-        ("phi-4:14b",          "Best reasoning-per-GB. Strong math/logic/STEM, low footprint. MIT."),
+        ("phi4:14b",           "Best reasoning-per-GB. Strong math/logic/STEM, low footprint. MIT."),
         ("glm-4.7-flash",      "Strongest in the 30B class. Lightweight agentic, tool-use-focused reasoning."),
     ],
     "General": [
@@ -932,6 +928,46 @@ if __name__ == "__main__":
     app.run(host="0.0.0.0", port=port, debug=False)
 DASHEOF
     ok "Dashboard script written."
+}
+
+# =============================================================================
+#  PHASE 0.5 — CLEANUP OLD ARTIFACTS
+# =============================================================================
+cleanup_orchestrator() {
+    log "Checking for legacy orchestrator artifacts..."
+    local found=0
+
+    # Check for standalone Python orchestrator script
+    if [ -f "$WORKDIR/agents/orchestrator.py" ]; then
+        warn "Found legacy orchestrator: $WORKDIR/agents/orchestrator.py"
+        rm -rf "$WORKDIR/agents" \
+            && ok "Removed $WORKDIR/agents/ (legacy orchestrator + any child agents)"
+        found=1
+    fi
+
+    # Check for launch agent plist
+    if [ -f "$LAUNCH_DIR/com.aiws.orchestrator.plist" ]; then
+        warn "Found legacy launch agent: com.aiws.orchestrator"
+        launchctl unload "$LAUNCH_DIR/com.aiws.orchestrator.plist" >/dev/null 2>&1 || true
+        rm -f "$LAUNCH_DIR/com.aiws.orchestrator.plist" \
+            && ok "Removed com.aiws.orchestrator launch agent"
+        found=1
+    fi
+
+    # Check for vox launch agent (was also standalone)
+    if [ -f "$LAUNCH_DIR/com.aiws.vox.plist" ]; then
+        warn "Found legacy vox launch agent: com.aiws.vox"
+        launchctl unload "$LAUNCH_DIR/com.aiws.vox.plist" >/dev/null 2>&1 || true
+        rm -f "$LAUNCH_DIR/com.aiws.vox.plist" \
+            && ok "Removed com.aiws.vox launch agent"
+        found=1
+    fi
+
+    if [ "$found" -eq 0 ]; then
+        ok "No legacy orchestrator artifacts found."
+    else
+        warn "Legacy artifacts cleaned. OpenClaw handles the team now."
+    fi
 }
 
 # =============================================================================
@@ -1238,6 +1274,7 @@ USG
 case "${1:---help}" in
     --bootstrap)
         preflight
+        cleanup_orchestrator
         setup_xcode_clt
         setup_homebrew
         setup_core_tools
