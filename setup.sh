@@ -38,12 +38,29 @@ PORT_PORTAINER=9001
 VOX_HOUR="${VOX_HOUR:-7}";        VOX_MINUTE="${VOX_MINUTE:-0}"
 VOX_HOUR_PM="${VOX_HOUR_PM:-18}"; VOX_MINUTE_PM="${VOX_MINUTE_PM:-0}"
 
+# Core models pulled automatically during bootstrap (the active team)
 MODELS=(
   "qwen3.6:35b-a3b|Orion — orchestrator, always loaded (~26 GB)"
-  "qwen3.6:27b|Leo — coder model (~22 GB)"
+  "qwen3-coder:30b-a3b-q4_K_M|Leo — primary coder model (~18 GB)"
   "gemma4:26b|Mira — UI/UX designer (~18 GB)"
   "qwen2.5:72b|Ada + Nova + Vox + Cipher — 72B reasoning (~44 GB)"
   "nomic-embed-text|Embeddings for RAG/search (~270 MB)"
+)
+
+# Swappable models — NOT pulled automatically (would total ~200+ GB).
+# Bootstrap registers these in litellm.config.yaml as commented alternates and
+# offers an interactive pull menu. Pull on demand with:  ollama pull <tag>
+# Or run:  ./script3.sh --pull-models   to choose interactively.
+SWAPPABLE_MODELS=(
+  "qwen3-coder:30b-a3b-q4_K_M|Coding|Agentic coding, MoE 3.3B active, fast on 64GB (~18 GB)"
+  "qwen3-coder:30b-a3b|Coding|Same model, default quant — slightly larger (~19 GB)"
+  "qwen2.5-coder:72b|Coding|Heavyweight coder, max quality, slow swap (~45 GB)"
+  "qwen3.6:27b|Coding|Dense generalist-coder, strong all-rounder (~22 GB)"
+  "deepseek-coder-v2:16b|Coding|Lightweight fast coder, great Python/JS (~9 GB)"
+  "codestral:22b|Coding|Mistral coder, strong FIM autocomplete (~13 GB)"
+  "glm-4.7-flash:q4_K_M|Reasoning|GLM agentic reasoning, tool-use focused"
+  "deepseek-v4-flash|Reasoning|DeepSeek MoE flash, Haiku-tier reasoning"
+  "minimax-m2.5|Reasoning|MiniMax general reasoning model"
 )
 
 # ───────────────────────────────── LOGGING ────────────────────────────────────
@@ -213,9 +230,12 @@ setup_core_tools() {
     elif have ollama; then ok "Ollama present ($(ollama --version 2>/dev/null))"
     else opt brew install ollama; fi
 
+    # CLI formulae — each checked before install (idempotent)
     for p in colima docker docker-compose node git jq wget lazydocker uv socat \
              cairo pango gdk-pixbuf libffi; do
-        brew list "$p" >/dev/null 2>&1 && ok "$p present" || opt brew install "$p"
+        if brew list "$p" >/dev/null 2>&1; then ok "$p present"; else
+            log "Installing $p..."; opt brew install "$p"
+        fi
     done
 
     have node && ok "node $(node -v)"
@@ -234,6 +254,36 @@ setup_core_tools() {
     fi
 }
 
+# ── IDEs: VS Code + IntelliJ IDEA (each checked before installing) ─────────────
+setup_ides() {
+    log "Developer IDEs (VS Code + IntelliJ IDEA)"
+    have brew || { warn "Homebrew missing; skipping IDE install."; return; }
+
+    # VS Code
+    if [ -d "/Applications/Visual Studio Code.app" ] || brew list --cask visual-studio-code >/dev/null 2>&1; then
+        ok "VS Code present."
+    else
+        log "Installing VS Code..."
+        opt brew install --cask visual-studio-code
+    fi
+    # Register the 'code' CLI shim if the app exists
+    if [ -d "/Applications/Visual Studio Code.app" ] && ! have code; then
+        local code_bin="/Applications/Visual Studio Code.app/Contents/Resources/app/bin"
+        grep -q "Visual Studio Code.app/Contents/Resources/app/bin" "$HOME/.zprofile" 2>/dev/null || \
+            echo "export PATH=\"\$PATH:$code_bin\"" >> "$HOME/.zprofile"
+        ok "VS Code 'code' CLI registered (restart shell to use)."
+    fi
+
+    # IntelliJ IDEA (Community edition cask; swap to intellij-idea for Ultimate)
+    if [ -d "/Applications/IntelliJ IDEA CE.app" ] || [ -d "/Applications/IntelliJ IDEA.app" ] \
+       || brew list --cask intellij-idea-ce >/dev/null 2>&1 || brew list --cask intellij-idea >/dev/null 2>&1; then
+        ok "IntelliJ IDEA present."
+    else
+        log "Installing IntelliJ IDEA Community Edition..."
+        opt brew install --cask intellij-idea-ce
+    fi
+}
+
 # =============================================================================
 #  PHASE 2 — OLLAMA MODELS
 # =============================================================================
@@ -241,10 +291,12 @@ setup_ollama() {
     log "Ollama + local models"
     if ! grep -q OLLAMA_MAX_LOADED_MODELS "$HOME/.zprofile" 2>/dev/null; then
         { echo "export OLLAMA_MAX_LOADED_MODELS=$OLLAMA_MAX_LOADED"
-          echo "export OLLAMA_KEEP_ALIVE=$OLLAMA_KEEP_ALIVE"; } >> "$HOME/.zprofile"
+          echo "export OLLAMA_KEEP_ALIVE=$OLLAMA_KEEP_ALIVE"
+          echo "export OLLAMA_HOST=0.0.0.0:$PORT_OLLAMA"; } >> "$HOME/.zprofile"
     fi
     export OLLAMA_MAX_LOADED_MODELS="$OLLAMA_MAX_LOADED"
     export OLLAMA_KEEP_ALIVE="$OLLAMA_KEEP_ALIVE"
+    export OLLAMA_HOST="0.0.0.0:$PORT_OLLAMA"
     if ! http_ok "http://localhost:$PORT_OLLAMA/api/tags"; then
         ollama_start
         for _ in $(seq 1 20); do http_ok "http://localhost:$PORT_OLLAMA/api/tags" && break; sleep 1; done
@@ -263,6 +315,51 @@ setup_ollama() {
             ollama pull "$tag" || warn "pull failed for '$tag' — verify at ollama.com/library"
         fi
     done
+}
+
+# Interactive puller for swappable alternates (not pulled during bootstrap)
+pull_swappable_models() {
+    log "Optional swappable models"
+    if ! http_ok "http://localhost:$PORT_OLLAMA/api/tags"; then
+        ollama_start
+        for _ in $(seq 1 20); do http_ok "http://localhost:$PORT_OLLAMA/api/tags" && break; sleep 1; done
+    fi
+    http_ok "http://localhost:$PORT_OLLAMA/api/tags" \
+        || { warn "Ollama not responding. Run 'ollama serve' then re-run."; return; }
+
+    local installed; installed="$(ollama list 2>/dev/null)"
+    hr
+    echo "These are optional alternates. Each is large — pull only what you need."
+    echo "They are already registered in litellm.config.yaml so the agents can use them once pulled."
+    hr
+    local i=1
+    for entry in "${SWAPPABLE_MODELS[@]}"; do
+        local tag="${entry%%|*}" rest="${entry#*|}" cat="${rest%%|*}" desc="${rest#*|}"
+        local mark="  "
+        printf "%s" "$installed" | grep -q "^${tag%%:*}" && mark="✓ "
+        printf "  %s%2d) [%-9s] %-28s %s\n" "$mark" "$i" "$cat" "$tag" "$desc"
+        i=$((i+1))
+    done
+    hr
+    printf "Enter numbers to pull (space-separated), 'all', or Enter to skip: "
+    read -r picks
+    [ -z "$picks" ] && { ok "No optional models pulled."; return; }
+
+    local idx=1
+    for entry in "${SWAPPABLE_MODELS[@]}"; do
+        local tag="${entry%%|*}"
+        local want=0
+        case "$picks" in
+            all|ALL) want=1 ;;
+            *) for n in $picks; do [ "$n" = "$idx" ] && want=1; done ;;
+        esac
+        if [ "$want" = "1" ]; then
+            printf "  pulling %s ...\n" "$tag"
+            ollama pull "$tag" || warn "pull failed for '$tag' — verify at ollama.com/library"
+        fi
+        idx=$((idx+1))
+    done
+    ok "Swappable model pulls complete."
 }
 
 # =============================================================================
@@ -345,7 +442,7 @@ setup_openwebui() {
         --add-host=host.docker.internal:host-gateway \
         -v open-webui:/app/backend/data \
         ghcr.io/open-webui/open-webui:main \
-        && ok "Open WebUI running -> http://localhost:$PORT_OPENWEBUI" \
+        && ok "Open WebUI running -> http://0.0.0.0:$PORT_OPENWEBUI" \
         || warn "Failed to launch Open WebUI"
 }
 
@@ -370,7 +467,7 @@ SXEOF
         -p "0.0.0.0:$PORT_SEARXNG:8080" \
         -v "$SX:/etc/searxng" \
         searxng/searxng:latest \
-        && ok "SearXNG running -> http://localhost:$PORT_SEARXNG" \
+        && ok "SearXNG running -> http://0.0.0.0:$PORT_SEARXNG" \
         || warn "Failed to launch SearXNG"
 }
 
@@ -393,7 +490,7 @@ setup_langfuse() {
     cat <<'LFEOF'
 
 ####  LANGFUSE API KEYS SETUP (optional)  ####
-  1. Open http://localhost:3000 → Create local account.
+  1. Open http://127.0.0.1:3000 → Create local account.
   2. Organization → Project → Settings → API Keys → Create.
   3. Copy PUBLIC (pk-lf-...) and SECRET (sk-lf-...).
 ########################################
@@ -403,7 +500,7 @@ LFEOF
     case "$pk" in skip|SKIP|"") warn "Skipping Langfuse tracking."; return ;; esac
     printf "Paste SECRET key: "; read -r sk
     set_env LANGFUSE_PUBLIC_KEY "$pk"; set_env LANGFUSE_SECRET_KEY "$sk"
-    set_env LANGFUSE_HOST "http://localhost:$PORT_LANGFUSE"; ok "Langfuse configurations saved."
+    set_env LANGFUSE_HOST "http://0.0.0.0:$PORT_LANGFUSE"; ok "Langfuse configurations saved."
 }
 
 setup_portainer() {
@@ -412,12 +509,26 @@ setup_portainer() {
     opt docker volume create portainer_data
     docker rm -f portainer >/dev/null 2>&1 || true
     docker run -d --name portainer --restart unless-stopped \
-        -p "127.0.0.1:$PORT_PORTAINER:9000" \
+        -p "0.0.0.0:$PORT_PORTAINER:9000" \
         -v /var/run/docker.sock:/var/run/docker.sock \
         -v portainer_data:/data \
         portainer/portainer-ce:latest \
-        && ok "Portainer active -> http://localhost:$PORT_PORTAINER" \
+        && ok "Portainer active -> http://0.0.0.0:$PORT_PORTAINER" \
         || warn "Failed to launch Portainer"
+}
+
+# Brings up ALL Docker-backed services in order. This is the function that
+# was missing from the bootstrap flow — without it Open WebUI, SearXNG,
+# Langfuse and Portainer were never started after install.
+setup_docker_services() {
+    log "Bringing up Docker-backed services"
+    setup_colima
+    docker_up || { warn "Docker did not start; skipping containers."; return; }
+    setup_openwebui
+    setup_searxng
+    setup_langfuse
+    setup_portainer
+    ok "Docker services dispatched."
 }
 
 # =============================================================================
@@ -433,21 +544,43 @@ setup_litellm() {
         cat > "$CFG" <<'LLMEOF'
 model_list:
   - model_name: orion
-    litellm_params: { model: ollama/qwen3.6:35b-a3b,   api_base: http://127.0.0.1:11434 }
+    litellm_params: { model: ollama/qwen3.6:35b-a3b,            api_base: http://0.0.0.0:11434 }
   - model_name: leo
-    litellm_params: { model: ollama/qwen3.6:27b,       api_base: http://127.0.0.1:11434 }
+    litellm_params: { model: ollama/qwen3-coder:30b-a3b-q4_K_M, api_base: http://0.0.0.0:11434 }
   - model_name: cipher
-    litellm_params: { model: ollama/devstral:24b,      api_base: http://127.0.0.1:11434 }
+    litellm_params: { model: ollama/qwen2.5:72b,                api_base: http://0.0.0.0:11434 }
   - model_name: ada
-    litellm_params: { model: ollama/qwen2.5:72b,      api_base: http://127.0.0.1:11434 }
+    litellm_params: { model: ollama/qwen2.5:72b,                api_base: http://0.0.0.0:11434 }
   - model_name: nova
-    litellm_params: { model: ollama/qwen2.5:72b,      api_base: http://127.0.0.1:11434 }
+    litellm_params: { model: ollama/qwen2.5:72b,                api_base: http://0.0.0.0:11434 }
   - model_name: vox
-    litellm_params: { model: ollama/qwen2.5:72b,      api_base: http://127.0.0.1:11434 }
+    litellm_params: { model: ollama/qwen2.5:72b,                api_base: http://0.0.0.0:11434 }
   - model_name: mira
-    litellm_params: { model: ollama/gemma4:26b,       api_base: http://127.0.0.1:11434 }
+    litellm_params: { model: ollama/gemma4:26b,                 api_base: http://0.0.0.0:11434 }
   - model_name: embed
-    litellm_params: { model: ollama/nomic-embed-text, api_base: http://127.0.0.1:11434 }
+    litellm_params: { model: ollama/nomic-embed-text,           api_base: http://0.0.0.0:11434 }
+
+  # ── Swappable alternates ───────────────────────────────────────────────────
+  # Pull the model first ( ollama pull <tag>  or  ./script3.sh --pull-models )
+  # then point a role above at one of these model strings to switch.
+  - model_name: coder-qwen3-30b
+    litellm_params: { model: ollama/qwen3-coder:30b-a3b-q4_K_M, api_base: http://0.0.0.0:11434 }
+  - model_name: coder-qwen3-30b-default
+    litellm_params: { model: ollama/qwen3-coder:30b-a3b,        api_base: http://0.0.0.0:11434 }
+  - model_name: coder-qwen25-72b
+    litellm_params: { model: ollama/qwen2.5-coder:72b,          api_base: http://0.0.0.0:11434 }
+  - model_name: coder-qwen36-27b
+    litellm_params: { model: ollama/qwen3.6:27b,                api_base: http://0.0.0.0:11434 }
+  - model_name: coder-deepseek-v2-16b
+    litellm_params: { model: ollama/deepseek-coder-v2:16b,      api_base: http://0.0.0.0:11434 }
+  - model_name: coder-codestral-22b
+    litellm_params: { model: ollama/codestral:22b,              api_base: http://0.0.0.0:11434 }
+  - model_name: reason-glm-47-flash
+    litellm_params: { model: ollama/glm-4.7-flash:q4_K_M,       api_base: http://0.0.0.0:11434 }
+  - model_name: reason-deepseek-v4-flash
+    litellm_params: { model: ollama/deepseek-v4-flash,          api_base: http://0.0.0.0:11434 }
+  - model_name: reason-minimax-m25
+    litellm_params: { model: ollama/minimax-m2.5,               api_base: http://0.0.0.0:11434 }
 litellm_settings:
   success_callback: ["langfuse"]
   failure_callback: ["langfuse"]
@@ -673,11 +806,11 @@ with open(os.path.join(HOME, "agents", "team.yaml")) as f:
     raw = yaml.safe_load(f)["roles"]["vox"]["system_prompt"]
     VOX_SYS = _resolve_prompt(raw)
 
-client = OpenAI(base_url="http://localhost:4000/v1", api_key="local")
+client = OpenAI(base_url="http://127.0.0.1:4000/v1", api_key="local")
 
 def get_trends():
     try:
-        r = requests.get("http://localhost:8888/search",
+        r = requests.get("http://127.0.0.1:8888/search",
             params={"q":"news today technology startup business opportunity","format":"json"}, timeout=10)
         return "\n".join(f"- {x.get('title','')}: {x.get('content','')[:200]}"
                          for x in r.json().get("results",[])[:8])
@@ -747,7 +880,7 @@ PF = os.path.join(HOME, "projects.json")
 SF = os.path.join(HOME, "agent_status.json")
 TF = os.path.join(HOME, "pending_actions.json")
 
-client = OpenAI(base_url="http://localhost:4000/v1", api_key="local")
+client = OpenAI(base_url="http://127.0.0.1:4000/v1", api_key="local")
 _exec  = ThreadPoolExecutor(max_workers=5)
 
 with open(os.path.join(HOME, "agents", "team.yaml")) as _f:
@@ -796,7 +929,14 @@ def write_status(upd):
         try:
             with open(SF) as f: d = json.load(f)
         except: pass
-    d.update(upd)
+    # Record a last-activity timestamp + note for each agent update so the
+    # dashboard can show "what was their last activity".
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    for k, v in upd.items():
+        d[k] = v
+        meta = d.get("_meta", {})
+        meta[k] = {"last_status": v, "last_active": now}
+        d["_meta"] = meta
     with open(SF, "w") as f: json.dump(d, f)
 
 # ── Path helpers ───────────────────────────────────────────────────────────────
@@ -1340,35 +1480,87 @@ _home = os.path.expanduser("~")
 WORKSPACE_DOCS = os.environ.get("AI_WORKSPACE",   os.path.join(_home, "OneDrive", "AI-Agent"))
 WORKSPACE_CODE = os.environ.get("CODE_WORKSPACE", os.path.join(_home, "OneDrive", "SourceCode"))
 
-LF_URL = os.environ.get("LANGFUSE_HOST","http://localhost:3000")
+LF_URL = os.environ.get("LANGFUSE_HOST","http://127.0.0.1:3000")
 LF_PK  = os.environ.get("LANGFUSE_PUBLIC_KEY","")
 LF_SK  = os.environ.get("LANGFUSE_SECRET_KEY","")
 
 P_OLLAMA="11434"; P_GATEWAY="4000"; P_OPENWEBUI="3001"
 P_SEARXNG="8888"; P_LANGFUSE="3000"; P_DASHBOARD="8800"
-P_PORTAINER="9001"
+P_PORTAINER="9001"; P_OPENCLAW="18789"
+
+# HOST used to build clickable links. Defaults to the machine's LAN IP so the
+# dashboard works from other devices; falls back to 0.0.0.0.
+def _lan_host():
+    h = os.environ.get("LAN_HOST", "").strip()
+    if h: return h
+    try:
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]; s.close()
+        return ip
+    except Exception:
+        return "0.0.0.0"
+
+LAN_HOST = _lan_host()
 
 app = Flask(__name__)
 
+# (display name, health-probe URL, port, purpose). Probes use 0.0.0.0/127.0.0.1
+# locally; the clickable link uses the LAN IP so phones/tablets can reach it.
 SERVICES = [
-    ("Ollama",          f"http://localhost:{P_OLLAMA}/api/tags",              P_OLLAMA,   "Model engine"),
-    ("LiteLLM Gateway", f"http://localhost:{P_GATEWAY}/health/liveliness",    P_GATEWAY,  "LLM proxy"),
-    ("Open WebUI",      f"http://localhost:{P_OPENWEBUI}/",                   P_OPENWEBUI,"Chat application"),
-    ("SearXNG",         f"http://localhost:{P_SEARXNG}/",                     P_SEARXNG,  "Search agent helper"),
-    ("Langfuse",        f"http://localhost:{P_LANGFUSE}/api/public/health",   P_LANGFUSE, "Trace telemetry"),
-    ("Portainer",       f"http://localhost:{P_PORTAINER}/",                   P_PORTAINER,"Docker dashboard"),
-    ("Dashboard",       f"http://localhost:{P_DASHBOARD}/",                   P_DASHBOARD,"Control page"),
+    ("Ollama",          f"http://127.0.0.1:{P_OLLAMA}/api/tags",            P_OLLAMA,    "Model engine"),
+    ("LiteLLM Gateway", f"http://127.0.0.1:{P_GATEWAY}/health/liveliness",  P_GATEWAY,   "LLM proxy"),
+    ("Open WebUI",      f"http://127.0.0.1:{P_OPENWEBUI}/",                 P_OPENWEBUI, "Chat application"),
+    ("SearXNG",         f"http://127.0.0.1:{P_SEARXNG}/",                   P_SEARXNG,   "Private search"),
+    ("Langfuse",        f"http://127.0.0.1:{P_LANGFUSE}/api/public/health", P_LANGFUSE,  "Trace telemetry"),
+    ("Portainer",       f"http://127.0.0.1:{P_PORTAINER}/",                 P_PORTAINER, "Docker dashboard"),
+    ("OpenClaw",        f"http://127.0.0.1:{P_OPENCLAW}/",                  P_OPENCLAW,  "Phone-driven agent"),
+    ("Dashboard",       f"http://127.0.0.1:{P_DASHBOARD}/",                 P_DASHBOARD, "Control page"),
 ]
 
+# OpenClaw uses a session URL; special-cased when building the link.
+OPENCLAW_PATH = "/chat?session=main"
+
+# (id, icon, role, current model, purpose, what they produce)
 AGENTS = [
-    ("orion",  "🤖","Chief of Staff",       "qwen3.6:35b-a3b","Team coordinator"),
-    ("ada",    "📊","PM / Product Owner",   "qwen2.5:72b",     "PDF Proposals & review"),
-    ("mira",   "🎨","Senior UI/UX",         "gemma4:26b",      "Inline SVG wireframes"),
-    ("leo",    "💻","Superdev",             "qwen3.6:27b",     "Writes source code"),
-    ("nova",   "🔎","QA Tester",            "qwen2.5:72b",     "E2E tests & bugs"),
-    ("cipher", "🛡️","Pentester",            "qwen2.5:72b",     "Vulnerability audit"),
-    ("vox",    "📡","Trends",               "qwen2.5:72b",     "Daily trend search"),
+    ("orion",  "🤖","Chief of Staff",     "qwen3.6:35b-a3b",            "Plans projects, routes work to the team, talks to you on Telegram", "Briefs, coordination, shell actions"),
+    ("ada",    "📊","PM / Product Owner",  "qwen2.5:72b",               "Turns ideas into Agile proposals and signs off completed work",     "Proposals (MD+PDF), final reviews"),
+    ("mira",   "🎨","Senior UI/UX",        "gemma4:26b",                "Designs screen flows and wireframes for each project",              "User journeys, inline SVG wireframes"),
+    ("leo",    "💻","Super-Senior Dev",    "qwen3-coder:30b-a3b-q4_K_M","Writes the actual source code from the approved plan",              "Code files + README, 'DEPLOYMENT COMPLETE'"),
+    ("nova",   "🔎","QA Tester",           "qwen2.5:72b",               "Runs E2E browser tests and files bug tickets",                      "QA reports, bug tickets [BUG-NNN]"),
+    ("cipher", "🛡️","White-Hat Pentester","qwen2.5:72b",               "Audits the code for security vulnerabilities",                      "Security audit reports"),
+    ("vox",    "📡","Opportunity Scout",   "qwen2.5:72b",               "Scans tech/startup news twice daily for project ideas",             "Trend briefings (7am / 6pm)"),
 ]
+
+# Every model the team can use, grouped by specialty, with a "when to use" note.
+# The dashboard cross-references this with `ollama list` to mark what is
+# actually installed vs. available to pull.
+MODEL_CATALOG = {
+    "Orchestration": [
+        ("qwen3.6:35b-a3b", "Orion's brain. Fast MoE, always-hot coordinator. Use for planning and routing, not heavy code."),
+    ],
+    "Coding": [
+        ("qwen3-coder:30b-a3b-q4_K_M", "Leo's default. Best balance of speed + agentic coding on 64GB. Daily driver."),
+        ("qwen3-coder:30b-a3b",        "Same model, default quant. Marginally higher quality, a bit more RAM."),
+        ("qwen2.5-coder:72b",          "Heavyweight coder. Highest quality, slow to load. Use for gnarly refactors."),
+        ("qwen3.6:27b",                "Dense generalist-coder. Strong all-rounder when you want one model for code + chat."),
+        ("deepseek-coder-v2:16b",      "Lightweight + fast. Great for quick Python/JS edits and autocomplete on low RAM."),
+        ("codestral:22b",              "Mistral's coder. Excellent fill-in-the-middle (FIM) autocomplete in editors."),
+    ],
+    "Reasoning": [
+        ("qwen2.5:72b",          "Ada/Nova/Cipher/Vox brain. Deep reasoning for PM, QA analysis, security, trends."),
+        ("glm-4.7-flash:q4_K_M", "Agentic, tool-use-focused reasoning. Good for long multi-step tool chains."),
+        ("deepseek-v4-flash",    "Haiku-tier flash reasoning. Cheap, fast, MIT-licensed general reasoning."),
+        ("minimax-m2.5",         "MiniMax general reasoning. Alternative when you want a different style/voice."),
+    ],
+    "Design": [
+        ("gemma4:26b", "Mira's brain. Strong visual/layout reasoning for wireframes and design systems."),
+    ],
+    "Embeddings": [
+        ("nomic-embed-text", "Vector embeddings for RAG and SearXNG result ranking. Tiny, always available."),
+    ],
+}
 
 KANBAN = [
     ("proposal_drafting","📋 Proposal"),("awaiting_approval","⏳ Awaiting Approval"),
@@ -1427,16 +1619,49 @@ def hardware_info():
         "battery": bat,
     }
 
-def get_models():
+def get_installed_models():
+    """Return {normalized_tag: size_str} for everything ollama has locally."""
+    out = {}
     try:
-        r = requests.get(f"http://localhost:{P_OLLAMA}/api/tags", timeout=4)
-        out = []
+        r = requests.get(f"http://127.0.0.1:{P_OLLAMA}/api/tags", timeout=4)
         for m in r.json().get("models", []):
-            name = m.get("name",""); size = m.get("size", 0)
-            out.append({"name": name, "size": f"{size/1e9:.1f} GB" if size else "?",
-                        "group": "Local", "desc": ""})
-        return out
-    except: return []
+            name = m.get("name", ""); size = m.get("size", 0)
+            out[name] = f"{size/1e9:.1f} GB" if size else "?"
+    except: pass
+    return out
+
+def get_model_groups():
+    """
+    Build grouped model list from MODEL_CATALOG, cross-referenced with what is
+    actually installed. Anything installed but not in the catalog lands in 'Other'.
+    """
+    installed = get_installed_models()
+    used = set()
+    groups = []
+    for specialty, entries in MODEL_CATALOG.items():
+        items = []
+        for tag, when in entries:
+            # Match installed model by prefix (handles :latest / quant suffixes)
+            match = None
+            for inst in installed:
+                if inst == tag or inst.startswith(tag.split(":")[0] + ":") and tag.split(":")[0] == inst.split(":")[0]:
+                    if inst == tag:
+                        match = inst; break
+                    match = match or inst
+            size = installed.get(tag) or (installed.get(match) if match else None)
+            is_inst = bool(size)
+            if match: used.add(match)
+            if tag in installed: used.add(tag)
+            items.append({"name": tag, "size": size or "—",
+                          "installed": is_inst, "when": when})
+        groups.append({"specialty": specialty, "items": items})
+    # Anything installed but not catalogued
+    extras = [{"name": n, "size": s, "installed": True,
+               "when": "Installed locally (not in the curated catalog)."}
+              for n, s in installed.items() if n not in used]
+    if extras:
+        groups.append({"specialty": "Other / Installed", "items": extras})
+    return groups
 
 def load_json(path, default):
     if os.path.exists(path):
@@ -1480,13 +1705,26 @@ def list_project_files(idea):
 
 @app.route("/api/status")
 def api_status():
-    svcs = [{"name": n, "url": f"http://localhost:{p}/", "port": int(p),
-              "purpose": pu, "ok": probe(h)}
+    def _link(name, port):
+        # OpenClaw needs its session path; everything else is root.
+        path = OPENCLAW_PATH if name == "OpenClaw" else "/"
+        return f"http://{LAN_HOST}:{port}{path}"
+    svcs = [{"name": n, "url": _link(n, p), "port": int(p),
+             "purpose": pu, "ok": probe(h)}
             for n, h, p, pu in SERVICES]
+
     ag_raw = load_json(SF, {})
-    agents = [{"id": aid, "icon": ic, "role": role, "model": model,
-               "desc": desc, "status": ag_raw.get(aid, "idle")}
-              for aid, ic, role, model, desc in AGENTS]
+    meta = ag_raw.get("_meta", {})
+    agents = []
+    for aid, ic, role, model, purpose, produces in AGENTS:
+        m = meta.get(aid, {})
+        agents.append({
+            "id": aid, "icon": ic, "role": role, "model": model,
+            "purpose": purpose, "produces": produces,
+            "status": ag_raw.get(aid, "idle"),
+            "last_active": m.get("last_active", "—"),
+        })
+
     projects = load_json(PF, {})
     for cid, p in projects.items():
         st = p.get("status", "idle")
@@ -1494,13 +1732,14 @@ def api_status():
         p["state_label"] = label; p["state_color"] = color
         p["actions"] = STATE_ACTIONS.get(st, []); p["cid"] = cid
     return jsonify({
-        "services":  svcs,
-        "agents":    agents,
-        "projects":  projects,
-        "hardware":  hardware_info(),
-        "models":    get_models(),
-        "kanban":    [{"status": s, "label": l} for s, l in KANBAN],
-        "updated":   datetime.datetime.now().strftime("%H:%M:%S"),
+        "services":     svcs,
+        "agents":       agents,
+        "projects":     projects,
+        "hardware":     hardware_info(),
+        "model_groups": get_model_groups(),
+        "kanban":       [{"status": s, "label": l} for s, l in KANBAN],
+        "lan_host":     LAN_HOST,
+        "updated":      datetime.datetime.now().strftime("%H:%M:%S"),
     })
 
 @app.route("/api/project/<cid>", methods=["DELETE"])
@@ -1568,10 +1807,20 @@ PAGE = r"""<!doctype html>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;padding:20px}
   .wrap{max-width:1400px;margin:0 auto}
-  header{display:flex;justify-content:space-between;margin-bottom:20px}
+  header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
   .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
   .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px}
-  .hw{display:flex;gap:15px;justify-content:space-around}
+  .card h2{font-size:15px;margin-bottom:12px}
+  /* donut hardware gauges */
+  .hw{display:flex;gap:10px;justify-content:space-around;flex-wrap:wrap}
+  .donut-wrap{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:84px}
+  .donut{position:relative;width:84px;height:84px}
+  .donut svg{transform:rotate(-90deg)}
+  .donut .ring-bg{stroke:var(--panel2)}
+  .donut .ring-fg{stroke-linecap:round;transition:stroke-dashoffset .6s ease}
+  .donut .label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px}
+  .donut-cap{font-size:11px;color:var(--dim);text-align:center}
+  .donut-sub{font-size:10px;color:var(--dim);text-align:center}
   .svc{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)}
   .svc:last-child{border:none}
   .led{width:10px;height:10px;border-radius:50%;display:inline-block}
@@ -1583,43 +1832,120 @@ PAGE = r"""<!doctype html>
   .btn{padding:6px 12px;border:none;border-radius:6px;font-weight:600;cursor:pointer;margin-right:5px;color:#fff}
   .btn.green{background:var(--green)}.btn.yellow{background:var(--yellow)}.btn.red{background:var(--red)}.btn.orange{background:var(--purple)}
   .proj{background:var(--panel2);border-radius:8px;padding:12px;margin-bottom:10px}
+  /* specialists */
+  .spec{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px}
+  .spec-head{display:flex;justify-content:space-between;align-items:center}
+  .spec-title{font-weight:700}
+  .spec-model{font-family:monospace;font-size:11px;color:var(--accent);background:#0d1117;padding:2px 6px;border-radius:4px}
+  .spec-purpose{color:var(--dim);font-size:12px;margin:6px 0 4px}
+  .spec-foot{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);margin-top:6px}
+  .pill{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600}
+  .pill.working{background:rgba(245,158,11,.2);color:var(--yellow)}
+  .pill.idle{background:rgba(139,152,165,.15);color:var(--dim)}
+  /* model groups */
+  .mgroup{margin-bottom:14px}
+  .mgroup h3{font-size:12px;text-transform:uppercase;color:var(--accent);margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:4px}
+  .mrow{display:flex;justify-content:space-between;align-items:flex-start;padding:6px 0;gap:10px}
+  .mname{font-family:monospace;font-size:12px}
+  .mwhen{color:var(--dim);font-size:11px;flex:1}
+  .mtag{font-size:10px;padding:1px 7px;border-radius:8px;white-space:nowrap}
+  .mtag.in{background:rgba(34,197,94,.18);color:var(--green)}
+  .mtag.out{background:rgba(139,152,165,.12);color:var(--dim)}
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;align-items:center;justify-content:center;z-index:100;padding:20px}
   .modal.show{display:flex}
   .modal-box{background:var(--panel);border:1px solid var(--border);border-radius:12px;max-width:800px;width:100%;max-height:80vh;overflow-y:auto;padding:20px}
   pre{background:#0d1117;padding:12px;border-radius:8px;overflow:auto;font-family:monospace;white-space:pre-wrap}
   .close{float:right;cursor:pointer;font-size:20px}
   .del{background:none;border:1px solid var(--red);color:var(--red);padding:2px 8px;border-radius:4px;cursor:pointer;float:right}
+  .hostbar{font-size:12px;color:var(--dim)}
+  .hostbar code{color:var(--accent)}
 </style></head><body>
 <div class="wrap">
-  <header><h1>● AI Team Workstation</h1><div style="color:var(--dim)">Auto-refresh 5s</div></header>
+  <header>
+    <h1>● AI Team Workstation</h1>
+    <div class="hostbar">Access from any device: <code id="hosttxt">…</code> · Auto-refresh 5s</div>
+  </header>
   <div class="grid">
-    <div class="card"><h2>System status</h2><div class="hw" id="hw"></div></div>
+    <div class="card"><h2>System Status</h2><div class="hw" id="hw"></div></div>
     <div class="card"><h2>Workstation Services</h2><div id="svcs"></div></div>
   </div>
   <div class="card"><h2>Projects Queue</h2><div id="projects"></div></div>
   <div class="card"><h2>Kanban Board</h2><div class="kanban" id="kanban"></div></div>
-  <div class="grid">
-    <div class="card"><h2>Specialists</h2><div id="agents"></div></div>
-    <div class="card"><h2>Ollama Models</h2><div id="models"></div></div>
-  </div>
+  <div class="card"><h2>Specialists</h2><div id="agents"></div></div>
+  <div class="card"><h2>AI Models on This Machine</h2><div id="models"></div></div>
 </div>
 <div class="modal" id="modal"><div class="modal-box" id="modal-content"></div></div>
 <script>
+// Build a single SVG donut. pct 0-100, color by threshold.
+function donut(pct, caption, sub){
+  pct = Math.max(0, Math.min(100, pct||0));
+  const r=34, c=2*Math.PI*r, off=c*(1-pct/100);
+  let col = 'var(--green)';
+  if(pct>=85) col='var(--red)'; else if(pct>=60) col='var(--yellow)';
+  return `<div class="donut-wrap">
+    <div class="donut">
+      <svg width="84" height="84">
+        <circle class="ring-bg" cx="42" cy="42" r="${r}" fill="none" stroke-width="8"/>
+        <circle class="ring-fg" cx="42" cy="42" r="${r}" fill="none" stroke-width="8"
+          stroke="${col}" stroke-dasharray="${c}" stroke-dashoffset="${off}"/>
+      </svg>
+      <div class="label">${pct}%</div>
+    </div>
+    <div class="donut-cap">${caption}</div>
+    <div class="donut-sub">${sub||''}</div>
+  </div>`;
+}
 async function load(){
   try{
     const r=await fetch("/api/status");const d=await r.json();
+    document.getElementById("hosttxt").textContent = `http://${d.lan_host}:8800`;
+
+    // ── System status donuts (#3) ──
+    const hw=d.hardware; let hwHtml='';
+    hwHtml+=donut(hw.cpu.pct, 'CPU', '');
+    hwHtml+=donut(hw.ram.pct, 'RAM', hw.ram.detail);
+    hwHtml+=donut(hw.storage.pct, 'Storage', hw.storage.detail);
+    if(hw.battery){
+      const b=hw.battery;
+      hwHtml+=donut(b.percent, 'Battery', b.charging?'⚡ charging':'on battery');
+    }
+    document.getElementById("hw").innerHTML=hwHtml;
+
+    // ── Services (#7 OpenClaw included, #6 LAN links) ──
     document.getElementById("svcs").innerHTML=d.services.map(s=>`
-      <div class="svc"><span><span class="led ${s.ok?'on':'off'}"></span> <a href="${s.url}" target="_blank">${s.name}</a></span>
-      <span style="color:var(--dim)">${s.purpose} (:${s.port})</span></div>`).join("");
-    document.getElementById("hw").innerHTML=`
-      <div>CPU: ${d.hardware.cpu.pct}%</div>
-      <div>RAM: ${d.hardware.ram.pct}% (${d.hardware.ram.detail})</div>
-      <div>Storage: ${d.hardware.storage.pct}% (${d.hardware.storage.detail})</div>`;
+      <div class="svc">
+        <span><span class="led ${s.ok?'on':'off'}"></span> <a href="${s.url}" target="_blank">${s.name}</a></span>
+        <span style="color:var(--dim)">${s.purpose} (:${s.port})</span>
+      </div>`).join("");
+
+    // ── Specialists (#4) ──
     document.getElementById("agents").innerHTML=d.agents.map(a=>`
-      <div class="svc"><span>${a.icon} <b>${a.role}</b></span>
-      <span style="color:${a.status==='working'?'var(--yellow)':'var(--dim)'}">${a.status}</span></div>`).join("");
-    document.getElementById("models").innerHTML=d.models.map(m=>`
-      <div class="svc"><span><code>${m.name}</code></span><span style="color:var(--dim)">${m.size}</span></div>`).join("");
+      <div class="spec">
+        <div class="spec-head">
+          <span class="spec-title">${a.icon} ${a.role}</span>
+          <span class="pill ${a.status==='working'?'working':'idle'}">${a.status}</span>
+        </div>
+        <div class="spec-purpose">${a.purpose}</div>
+        <div style="font-size:11px;color:var(--dim)">Produces: ${a.produces}</div>
+        <div class="spec-foot">
+          <span>Model: <span class="spec-model">${a.model}</span></span>
+          <span>Last active: ${a.last_active}</span>
+        </div>
+      </div>`).join("");
+
+    // ── Models grouped by specialty (#5) ──
+    document.getElementById("models").innerHTML=d.model_groups.map(g=>`
+      <div class="mgroup">
+        <h3>${g.specialty}</h3>
+        ${g.items.map(m=>`
+          <div class="mrow">
+            <span class="mname">${m.name}</span>
+            <span class="mwhen">${m.when}</span>
+            <span class="mtag ${m.installed?'in':'out'}">${m.installed?('✓ '+m.size):'pull'}</span>
+          </div>`).join("")}
+      </div>`).join("");
+
+    // ── Projects ──
     const pKeys=Object.keys(d.projects);
     if(!pKeys.length){
       document.getElementById("projects").innerHTML='<div style="color:var(--dim)">No projects running. Command your Telegram bot.</div>';
@@ -1635,6 +1961,8 @@ async function load(){
         </div>`;
       }).join("");
     }
+
+    // ── Kanban ──
     document.getElementById("kanban").innerHTML=d.kanban.map(k=>{
       const items=pKeys.filter(x=>d.projects[x].status===k.status).map(x=>`
         <div class="tk"><b>${d.projects[x].idea}</b></div>`).join("") || '<div style="color:var(--dim)">—</div>';
@@ -1709,9 +2037,12 @@ setup_openclaw() {
       openclaw onboard --install-daemon
 
   Pick:
-    - Provider: ollama (http://localhost:11434)
+    - Provider: ollama (http://0.0.0.0:11434)
     - Model: qwen3.6:35b-a3b
     - Channel: Telegram (paste your TELEGRAM_BOT_TOKEN)
+
+  Once running, OpenClaw chat is at:
+      http://0.0.0.0:18789/chat?session=main
 ###############################
 TUTEOF
         printf "Run 'openclaw onboard --install-daemon' now? [Y/n] "
@@ -1843,19 +2174,28 @@ CHATEOF
 }
 
 print_summary() {
+    local ip; ip="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo '0.0.0.0')"
     hr
     cat <<SUMEOF
     🚀  LOCAL AI WORKSTATION SETUP COMPLETE
 
-  Dashboard: http://localhost:$PORT_DASHBOARD
-  Telegram:  Start bot on your phone via /start
+  Dashboard (this Mac):  http://localhost:$PORT_DASHBOARD
+  Dashboard (LAN/phone): http://$ip:$PORT_DASHBOARD
+  OpenClaw chat:         http://$ip:18789/chat?session=main
+  Telegram:              Start bot on your phone via /start
+
+  All services bind 0.0.0.0 — reachable from other devices on your network
+  using the LAN address above (replace $ip if your IP changes).
+
+  IDEs installed: VS Code + IntelliJ IDEA CE
+  Swap models any time:  $0 --pull-models
 
   Folders:
     - Documents:  $DOCS_WORKSPACE
     - Source:     $CODE_WORKSPACE
 
   Run controls:
-    $0 --status | --start | --stop | --restart | --uninstall
+    $0 --status | --start | --stop | --restart | --pull-models | --uninstall
 SUMEOF
     hr
 }
@@ -1868,13 +2208,14 @@ SERVICE_LABELS=(com.aiws.litellm com.aiws.dashboard com.aiws.orchestrator com.ai
 svc_status() {
     hr; log "Services status check:"
     for url_label in \
-        "Ollama|http://localhost:$PORT_OLLAMA/api/tags" \
-        "LiteLLM|http://localhost:$PORT_GATEWAY/health/liveliness" \
-        "Dashboard|http://localhost:$PORT_DASHBOARD/" \
-        "Open WebUI|http://localhost:$PORT_OPENWEBUI/" \
-        "SearXNG|http://localhost:$PORT_SEARXNG/" \
-        "Langfuse|http://localhost:$PORT_LANGFUSE/api/public/health" \
-        "Portainer|http://localhost:$PORT_PORTAINER/"; do
+        "Ollama|http://127.0.0.1:$PORT_OLLAMA/api/tags" \
+        "LiteLLM|http://127.0.0.1:$PORT_GATEWAY/health/liveliness" \
+        "Dashboard|http://127.0.0.1:$PORT_DASHBOARD/" \
+        "Open WebUI|http://127.0.0.1:$PORT_OPENWEBUI/" \
+        "SearXNG|http://127.0.0.1:$PORT_SEARXNG/" \
+        "Langfuse|http://127.0.0.1:$PORT_LANGFUSE/api/public/health" \
+        "Portainer|http://127.0.0.1:$PORT_PORTAINER/" \
+        "OpenClaw|http://127.0.0.1:18789/"; do
         local nm="${url_label%%|*}" url="${url_label#*|}"
         if http_ok "$url"; then ok "$nm — live"; else warn "$nm — down"; fi
     done
@@ -1890,8 +2231,21 @@ svc_start() {
     log "Booting Workstation services..."
     ollama_start
     setup_colima
-    for c in open-webui searxng portainer; do docker start "$c" >/dev/null 2>&1 || true; done
-    [ -d "$WORKDIR/langfuse" ] && (cd "$WORKDIR/langfuse" && dc up -d >/dev/null 2>&1) || true
+    # Start existing containers; if a container is missing, recreate it.
+    if docker_up; then
+        for c in open-webui searxng portainer; do
+            if docker inspect "$c" >/dev/null 2>&1; then
+                docker start "$c" >/dev/null 2>&1 || true
+            else
+                case "$c" in
+                    open-webui) setup_openwebui ;;
+                    searxng)    setup_searxng ;;
+                    portainer)  setup_portainer ;;
+                esac
+            fi
+        done
+        [ -d "$WORKDIR/langfuse" ] && (cd "$WORKDIR/langfuse" && dc up -d >/dev/null 2>&1) || setup_langfuse
+    fi
     for l in "${SERVICE_LABELS[@]}"; do
         launchctl load "$LAUNCH_DIR/$l.plist" >/dev/null 2>&1 || true
     done
@@ -1941,6 +2295,7 @@ uninstall_all() {
 
     log "Removing npm configurations..."
     if have npm; then
+        openclaw uninstall --daemon >/dev/null 2>&1 || true
         npm uninstall -g openclaw >/dev/null 2>&1 || true
     fi
 
@@ -1961,6 +2316,13 @@ uninstall_all() {
         brew remove --force colima docker docker-compose uv socat cairo pango gdk-pixbuf libffi || true
     fi
 
+    printf "Uninstall IDEs installed by this script (VS Code, IntelliJ IDEA CE)? [y/N]: "
+    read -r clean_ide
+    if [[ "$clean_ide" =~ ^[Yy]$ ]]; then
+        brew uninstall --cask visual-studio-code intellij-idea-ce >/dev/null 2>&1 || true
+        ok "IDEs removed."
+    fi
+
     ok "Uninstall complete. Your system has been rolled back."
 }
 
@@ -1970,14 +2332,15 @@ uninstall_all() {
 print_help() {
     cat <<USG
 Usage: $0 [OPTION]
-  --bootstrap : Run checks, configure tokens and workspaces
-  --start     : Start Colima, Ollama, containers and orchestrator
-  --stop      : Stop Colima, Ollama, containers and orchestrator
-  --restart   : Stop then start services
-  --status    : Display live server and services state
-  --reset     : Reset orchestrator variables and configuration
-  --uninstall : Complete rollback and removal of setup
-  --help      : Display instructions
+  --bootstrap   : Run checks, configure tokens and workspaces
+  --start       : Start Colima, Ollama, containers and orchestrator
+  --stop        : Stop Colima, Ollama, containers and orchestrator
+  --restart     : Stop then start services
+  --status      : Display live server and services state
+  --pull-models : Interactively pull optional swappable models
+  --reset       : Reset orchestrator variables and configuration
+  --uninstall   : Complete rollback and removal of setup
+  --help        : Display instructions
 USG
 }
 
@@ -1987,17 +2350,23 @@ case "${1:---help}" in
         setup_xcode_clt
         setup_homebrew
         setup_core_tools
+        setup_ides
         setup_workspaces
         collect_tokens
         setup_ollama
         setup_python
         setup_litellm
+        setup_docker_services
         write_dashboard
         setup_agent_team
         setup_openclaw
         setup_peekaboo
         setup_services
+        pull_swappable_models
         print_summary
+        ;;
+    --pull-models)
+        pull_swappable_models
         ;;
     --start)   svc_start ;;
     --stop)    svc_stop ;;
