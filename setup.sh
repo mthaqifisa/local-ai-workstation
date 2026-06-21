@@ -274,13 +274,17 @@ setup_ides() {
         ok "VS Code 'code' CLI registered (restart shell to use)."
     fi
 
-    # IntelliJ IDEA (Community edition cask; swap to intellij-idea for Ultimate)
-    if [ -d "/Applications/IntelliJ IDEA CE.app" ] || [ -d "/Applications/IntelliJ IDEA.app" ] \
-       || brew list --cask intellij-idea-ce >/dev/null 2>&1 || brew list --cask intellij-idea >/dev/null 2>&1; then
+    # IntelliJ IDEA (Ultimate cask: intellij-idea)
+    if [ -d "/Applications/IntelliJ IDEA.app" ] || brew list --cask intellij-idea >/dev/null 2>&1; then
         ok "IntelliJ IDEA present."
     else
-        log "Installing IntelliJ IDEA Community Edition..."
-        opt brew install --cask intellij-idea-ce
+        # Remove the old Community Edition if it was previously installed
+        if brew list --cask intellij-idea-ce >/dev/null 2>&1 || [ -d "/Applications/IntelliJ IDEA CE.app" ]; then
+            log "Removing old IntelliJ IDEA Community Edition..."
+            opt brew uninstall --cask intellij-idea-ce
+        fi
+        log "Installing IntelliJ IDEA..."
+        opt brew install --cask intellij-idea
     fi
 }
 
@@ -2187,7 +2191,7 @@ print_summary() {
   All services bind 0.0.0.0 — reachable from other devices on your network
   using the LAN address above (replace $ip if your IP changes).
 
-  IDEs installed: VS Code + IntelliJ IDEA CE
+  IDEs installed: VS Code + IntelliJ IDEA
   Swap models any time:  $0 --pull-models
 
   Folders:
@@ -2316,10 +2320,10 @@ uninstall_all() {
         brew remove --force colima docker docker-compose uv socat cairo pango gdk-pixbuf libffi || true
     fi
 
-    printf "Uninstall IDEs installed by this script (VS Code, IntelliJ IDEA CE)? [y/N]: "
+    printf "Uninstall IDEs installed by this script (VS Code, IntelliJ IDEA)? [y/N]: "
     read -r clean_ide
     if [[ "$clean_ide" =~ ^[Yy]$ ]]; then
-        brew uninstall --cask visual-studio-code intellij-idea-ce >/dev/null 2>&1 || true
+        brew uninstall --cask visual-studio-code intellij-idea intellij-idea-ce >/dev/null 2>&1 || true
         ok "IDEs removed."
     fi
 
