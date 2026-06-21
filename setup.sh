@@ -54,15 +54,21 @@ MODELS=(
 SWAPPABLE_MODELS=(
   "qwen3-coder:30b-a3b-q4_K_M|Coding|Agentic coding, MoE 3.3B active, fast on 64GB (~18 GB)"
   "qwen3-coder:30b-a3b|Coding|Same model, default quant — slightly larger (~19 GB)"
+  "qwen2.5-coder:32b|Coding|Accuracy leader: GPT-4o-level HumanEval, tops EvalPlus/LiveCodeBench (~20 GB)"
   "qwen2.5-coder:72b|Coding|Heavyweight coder, max quality, slow swap (~45 GB)"
   "qwen3.6:27b|Coding|Best dense coder on consumer HW, 77% SWE-bench (~22 GB)"
+  "devstral:24b|Coding|Best agentic coder in class, 68% SWE-bench Verified, Apache 2.0 (~14 GB)"
   "deepseek-coder-v2:16b|Coding|Lightweight fast coder, great Python/JS (~9 GB)"
   "codestral:22b|Coding|Mistral coder, strong FIM autocomplete (~13 GB)"
-  "kimi-k2.6|Coding|Frontier MoE coder, 32B active/1T total — large download"
-  "minimax-m2.1|Reasoning|MiniMax M2-series, coding + agentic workflows"
+  "mistral-small:24b|Reasoning|Trained to say 'I don't know' — lowest hallucination, great for RAG (~14 GB)"
+  "deepseek-r1:14b|Reasoning|Chain-of-thought debugging & code analysis, MIT (~9 GB)"
+  "deepseek-r1:32b|Reasoning|Larger CoT reasoner for harder algorithmic problems (~20 GB)"
+  "deepseek-r1:70b|Reasoning|70B CoT reasoner (Llama3.3 distill), max reasoning, fits 64GB solo (~43 GB)"
+  "phi-4:14b|Reasoning|Microsoft Phi-4, best reasoning-per-GB, strong math/logic, MIT (~9 GB)"
   "glm-4.7-flash|Reasoning|GLM strongest in 30B class, lightweight agentic"
-  "deepseek-v4-pro|Reasoning|DeepSeek V4 Pro, algorithmic-coding specialist, MIT"
-  "deepseek-r1|Reasoning|DeepSeek-R1 chain-of-thought reasoning"
+  "llama3.3:70b|General|Meta's flagship 70B, strong all-round chat/coding, fits 64GB solo (~43 GB)"
+  "mistral:7b|General|Mistral 7B v0.3 — fast, low-hallucination lightweight general model (~4 GB)"
+  "gemma4:31b|General|Google Gemma 4 dense 31B, vision + tool calling, reasoning (~20 GB)"
 )
 
 # ───────────────────────────────── LOGGING ────────────────────────────────────
@@ -574,24 +580,36 @@ model_list:
     litellm_params: { model: ollama/qwen3-coder:30b-a3b-q4_K_M, api_base: http://0.0.0.0:11434 }
   - model_name: coder-qwen3-30b-default
     litellm_params: { model: ollama/qwen3-coder:30b-a3b,        api_base: http://0.0.0.0:11434 }
+  - model_name: coder-qwen25-32b
+    litellm_params: { model: ollama/qwen2.5-coder:32b,          api_base: http://0.0.0.0:11434 }
   - model_name: coder-qwen25-72b
     litellm_params: { model: ollama/qwen2.5-coder:72b,          api_base: http://0.0.0.0:11434 }
   - model_name: coder-qwen36-27b
     litellm_params: { model: ollama/qwen3.6:27b,                api_base: http://0.0.0.0:11434 }
+  - model_name: coder-devstral-24b
+    litellm_params: { model: ollama/devstral:24b,               api_base: http://0.0.0.0:11434 }
   - model_name: coder-deepseek-v2-16b
     litellm_params: { model: ollama/deepseek-coder-v2:16b,      api_base: http://0.0.0.0:11434 }
   - model_name: coder-codestral-22b
     litellm_params: { model: ollama/codestral:22b,              api_base: http://0.0.0.0:11434 }
-  - model_name: coder-kimi-k26
-    litellm_params: { model: ollama/kimi-k2.6,                  api_base: http://0.0.0.0:11434 }
+  - model_name: reason-mistral-small-24b
+    litellm_params: { model: ollama/mistral-small:24b,          api_base: http://0.0.0.0:11434 }
+  - model_name: reason-deepseek-r1-14b
+    litellm_params: { model: ollama/deepseek-r1:14b,            api_base: http://0.0.0.0:11434 }
+  - model_name: reason-deepseek-r1-32b
+    litellm_params: { model: ollama/deepseek-r1:32b,            api_base: http://0.0.0.0:11434 }
+  - model_name: reason-deepseek-r1-70b
+    litellm_params: { model: ollama/deepseek-r1:70b,            api_base: http://0.0.0.0:11434 }
+  - model_name: reason-phi4-14b
+    litellm_params: { model: ollama/phi-4:14b,                  api_base: http://0.0.0.0:11434 }
   - model_name: reason-glm-47-flash
     litellm_params: { model: ollama/glm-4.7-flash,              api_base: http://0.0.0.0:11434 }
-  - model_name: reason-deepseek-v4-pro
-    litellm_params: { model: ollama/deepseek-v4-pro,            api_base: http://0.0.0.0:11434 }
-  - model_name: reason-deepseek-r1
-    litellm_params: { model: ollama/deepseek-r1,                api_base: http://0.0.0.0:11434 }
-  - model_name: reason-minimax-m21
-    litellm_params: { model: ollama/minimax-m2.1,               api_base: http://0.0.0.0:11434 }
+  - model_name: general-llama33-70b
+    litellm_params: { model: ollama/llama3.3:70b,               api_base: http://0.0.0.0:11434 }
+  - model_name: general-mistral-7b
+    litellm_params: { model: ollama/mistral:7b,                 api_base: http://0.0.0.0:11434 }
+  - model_name: general-gemma4-31b
+    litellm_params: { model: ollama/gemma4:31b,                 api_base: http://0.0.0.0:11434 }
 litellm_settings:
   success_callback: ["langfuse"]
   failure_callback: ["langfuse"]
@@ -1554,18 +1572,26 @@ MODEL_CATALOG = {
     "Coding": [
         ("qwen3-coder:30b-a3b-q4_K_M", "Leo's default. Best balance of speed + agentic coding on 64GB. Daily driver."),
         ("qwen3-coder:30b-a3b",        "Same model, default quant. Marginally higher quality, a bit more RAM."),
+        ("qwen2.5-coder:32b",          "Accuracy leader. GPT-4o-level HumanEval, tops EvalPlus/LiveCodeBench. Best for correctness."),
         ("qwen2.5-coder:72b",          "Heavyweight coder. Highest quality, slow to load. Use for gnarly refactors."),
         ("qwen3.6:27b",                "Best dense coder on consumer HW (77% SWE-bench). One model for code + chat."),
+        ("devstral:24b",               "Best agentic coder in its class (68% SWE-bench Verified). Apache 2.0, runs in 32GB."),
         ("deepseek-coder-v2:16b",      "Lightweight + fast. Great for quick Python/JS edits and autocomplete on low RAM."),
         ("codestral:22b",              "Mistral's coder. Excellent fill-in-the-middle (FIM) autocomplete in editors."),
-        ("kimi-k2.6",                  "Frontier MoE coder (32B active/1T total). Top benchmarks; large download."),
     ],
     "Reasoning": [
-        ("qwen2.5:72b",       "Ada/Nova/Cipher/Vox brain. Deep reasoning for PM, QA analysis, security, trends."),
-        ("glm-4.7-flash",     "Strongest in the 30B class. Lightweight agentic, tool-use-focused reasoning."),
-        ("deepseek-v4-pro",   "Algorithmic-coding specialist, very strong on LiveCodeBench. MIT-licensed."),
-        ("deepseek-r1",       "Chain-of-thought reasoning. Use when you want visible step-by-step thinking."),
-        ("minimax-m2.1",      "MiniMax M2-series. Multilingual coding + agentic workflow alternative."),
+        ("qwen2.5:72b",        "Ada/Nova/Cipher/Vox brain. Deep reasoning for PM, QA analysis, security, trends."),
+        ("mistral-small:24b",  "Lowest hallucination — trained to say 'I don't know'. Best for RAG / factual accuracy."),
+        ("deepseek-r1:14b",    "Chain-of-thought debugging & code analysis. Shows its reasoning. MIT, fits 16GB."),
+        ("deepseek-r1:32b",    "Larger CoT reasoner for harder algorithmic / math problems. MIT."),
+        ("deepseek-r1:70b",    "70B CoT reasoner (Llama3.3 distill). Max reasoning depth; fits 64GB on its own."),
+        ("phi-4:14b",          "Best reasoning-per-GB. Strong math/logic/STEM, low footprint. MIT."),
+        ("glm-4.7-flash",      "Strongest in the 30B class. Lightweight agentic, tool-use-focused reasoning."),
+    ],
+    "General": [
+        ("llama3.3:70b",  "Meta's flagship 70B. Strong all-round chat + coding. Fits 64GB solo (~43 GB)."),
+        ("mistral:7b",    "Mistral 7B v0.3. Fast, low-hallucination lightweight general/chat model."),
+        ("gemma4:31b",    "Gemma 4 dense 31B. Vision + native tool calling + reasoning. Apache 2.0."),
     ],
     "Design": [
         ("gemma4:26b", "Mira's brain. Strong visual/layout reasoning for wireframes and design systems."),
