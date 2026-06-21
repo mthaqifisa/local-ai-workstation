@@ -45,7 +45,7 @@ dashboard and in the setup summary).
 
 ### Swappable models (pull on demand)
 
-Run `./script3.sh --pull-models` to interactively pull any of these. They're all
+Run `./setup.sh --pull-models` to interactively pull any of these. They're all
 free, open-weight, and locally runnable. They're pre-registered in the LiteLLM
 gateway, so once pulled you can reference them by name from OpenClaw immediately.
 
@@ -67,8 +67,8 @@ gateway, so once pulled you can reference them by name from OpenClaw immediately
 ## Quick start
 
 ```bash
-chmod +x script3.sh
-./script3.sh --bootstrap
+chmod +x setup.sh
+./setup.sh --bootstrap
 ```
 
 Before running, make sure:
@@ -81,12 +81,12 @@ Before running, make sure:
 ### Control commands
 
 ```bash
-./script3.sh --status        # live health of all services
-./script3.sh --start         # start everything
-./script3.sh --stop          # stop everything
-./script3.sh --restart       # stop then start
-./script3.sh --pull-models   # interactively pull optional models
-./script3.sh --uninstall     # full rollback
+./setup.sh --status        # live health of all services
+./setup.sh --start         # start everything
+./setup.sh --stop          # stop everything
+./setup.sh --restart       # stop then start
+./setup.sh --pull-models   # interactively pull optional models
+./setup.sh --uninstall     # full rollback
 ```
 
 ---
@@ -212,7 +212,7 @@ or
 > "Switch Nova and Cipher to `reason-deepseek-r1-32b` for deeper analysis."
 
 Any alias from `litellm.config.yaml` works. Pull it first with
-`./script3.sh --pull-models` if it isn't installed yet.
+`./setup.sh --pull-models` if it isn't installed yet.
 
 ---
 
@@ -221,7 +221,7 @@ Any alias from `litellm.config.yaml` works. Pull it first with
 - **A model won't pull ("file does not exist")** — the tag changed. Browse
   [ollama.com/library](https://ollama.com/library) for the current name. A failed
   pull only logs a warning; it never breaks the setup.
-- **Services show "down" on the dashboard** — run `./script3.sh --restart`. Docker
+- **Services show "down" on the dashboard** — run `./setup.sh --restart`. Docker
   containers are recreated automatically if missing.
 - **Can't reach services from your phone** — confirm the Mac's LAN IP (top of the
   dashboard) and that both devices are on the same network.
