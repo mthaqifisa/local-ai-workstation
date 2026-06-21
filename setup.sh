@@ -55,12 +55,14 @@ SWAPPABLE_MODELS=(
   "qwen3-coder:30b-a3b-q4_K_M|Coding|Agentic coding, MoE 3.3B active, fast on 64GB (~18 GB)"
   "qwen3-coder:30b-a3b|Coding|Same model, default quant — slightly larger (~19 GB)"
   "qwen2.5-coder:72b|Coding|Heavyweight coder, max quality, slow swap (~45 GB)"
-  "qwen3.6:27b|Coding|Dense generalist-coder, strong all-rounder (~22 GB)"
+  "qwen3.6:27b|Coding|Best dense coder on consumer HW, 77% SWE-bench (~22 GB)"
   "deepseek-coder-v2:16b|Coding|Lightweight fast coder, great Python/JS (~9 GB)"
   "codestral:22b|Coding|Mistral coder, strong FIM autocomplete (~13 GB)"
-  "glm-4.7-flash:q4_K_M|Reasoning|GLM agentic reasoning, tool-use focused"
-  "deepseek-v4-flash|Reasoning|DeepSeek MoE flash, Haiku-tier reasoning"
-  "minimax-m2.5|Reasoning|MiniMax general reasoning model"
+  "kimi-k2.6|Coding|Frontier MoE coder, 32B active/1T total — large download"
+  "minimax-m2.1|Reasoning|MiniMax M2-series, coding + agentic workflows"
+  "glm-4.7-flash|Reasoning|GLM strongest in 30B class, lightweight agentic"
+  "deepseek-v4-pro|Reasoning|DeepSeek V4 Pro, algorithmic-coding specialist, MIT"
+  "deepseek-r1|Reasoning|DeepSeek-R1 chain-of-thought reasoning"
 )
 
 # ───────────────────────────────── LOGGING ────────────────────────────────────
@@ -335,6 +337,7 @@ pull_swappable_models() {
     hr
     echo "These are optional alternates. Each is large — pull only what you need."
     echo "They are already registered in litellm.config.yaml so the agents can use them once pulled."
+    echo "Note: model tags change over time. If a pull fails, check ollama.com/library for the current name."
     hr
     local i=1
     for entry in "${SWAPPABLE_MODELS[@]}"; do
@@ -579,12 +582,16 @@ model_list:
     litellm_params: { model: ollama/deepseek-coder-v2:16b,      api_base: http://0.0.0.0:11434 }
   - model_name: coder-codestral-22b
     litellm_params: { model: ollama/codestral:22b,              api_base: http://0.0.0.0:11434 }
+  - model_name: coder-kimi-k26
+    litellm_params: { model: ollama/kimi-k2.6,                  api_base: http://0.0.0.0:11434 }
   - model_name: reason-glm-47-flash
-    litellm_params: { model: ollama/glm-4.7-flash:q4_K_M,       api_base: http://0.0.0.0:11434 }
-  - model_name: reason-deepseek-v4-flash
-    litellm_params: { model: ollama/deepseek-v4-flash,          api_base: http://0.0.0.0:11434 }
-  - model_name: reason-minimax-m25
-    litellm_params: { model: ollama/minimax-m2.5,               api_base: http://0.0.0.0:11434 }
+    litellm_params: { model: ollama/glm-4.7-flash,              api_base: http://0.0.0.0:11434 }
+  - model_name: reason-deepseek-v4-pro
+    litellm_params: { model: ollama/deepseek-v4-pro,            api_base: http://0.0.0.0:11434 }
+  - model_name: reason-deepseek-r1
+    litellm_params: { model: ollama/deepseek-r1,                api_base: http://0.0.0.0:11434 }
+  - model_name: reason-minimax-m21
+    litellm_params: { model: ollama/minimax-m2.1,               api_base: http://0.0.0.0:11434 }
 litellm_settings:
   success_callback: ["langfuse"]
   failure_callback: ["langfuse"]
@@ -1548,15 +1555,17 @@ MODEL_CATALOG = {
         ("qwen3-coder:30b-a3b-q4_K_M", "Leo's default. Best balance of speed + agentic coding on 64GB. Daily driver."),
         ("qwen3-coder:30b-a3b",        "Same model, default quant. Marginally higher quality, a bit more RAM."),
         ("qwen2.5-coder:72b",          "Heavyweight coder. Highest quality, slow to load. Use for gnarly refactors."),
-        ("qwen3.6:27b",                "Dense generalist-coder. Strong all-rounder when you want one model for code + chat."),
+        ("qwen3.6:27b",                "Best dense coder on consumer HW (77% SWE-bench). One model for code + chat."),
         ("deepseek-coder-v2:16b",      "Lightweight + fast. Great for quick Python/JS edits and autocomplete on low RAM."),
         ("codestral:22b",              "Mistral's coder. Excellent fill-in-the-middle (FIM) autocomplete in editors."),
+        ("kimi-k2.6",                  "Frontier MoE coder (32B active/1T total). Top benchmarks; large download."),
     ],
     "Reasoning": [
-        ("qwen2.5:72b",          "Ada/Nova/Cipher/Vox brain. Deep reasoning for PM, QA analysis, security, trends."),
-        ("glm-4.7-flash:q4_K_M", "Agentic, tool-use-focused reasoning. Good for long multi-step tool chains."),
-        ("deepseek-v4-flash",    "Haiku-tier flash reasoning. Cheap, fast, MIT-licensed general reasoning."),
-        ("minimax-m2.5",         "MiniMax general reasoning. Alternative when you want a different style/voice."),
+        ("qwen2.5:72b",       "Ada/Nova/Cipher/Vox brain. Deep reasoning for PM, QA analysis, security, trends."),
+        ("glm-4.7-flash",     "Strongest in the 30B class. Lightweight agentic, tool-use-focused reasoning."),
+        ("deepseek-v4-pro",   "Algorithmic-coding specialist, very strong on LiveCodeBench. MIT-licensed."),
+        ("deepseek-r1",       "Chain-of-thought reasoning. Use when you want visible step-by-step thinking."),
+        ("minimax-m2.1",      "MiniMax M2-series. Multilingual coding + agentic workflow alternative."),
     ],
     "Design": [
         ("gemma4:26b", "Mira's brain. Strong visual/layout reasoning for wireframes and design systems."),
