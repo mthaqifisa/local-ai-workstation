@@ -666,10 +666,10 @@ write_dashboard() {
     local DD="$WORKDIR/dashboard"; mkdir -p "$DD"
     cat > "$DD/app.py" <<'DASHEOF'
 #!/usr/bin/env python3
-"""Local AI Workstation Dashboard — system status, services, and model catalog."""
-import os, json, datetime, socket
-import requests, psutil
-from flask import Flask, jsonify
+"""Local AI Workstation Dashboard — system status, services, model catalog, subagents & memory."""
+import os, json, datetime, subprocess, socket
+import requests, psutil, re
+from flask import Flask, jsonify, Response
 from dotenv import load_dotenv
 
 HOME = os.environ.get("AI_HOME", os.path.expanduser("~/.local-ai-workstation"))
@@ -697,7 +697,6 @@ def _lan_host():
 LAN_HOST = _lan_host()
 app = Flask(__name__)
 
-# (display name, health-probe URL, port, purpose)
 SERVICES = [
     ("Ollama",          f"http://127.0.0.1:{P_OLLAMA}/api/tags",            P_OLLAMA,    "Model engine"),
     ("LiteLLM Gateway", f"http://127.0.0.1:{P_GATEWAY}/health/liveliness",  P_GATEWAY,   "LLM proxy (point OpenClaw here)"),
@@ -708,9 +707,7 @@ SERVICES = [
     ("Portainer",       f"http://127.0.0.1:{P_PORTAINER}/",                 P_PORTAINER, "Docker dashboard"),
     ("Dashboard",       f"http://127.0.0.1:{P_DASHBOARD}/",                 P_DASHBOARD, "This page"),
 ]
-OPENCLAW_PATH = "/chat?session=main"
 
-# Every model the workstation can use, grouped by specialty, with a "when to use" note.
 MODEL_CATALOG = {
     "Orchestration": [
         ("qwen3.6:35b-a3b", "Fast MoE coordinator. Use for planning, routing, and tool orchestration."),
@@ -775,49 +772,161 @@ def get_installed_models():
         r = requests.get(f"http://127.0.0.1:{P_OLLAMA}/api/tags", timeout=4)
         for m in r.json().get("models", []):
             name = m.get("name", ""); size = m.get("size", 0)
-            out[name] = f"{size/1e9:.1f} GB" if size else "?"
+            out[name] = {"bytes": size, "display": f"{size/1e9:.1f} GB"} if size else "?"
     except: pass
     return out
 
 def get_model_groups():
     installed = get_installed_models()
-    used = set()
+    used_names = set()
     groups = []
     for specialty, entries in MODEL_CATALOG.items():
         items = []
         for tag, when in entries:
-            size = installed.get(tag)
-            if not size:
+            size_info = installed.get(tag)
+            is_installed = False
+            size_display = "—"
+            if isinstance(size_info, dict):
+                size_display = size_info["display"]
+                is_installed = True
+                used_names.add(tag)
+            else:
                 base = tag.split(":")[0]
-                for inst in installed:
-                    if inst.split(":")[0] == base:
-                        size = installed[inst]; used.add(inst); break
-            if tag in installed: used.add(tag)
-            items.append({"name": tag, "size": size or "—",
-                          "installed": bool(size), "when": when})
+                for inst_name, inst_val in installed.items():
+                    if isinstance(inst_val, dict) and inst_name.split(":")[0] == base:
+                        size_display = inst_val["display"]
+                        is_installed = True
+                        used_names.add(inst_name)
+                        break
+            items.append({"name": tag, "size": size_display, "installed": is_installed, "when": when})
         groups.append({"specialty": specialty, "items": items})
-    extras = [{"name": n, "size": s, "installed": True,
-               "when": "Installed locally (not in the curated catalog)."}
-              for n, s in installed.items() if n not in used]
-    if extras:
-        groups.append({"specialty": "Other / Installed", "items": extras})
+    extra_items = []
+    for n, s in installed.items():
+        if n not in used_names:
+            sz = s["display"] if isinstance(s, dict) else "—"
+            is_in = bool(isinstance(s, dict))
+            extra_items.append({"name": n, "size": sz, "installed": is_in, "when": "Installed locally (not in the curated catalog)."})
+    if extra_items:
+        groups.append({"specialty": "Other / Installed", "items": extra_items})
     return groups
+
+# ─── Subagent monitoring ─────────────────────────────────────────────
+
+def get_openclaw_sessions():
+    """Parse `openclaw sessions list` output into structured data."""
+    try:
+        result = subprocess.run(
+            ["openclaw", "sessions", "list"],
+            capture_output=True, text=True, timeout=10
+        )
+        combined = (result.stdout + result.stderr).strip()
+        if not combined or result.returncode != 0:
+            return []
+        lines = combined.strip().split("\n")
+        sessions = []
+        for line in lines:
+            line_stripped = line.strip()
+            if not line_stripped or (line_stripped.startswith('Kind') and 'Key' in line_stripped):
+                continue
+            if line_stripped.startswith(('Session', 'Loaded', 'Total')):
+                continue
+            m = re.match(r'^(\S+)\s+(\S+)\s+(\S+\s+\S*?)\s+(\S+)\s*(.*)', line_stripped)
+            if not m:
+                continue
+            kind = m.group(1); key = m.group(2)
+            age_raw = m.group(3).strip(); model = m.group(4); rest = m.group(5)
+            age = re.sub(r'\s+ago$', '', age_raw)
+            is_subagent = (kind == "spawn-child" or "subag" in key.lower())
+            status_tag = "idle"
+            if "think:on" in rest or "thinking" in rest.lower():
+                status_tag = "thinking"
+            elif "think:off" in rest:
+                status_tag = "idle"
+            else:
+                status_tag = "active"
+            tokens_m = re.search(r'(\d+k/\d+k)\s*\((\d+%)\)', rest)
+            tokens_str = tokens_m.group(1) if tokens_m else ""
+            sessions.append({"kind": kind, "key": key, "age": age, "model": model,
+                             "status": status_tag, "tokens": tokens_str, "is_subagent": is_subagent})
+        return sessions
+    except Exception:
+        return []
+
+# ─── Ollama memory tracking ──────────────────────────────────────────
+
+def get_ollama_memory():
+    try:
+        r = requests.get(f"http://127.0.0.1:{P_OLLAMA}/api/tags", timeout=4)
+        models = r.json().get("models", [])
+        total_used = 0; entries = []
+        for m in models:
+            name = m.get("name", "?"); size_bytes = m.get("size", 0) or 0
+            detail = m.get("details", {})
+            total_used += size_bytes
+            entries.append({"name": name, "size_gb": round(size_bytes / 1e9, 1),
+                            "quantization": detail.get("quant_level", "?") if detail else "?",
+                            "parent_model": detail.get("parent_model", "") if detail else ""})
+        vm = psutil.virtual_memory()
+        return {"models": entries, "total_used_gb": round(total_used / 1e9, 1),
+                "total_available_gb": round(vm.total / 1e9, 1),
+                "usage_pct": round(min(100, total_used / vm.total * 100), 1)}
+    except Exception:
+        return {"models": [], "total_used_gb": 0, "total_available_gb": 64, "usage_pct": 0}
+
+# ─── Auto-cleanup ────────────────────────────────────────────────────
+
+def cleanup_idle_sessions(max_age_minutes=30):
+    killed = []
+    try:
+        result = subprocess.run(["openclaw", "sessions", "list"], capture_output=True, text=True, timeout=10)
+        if result.returncode != 0: return killed
+        lines = result.stdout.strip().split("\n")
+        for line in lines[2:]:
+            parts = line.split()
+            if len(parts) < 3: continue
+            kind = parts[0]; key = parts[1]
+            if "spawn-child" not in kind and "subag" not in key: continue
+            age_str = parts[2]
+            try:
+                if "m ago" in age_str: mins = int(age_str.replace("m", "").replace("ago", "").strip())
+                elif "h ago" in age_str: mins = int(age_str.split()[0]) * 60
+                else: mins = 0
+            except (ValueError, IndexError): mins = 0
+            if mins > max_age_minutes:
+                try:
+                    kr = subprocess.run(["openclaw", "sessions", "kill", parts[1]], capture_output=True, text=True, timeout=5)
+                    if kr.returncode == 0: killed.append({"key": parts[1], "age": age_str})
+                except Exception: pass
+    except Exception: pass
+    return killed
+
+@app.route("/api/subagents")
+def api_subagents():
+    sessions = get_openclaw_sessions()
+    active = [s for s in sessions if s["is_subagent"] and s.get("status") != "idle"]
+    total_children = len([s for s in sessions if s["is_subagent"]])
+    return jsonify({"sessions": sessions, "active_children": len(active),
+                    "total_children": total_children, "parent_session": "main"})
+
+@app.route("/api/memory")
+def api_memory():
+    mem = get_ollama_memory(); vm = psutil.virtual_memory()
+    return jsonify({"ollama": mem, "system_ram": {"used_gb": round(vm.used/1e9,1),
+                "total_gb": round(vm.total/1e9,1), "available_gb": round(vm.available/1e9,1), "pct": round(vm.percent)}})
+
+@app.route("/api/cleanup", methods=["POST"])
+def api_cleanup():
+    killed = cleanup_idle_sessions(max_age_minutes=30)
+    return jsonify({"killed": killed, "count": len(killed)})
 
 @app.route("/api/status")
 def api_status():
     def _link(name, port):
-        path = OPENCLAW_PATH if name == "OpenClaw" else "/"
+        path = "/chat?session=main" if name == "OpenClaw" else "/"
         return f"http://{LAN_HOST}:{port}{path}"
-    svcs = [{"name": n, "url": _link(n, p), "port": int(p),
-             "purpose": pu, "ok": probe(h)}
-            for n, h, p, pu in SERVICES]
-    return jsonify({
-        "services":     svcs,
-        "hardware":     hardware_info(),
-        "model_groups": get_model_groups(),
-        "lan_host":     LAN_HOST,
-        "updated":      datetime.datetime.now().strftime("%H:%M:%S"),
-    })
+    svcs = [{"name": n, "url": _link(n, p), "port": int(p), "purpose": pu, "ok": probe(h)} for n, h, p, pu in SERVICES]
+    return jsonify({"services": svcs, "hardware": hardware_info(), "model_groups": get_model_groups(),
+                    "lan_host": LAN_HOST, "updated": datetime.datetime.now().strftime("%H:%M:%S")})
 
 PAGE = r"""<!doctype html>
 <html><head><meta charset="utf-8">
@@ -826,101 +935,75 @@ PAGE = r"""<!doctype html>
   :root{--bg:#0a0e14;--panel:#131820;--panel2:#1a212c;--border:#252e3a;--text:#e6edf3;--dim:#8b98a5;--accent:#3b82f6;--green:#22c55e;--yellow:#f59e0b;--red:#ef4444;--purple:#8b5cf6;}
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:14px;padding:20px}
-  .wrap{max-width:1200px;margin:0 auto}
-  header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+  .wrap{max-width:1300px;margin:0 auto}
+  header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px}
+  h1{font-size:20px}
+  .tabs{display:flex;gap:4px;margin-bottom:16px;border-bottom:2px solid var(--border)}
+  .tab-btn{padding:8px 20px;background:transparent;border:none;color:var(--dim);cursor:pointer;font-size:13px;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s}
+  .tab-btn:hover{color:var(--text)}.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
+  .tab-content{display:none}.tab-content.active{display:block}
   .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
   .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px}
   .card h2{font-size:15px;margin-bottom:12px}
   .hw{display:flex;gap:10px;justify-content:space-around;flex-wrap:wrap}
   .donut-wrap{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:84px}
-  .donut{position:relative;width:84px;height:84px}
-  .donut svg{transform:rotate(-90deg)}
-  .donut .ring-bg{stroke:var(--panel2)}
-  .donut .ring-fg{stroke-linecap:round;transition:stroke-dashoffset .6s ease}
+  .donut{position:relative;width:84px;height:84px}.donut svg{transform:rotate(-90deg)}
+  .donut .ring-bg{stroke:var(--panel2)}.donut .ring-fg{stroke-linecap:round;transition:stroke-dashoffset .6s ease}
   .donut .label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px}
-  .donut-cap{font-size:11px;color:var(--dim);text-align:center}
-  .donut-sub{font-size:10px;color:var(--dim);text-align:center}
-  .svc{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)}
-  .svc:last-child{border:none}
-  .led{width:10px;height:10px;border-radius:50%;display:inline-block}
-  .led.on{background:var(--green)}.led.off{background:var(--red)}
-  .mgroup{margin-bottom:14px}
-  .mgroup h3{font-size:12px;text-transform:uppercase;color:var(--accent);margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:4px}
+  .donut-cap{font-size:11px;color:var(--dim);text-align:center}.donut-sub{font-size:10px;color:var(--dim);text-align:center}
+  .svc{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)}.svc:last-child{border:none}
+  .led{width:10px;height:10px;border-radius:50%;display:inline-block}.led.on{background:var(--green)}.led.off{background:var(--red)}
+  .mgroup{margin-bottom:14px}.mgroup h3{font-size:12px;text-transform:uppercase;color:var(--accent);margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:4px}
   .mrow{display:flex;justify-content:space-between;align-items:flex-start;padding:6px 0;gap:10px}
-  .mname{font-family:monospace;font-size:12px}
-  .mwhen{color:var(--dim);font-size:11px;flex:1}
+  .mname{font-family:monospace;font-size:12px}.mwhen{color:var(--dim);font-size:11px;flex:1}
   .mtag{font-size:10px;padding:1px 7px;border-radius:8px;white-space:nowrap}
-  .mtag.in{background:rgba(34,197,94,.18);color:var(--green)}
-  .mtag.out{background:rgba(139,152,165,.12);color:var(--dim)}
-  .hostbar{font-size:12px;color:var(--dim)}
-  .hostbar code{color:var(--accent)}
+  .mtag.in{background:rgba(34,197,94,.18);color:var(--green)}.mtag.out{background:rgba(139,152,165,.12);color:var(--dim)}
+  .hostbar{font-size:12px;color:var(--dim)}.hostbar code{color:var(--accent)}
+  .agent-list{width:100%}.agent-row{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border);font-size:13px}
+  .agent-row:last-child{border:none}.agent-key{font-family:monospace;font-size:12px;color:var(--accent)}
+  .agent-model{color:var(--dim);font-size:11px;flex:1;text-align:center}.agent-age{color:var(--dim);font-size:11px;width:60px;text-align:right}
+  .agent-tag{font-size:10px;padding:2px 8px;border-radius:8px;font-weight:600}
+  .agent-tag.active{background:rgba(34,197,94,.2);color:var(--green)}.agent-tag.idle{background:rgba(139,152,165,.15);color:var(--dim)}
+  .agent-tag.parent{background:rgba(59,130,246,.2);color:var(--accent)}
+  .cleanup-btn{padding:8px 16px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;color:var(--yellow);cursor:pointer;font-size:12px;margin-top:8px}
+  .cleanup-btn:hover{background:rgba(245,158,11,.15)}
+  .mem-bar{height:12px;background:var(--panel2);border-radius:6px;overflow:hidden;margin:8px 0}
+  .mem-fill{height:100%;border-radius:6px;transition:width .6s ease}.mem-row{display:flex;justify-content:space-between;padding:4px 0;font-size:13px}
+  .mem-name{font-family:monospace;font-size:12px}.mem-quant{color:var(--dim);font-size:10px}
+  .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px}
+  .stat-box{background:var(--panel2);border-radius:8px;padding:12px;text-align:center}.stat-val{font-size:24px;font-weight:700}.stat-label{font-size:11px;color:var(--dim)}
 </style></head><body>
 <div class="wrap">
-  <header>
-    <h1>● Local AI Workstation</h1>
-    <div class="hostbar">Access from any device: <code id="hosttxt">…</code> · Auto-refresh 5s</div>
-  </header>
-  <div class="grid">
-    <div class="card"><h2>System Status</h2><div class="hw" id="hw"></div></div>
-    <div class="card"><h2>Workstation Services</h2><div id="svcs"></div></div>
+  <header><h1>● Local AI Workstation</h1><div class="hostbar">Access: <code id="hosttxt">…</code> · Refresh 5s</div></header>
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('dashboard')">Dashboard</button>
+    <button class="tab-btn" onclick="switchTab('subagents')">Subagents <span id="agent-badge"></span></button>
+    <button class="tab-btn" onclick="switchTab('memory')">Memory</button>
   </div>
-  <div class="card"><h2>AI Models on This Machine</h2><div id="models"></div></div>
+  <div id="tab-dashboard" class="tab-content active">
+    <div class="grid"><div class="card"><h2>System Status</h2><div class="hw" id="hw"></div></div>
+    <div class="card"><h2>Workstation Services</h2><div id="svcs"></div></div></div>
+    <div class="card"><h2>AI Models on This Machine</h2><div id="models"></div></div>
+  </div>
+  <div id="tab-subagents" class="tab-content">
+    <div class="card"><h2>Active Sessions</h2><div id="agent-list"><em style="color:var(--dim)">Loading...</em></div>
+    <button class="cleanup-btn" onclick="cleanupIdle()">⚠ Kill Idle Subagents (>30m)</button></div>
+  </div>
+  <div id="tab-memory" class="tab-content">
+    <div class="stats-grid" id="mem-stats"></div>
+    <div class="card"><h2>Ollama Model Memory</h2><div id="mem-table"><em style="color:var(--dim)">Loading...</em></div></div>
+  </div>
 </div>
 <script>
-function donut(pct, caption, sub){
-  pct = Math.max(0, Math.min(100, pct||0));
-  const r=34, c=2*Math.PI*r, off=c*(1-pct/100);
-  let col = 'var(--green)';
-  if(pct>=85) col='var(--red)'; else if(pct>=60) col='var(--yellow)';
-  return `<div class="donut-wrap">
-    <div class="donut">
-      <svg width="84" height="84">
-        <circle class="ring-bg" cx="42" cy="42" r="${r}" fill="none" stroke-width="8"/>
-        <circle class="ring-fg" cx="42" cy="42" r="${r}" fill="none" stroke-width="8"
-          stroke="${col}" stroke-dasharray="${c}" stroke-dashoffset="${off}"/>
-      </svg>
-      <div class="label">${pct}%</div>
-    </div>
-    <div class="donut-cap">${caption}</div>
-    <div class="donut-sub">${sub||''}</div>
-  </div>`;
-}
-async function load(){
-  try{
-    const r=await fetch("/api/status");const d=await r.json();
-    document.getElementById("hosttxt").textContent = `http://${d.lan_host}:8800`;
-    const hw=d.hardware; let hwHtml='';
-    hwHtml+=donut(hw.cpu.pct, 'CPU', '');
-    hwHtml+=donut(hw.ram.pct, 'RAM', hw.ram.detail);
-    hwHtml+=donut(hw.storage.pct, 'Storage', hw.storage.detail);
-    if(hw.battery){
-      const b=hw.battery;
-      hwHtml+=donut(b.percent, 'Battery', b.charging?'⚡ charging':'on battery');
-    }
-    document.getElementById("hw").innerHTML=hwHtml;
-    document.getElementById("svcs").innerHTML=d.services.map(s=>`
-      <div class="svc">
-        <span><span class="led ${s.ok?'on':'off'}"></span> <a href="${s.url}" target="_blank">${s.name}</a></span>
-        <span style="color:var(--dim)">${s.purpose} (:${s.port})</span>
-      </div>`).join("");
-    document.getElementById("models").innerHTML=d.model_groups.map(g=>`
-      <div class="mgroup">
-        <h3>${g.specialty}</h3>
-        ${g.items.map(m=>`
-          <div class="mrow">
-            <span class="mname">${m.name}</span>
-            <span class="mwhen">${m.when}</span>
-            <span class="mtag ${m.installed?'in':'out'}">${m.installed?('✓ '+m.size):'pull'}</span>
-          </div>`).join("")}
-      </div>`).join("");
-  }catch(e){console.error(e);}
-}
-load();setInterval(load,5000);
-</script></body></html>"""
+function donut(pct, caption, sub){pct=Math.max(0,Math.min(100,pct||0));const r=34,c=2*Math.PI*r,off=c*(1-pct/100);let col='var(--green)';if(pct>=85)col='var(--red)';else if(pct>=60)col='var(--yellow)';return '<div class="donut-wrap"><div class="donut"><svg width="84" height="84"><circle class="ring-bg" cx="42" cy="42" r="'+r+'" fill="none" stroke-width="8"/><circle class="ring-fg" cx="42" cy="42" r="'+r+'" fill="none" stroke-width="8" stroke="'+col+'" stroke-dasharray="'+c+'" stroke-dashoffset="'+off+'"/></svg><div class="label">'+pct+'%</div></div><div class="donut-cap">'+caption+'</div><div class="donut-sub">'+(sub||'')+'</div></div>';}
+function switchTab(name){document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));document.getElementById('tab-'+name).classList.add('active');event.target.classList.add('active');}
+async function cleanupIdle(){try{const r=await fetch('/api/cleanup',{method:'POST'});const d=await r.json();alert('Killed '+d.count+' idle session(s)');loadData();}catch(e){alert('Cleanup failed: '+e.message);}}
+async function loadData(){try{const r=await fetch("/api/status");const d=await r.json();document.getElementById("hosttxt").textContent='http://'+d.lan_host+':8800';const hw=d.hardware;let hwHtml='';hwHtml+=donut(hw.cpu.pct,'CPU','');hwHtml+=donut(hw.ram.pct,'RAM',hw.ram.detail);hwHtml+=donut(hw.storage.pct,'Storage',hw.storage.detail);if(hw.battery){const b=hw.battery;hwHtml+=donut(b.percent,'Battery',b.charging?'⚡ charging':'on battery');}document.getElementById("hw").innerHTML=hwHtml;document.getElementById("svcs").innerHTML=d.services.map(s=>'<div class="svc"><span><span class="led">'+(s.ok?'on':'off')+'"></span> <a href="'+s.url+'" target="_blank">'+s.name+'</a></span><span style="color:var(--dim)">'+s.purpose+' (:'+s.port+')</span></div>').join("");document.getElementById("models").innerHTML=d.model_groups.map(g=>'<div class="mgroup"><h3>'+g.specialty+'</h3>'+g.items.map(m=>'<div class="mrow"><span class="mname">'+m.name+'</span><span class="mwhen">'+m.when+'</span><span class="mtag '+(m.installed?'in':'out')+'">'+(m.installed?('✓ '+m.size):'pull')+'</span></div>').join('')+'</div>').join("");const sa=await fetch("/api/subagents").then(r=>r.json());let agentHtml='';if(sa.sessions.length===0){agentHtml='<em style="color:var(--dim)">No active sessions</em>';}else{agentHtml='<div class="agent-list">';for(const s of sa.sessions){const tagClass=s.is_subagent?'idle':(s.key.includes('teleg')||s.key.includes('main')?'parent':'active');const tagLabel=s.is_subagent?'child':'parent';agentHtml+='<div class="agent-row"><span class="agent-key">'+s.key+'</span><span class="agent-model">'+s.model+'</span><span class="agent-age">'+s.age+'</span><span class="agent-tag '+tagClass+'">'+tagLabel+'</span></div>';}agentHtml+='</div>';}<br/>document.getElementById("agent-list").innerHTML=agentHtml;const badge=sa.active_children>0?'<span style="font-size:10px;color:var(--green)">'+sa.active_children+' active</span>':'';document.getElementById("agent-badge").innerHTML=badge;const mem=await fetch("/api/memory").then(r=>r.json());let statsHtml='';statsHtml+=statBox(mem.ollama.total_used_gb+' GB','Ollama Used');statsHtml+=statBox(mem.system_ram.available_gb+' GB','RAM Available');statsHtml+=statBox(mem.ollama.usage_pct+'%','Model RAM %');document.getElementById("mem-stats").innerHTML=statsHtml;let memHtml='';const barPct=Math.min(100,mem.ollama.usage_pct);const barCol=barPct>80?'var(--red)':(barPct>60?'var(--yellow)':'var(--green)');memHtml+='<div class="mem-bar"><div class="mem-fill" style="width:'+barPct+'%;background:'+barCol+'"></div></div>';for(const m of mem.ollama.models){memHtml+='<div class="mem-row"><span class="mem-name">'+m.name+'</span><span class="mem-quant">'+m.quantization+'</span><span style="width:70px;text-align:right">'+m.size_gb+' GB</span></div>';}memHtml+='<div style="margin-top:8px;font-size:12px;color:var(--dim)">Total: '+mem.ollama.total_used_gb+' / '+mem.ollama.total_available_gb+' GB ('+barPct+'%)</div>';document.getElementById("mem-table").innerHTML=memHtml;}catch(e){console.error(e);}}
+function statBox(val,label){return '<div class="stat-box"><div class="stat-val">'+val+'</div><div class="stat-label">'+label+'</div></div>';}
+loadData();setInterval(loadData,5000);</script></body></html>"""
 
 @app.route("/")
 def index():
-    from flask import Response
     return Response(PAGE, mimetype="text/html")
 
 if __name__ == "__main__":
@@ -929,6 +1012,7 @@ if __name__ == "__main__":
 DASHEOF
     ok "Dashboard script written."
 }
+
 
 # =============================================================================
 #  PHASE 0.5 — CLEANUP OLD ARTIFACTS
