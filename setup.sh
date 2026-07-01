@@ -875,30 +875,76 @@ def get_ollama_memory():
 
 # ─── Auto-cleanup ────────────────────────────────────────────────────
 
+def find_session_trajectory(session_key):
+    base_dir = os.path.expanduser("~/.openclaw/agents/main/sessions/")
+    for fname in os.listdir(base_dir):
+        if not fname.endswith('.jsonl') or fname.endswith('.trajectory.jsonl'): continue
+        fpath = os.path.join(base_dir, fname)
+        try:
+            with open(fpath) as tf:
+                for line in tf:
+                    d = json.loads(line)
+                    if d.get('sessionKey') == session_key: return fpath
+        except Exception: pass
+    return None
+
+def is_session_ended(traj_path):
+    try:
+        with open(traj_path) as f:
+            for line in f:
+                d = json.loads(line)
+                if d.get('type') == 'session.ended': return True
+        return False
+    except Exception: return True
+
+def write_session_ended(traj_path, session_key):
+    import datetime
+    now = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+    record = {"traceSchema":"openclaw-trajectory","schemaVersion":1,"source":"runtime","type":"session.ended",
+              "ts":now,"status":"cleanup","sessionKey":session_key,
+              "data":{"status":"cleanup","aborted":True,"externalAbort":True}}
+    try:
+        with open(traj_path, 'a') as f: f.write(json.dumps(record) + '\n')
+        return True
+    except Exception:
+        print(f'Error writing session.ended to {traj_path}: {e}')
+        return False
+
 def cleanup_idle_sessions(max_age_minutes=30):
     killed = []
     try:
-        result = subprocess.run(["openclaw", "sessions", "list"], capture_output=True, text=True, timeout=10)
+        result = subprocess.run(["openclaw", "sessions", "list", "--json"], capture_output=True, text=True, timeout=10)
         if result.returncode != 0: return killed
-        lines = result.stdout.strip().split("\n")
-        for line in lines[2:]:
-            parts = line.split()
-            if len(parts) < 3: continue
-            kind = parts[0]; key = parts[1]
-            if "spawn-child" not in kind and "subag" not in key: continue
-            age_str = parts[2]
-            try:
-                if "m ago" in age_str: mins = int(age_str.replace("m", "").replace("ago", "").strip())
-                elif "h ago" in age_str: mins = int(age_str.split()[0]) * 60
-                else: mins = 0
-            except (ValueError, IndexError): mins = 0
-            if mins > max_age_minutes:
-                try:
-                    kr = subprocess.run(["openclaw", "sessions", "kill", parts[1]], capture_output=True, text=True, timeout=5)
-                    if kr.returncode == 0: killed.append({"key": parts[1], "age": age_str})
-                except Exception: pass
+        data = json.loads(result.stdout)
+        for s in data.get("sessions", []):
+            key = s.get("key", "")
+            kind = s.get("kind", "")
+            age_ms = s.get("ageMs", 0)
+            if kind != "spawn-child" and "subag" not in key.lower(): continue
+            if age_ms / 60000 <= max_age_minutes: continue
+            traj = find_session_trajectory(key)
+            if traj and is_session_ended(traj): continue
+            target = traj or os.path.expanduser(f'~/.openclaw/agents/main/sessions/{key.split(":")[-1]}.jsonl')
+            if write_session_ended(target, key):
+                killed.append({"key": key, "age": s.get("age", "?")})
     except Exception: pass
     return killed
+
+@app.route("/api/session/<key>/kill", methods=["POST"])
+def api_kill_session(key):
+    try:
+        traj = find_session_trajectory(key)
+        if traj and is_session_ended(traj): return jsonify({"ok":True, "message":f"Session {key} already ended"})
+        if not traj:
+            base_dir = os.path.expanduser("~/.openclaw/agents/main/sessions/")
+            uuid_part = key.split(':')[-1] if ':' in key else key
+            for fname in os.listdir(base_dir):
+                if uuid_part in fname and (fname.endswith('.jsonl') or fname.endswith('.trajectory.jsonl')):
+                    traj = os.path.join(base_dir, fname)
+                    break
+        if not traj or not write_session_ended(traj, key): return jsonify({"ok":False, "error":f"Could not find session trajectory for {key}"}), 400
+        return jsonify({"ok":True, "message":f"Session {key} killed successfully"})
+    except Exception as e: return jsonify({"ok":False, "error":str(e)}), 500
 
 @app.route("/api/subagents")
 def api_subagents():
@@ -967,6 +1013,8 @@ PAGE = r"""<!doctype html>
   .agent-tag.parent{background:rgba(59,130,246,.2);color:var(--accent)}
   .cleanup-btn{padding:8px 16px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;color:var(--yellow);cursor:pointer;font-size:12px;margin-top:8px}
   .cleanup-btn:hover{background:rgba(245,158,11,.15)}
+  .delete-btn{background:none;border:1px solid var(--border);color:var(--dim);cursor:pointer;padding:3px 7px;border-radius:5px;font-size:12px;margin-left:6px}
+  .delete-btn:hover{background:rgba(239,68,68,.15);color:var(--red);border-color:var(--red)}
   .mem-bar{height:12px;background:var(--panel2);border-radius:6px;overflow:hidden;margin:8px 0}
   .mem-fill{height:100%;border-radius:6px;transition:width .6s ease}.mem-row{display:flex;justify-content:space-between;padding:4px 0;font-size:13px}
   .mem-name{font-family:monospace;font-size:12px}.mem-quant{color:var(--dim);font-size:10px}
@@ -998,7 +1046,8 @@ PAGE = r"""<!doctype html>
 function donut(pct, caption, sub){pct=Math.max(0,Math.min(100,pct||0));const r=34,c=2*Math.PI*r,off=c*(1-pct/100);let col='var(--green)';if(pct>=85)col='var(--red)';else if(pct>=60)col='var(--yellow)';return '<div class="donut-wrap"><div class="donut"><svg width="84" height="84"><circle class="ring-bg" cx="42" cy="42" r="'+r+'" fill="none" stroke-width="8"/><circle class="ring-fg" cx="42" cy="42" r="'+r+'" fill="none" stroke-width="8" stroke="'+col+'" stroke-dasharray="'+c+'" stroke-dashoffset="'+off+'"/></svg><div class="label">'+pct+'%</div></div><div class="donut-cap">'+caption+'</div><div class="donut-sub">'+(sub||'')+'</div></div>';}
 function switchTab(name){document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));document.getElementById('tab-'+name).classList.add('active');event.target.classList.add('active');}
 async function cleanupIdle(){try{const r=await fetch('/api/cleanup',{method:'POST'});const d=await r.json();alert('Killed '+d.count+' idle session(s)');loadData();}catch(e){alert('Cleanup failed: '+e.message);}}
-async function loadData(){try{const r=await fetch("/api/status");const d=await r.json();document.getElementById("hosttxt").textContent='http://'+d.lan_host+':8800';const hw=d.hardware;let hwHtml='';hwHtml+=donut(hw.cpu.pct,'CPU','');hwHtml+=donut(hw.ram.pct,'RAM',hw.ram.detail);hwHtml+=donut(hw.storage.pct,'Storage',hw.storage.detail);if(hw.battery){const b=hw.battery;hwHtml+=donut(b.percent,'Battery',b.charging?'⚡ charging':'on battery');}document.getElementById("hw").innerHTML=hwHtml;document.getElementById("svcs").innerHTML=d.services.map(s=>'<div class="svc"><span><span class="led">'+(s.ok?'on':'off')+'"></span> <a href="'+s.url+'" target="_blank">'+s.name+'</a></span><span style="color:var(--dim)">'+s.purpose+' (:'+s.port+')</span></div>').join("");document.getElementById("models").innerHTML=d.model_groups.map(g=>'<div class="mgroup"><h3>'+g.specialty+'</h3>'+g.items.map(m=>'<div class="mrow"><span class="mname">'+m.name+'</span><span class="mwhen">'+m.when+'</span><span class="mtag '+(m.installed?'in':'out')+'">'+(m.installed?('✓ '+m.size):'pull')+'</span></div>').join('')+'</div>').join("");const sa=await fetch("/api/subagents").then(r=>r.json());let agentHtml='';if(sa.sessions.length===0){agentHtml='<em style="color:var(--dim)">No active sessions</em>';}else{agentHtml='<div class="agent-list">';for(const s of sa.sessions){const tagClass=s.is_subagent?'idle':(s.key.includes('teleg')||s.key.includes('main')?'parent':'active');const tagLabel=s.is_subagent?'child':'parent';agentHtml+='<div class="agent-row"><span class="agent-key">'+s.key+'</span><span class="agent-model">'+s.model+'</span><span class="agent-age">'+s.age+'</span><span class="agent-tag '+tagClass+'">'+tagLabel+'</span></div>';}agentHtml+='</div>';}<br/>document.getElementById("agent-list").innerHTML=agentHtml;const badge=sa.active_children>0?'<span style="font-size:10px;color:var(--green)">'+sa.active_children+' active</span>':'';document.getElementById("agent-badge").innerHTML=badge;const mem=await fetch("/api/memory").then(r=>r.json());let statsHtml='';statsHtml+=statBox(mem.ollama.total_used_gb+' GB','Ollama Used');statsHtml+=statBox(mem.system_ram.available_gb+' GB','RAM Available');statsHtml+=statBox(mem.ollama.usage_pct+'%','Model RAM %');document.getElementById("mem-stats").innerHTML=statsHtml;let memHtml='';const barPct=Math.min(100,mem.ollama.usage_pct);const barCol=barPct>80?'var(--red)':(barPct>60?'var(--yellow)':'var(--green)');memHtml+='<div class="mem-bar"><div class="mem-fill" style="width:'+barPct+'%;background:'+barCol+'"></div></div>';for(const m of mem.ollama.models){memHtml+='<div class="mem-row"><span class="mem-name">'+m.name+'</span><span class="mem-quant">'+m.quantization+'</span><span style="width:70px;text-align:right">'+m.size_gb+' GB</span></div>';}memHtml+='<div style="margin-top:8px;font-size:12px;color:var(--dim)">Total: '+mem.ollama.total_used_gb+' / '+mem.ollama.total_available_gb+' GB ('+barPct+'%)</div>';document.getElementById("mem-table").innerHTML=memHtml;}catch(e){console.error(e);}}
+async function killSession(key){if(!confirm('Are you sure? This will terminate the session.'))return;try{const r=await fetch('/api/session/'+encodeURIComponent(key)+'/kill',{method:'POST'});const d=await r.json();if(d.ok){alert('Session killed');loadData();}else alert('Failed: '+(d.error||'Unknown'));}catch(e){alert('Kill failed: '+e.message);}}
+async function loadData(){try{const r=await fetch("/api/status");const d=await r.json();document.getElementById("hosttxt").textContent='http://'+d.lan_host+':8800';const hw=d.hardware;let hwHtml='';hwHtml+=donut(hw.cpu.pct,'CPU','');hwHtml+=donut(hw.ram.pct,'RAM',hw.ram.detail);hwHtml+=donut(hw.storage.pct,'Storage',hw.storage.detail);if(hw.battery){const b=hw.battery;hwHtml+=donut(b.percent,'Battery',b.charging?'⚡ charging':'on battery');}document.getElementById("hw").innerHTML=hwHtml;document.getElementById("svcs").innerHTML=d.services.map(s=>'<div class="svc"><span><span class="led">'+(s.ok?'on':'off')+'"></span> <a href="'+s.url+'" target="_blank">'+s.name+'</a></span><span style="color:var(--dim)">'+s.purpose+' (:'+s.port+')</span></div>').join("");document.getElementById("models").innerHTML=d.model_groups.map(g=>'<div class="mgroup"><h3>'+g.specialty+'</h3>'+g.items.map(m=>'<div class="mrow"><span class="mname">'+m.name+'</span><span class="mwhen">'+m.when+'</span><span class="mtag '+(m.installed?'in':'out')+'">'+(m.installed?('✓ '+m.size):'pull')+'</span></div>').join('')+'</div>').join("");const sa=await fetch("/api/subagents").then(r=>r.json());let agentHtml='';if(sa.sessions.length===0){agentHtml='<em style="color:var(--dim)">No active sessions</em>';}else{agentHtml='<div class="agent-list">';for(const s of sa.sessions){const tagClass=s.is_subagent?'idle':(s.key.includes('teleg')||s.key.includes('main')?'parent':'active');const tagLabel=s.is_subagent?'child':'parent';agentHtml+='<div class="agent-row"><span class="agent-key">'+s.key+'</span><span class="agent-model">'+s.model+'</span><span class="agent-age">'+s.age+'</span><span class="agent-tag '+tagClass+'">'+tagLabel+'</span><button class="delete-btn" data-key="'+s.key+'" onclick="event.stopPropagation();killSession('+s.key+')" title="Kill this session">\ud83d\uddd1\ufe0f</button></div>';}agentHtml+='</div>';}<br/>document.getElementById("agent-list").innerHTML=agentHtml;const badge=sa.active_children>0?'<span style="font-size:10px;color:var(--green)">'+sa.active_children+' active</span>':'';document.getElementById("agent-badge").innerHTML=badge;const mem=await fetch("/api/memory").then(r=>r.json());let statsHtml='';statsHtml+=statBox(mem.ollama.total_used_gb+' GB','Ollama Used');statsHtml+=statBox(mem.system_ram.available_gb+' GB','RAM Available');statsHtml+=statBox(mem.ollama.usage_pct+'%','Model RAM %');document.getElementById("mem-stats").innerHTML=statsHtml;let memHtml='';const barPct=Math.min(100,mem.ollama.usage_pct);const barCol=barPct>80?'var(--red)':(barPct>60?'var(--yellow)':'var(--green)');memHtml+='<div class="mem-bar"><div class="mem-fill" style="width:'+barPct+'%;background:'+barCol+'"></div></div>';for(const m of mem.ollama.models){memHtml+='<div class="mem-row"><span class="mem-name">'+m.name+'</span><span class="mem-quant">'+m.quantization+'</span><span style="width:70px;text-align:right">'+m.size_gb+' GB</span></div>';}memHtml+='<div style="margin-top:8px;font-size:12px;color:var(--dim)">Total: '+mem.ollama.total_used_gb+' / '+mem.ollama.total_available_gb+' GB ('+barPct+'%)</div>';document.getElementById("mem-table").innerHTML=memHtml;}catch(e){console.error(e);}}
 function statBox(val,label){return '<div class="stat-box"><div class="stat-val">'+val+'</div><div class="stat-label">'+label+'</div></div>';}
 loadData();setInterval(loadData,5000);</script></body></html>"""
 
