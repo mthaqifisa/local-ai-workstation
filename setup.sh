@@ -667,8 +667,8 @@ write_dashboard() {
     cat > "$DD/app.py" <<'DASHEOF'
 #!/usr/bin/env python3
 """Local AI Workstation Dashboard — system status, services, model catalog, subagents & memory."""
-import os, json, datetime, subprocess, socket
-import requests, psutil, re
+import os, json, datetime, subprocess, socket, shutil
+import requests, psutil
 from flask import Flask, jsonify, Response
 from dotenv import load_dotenv
 
@@ -686,6 +686,21 @@ P_PORTAINER="9001"; P_OPENCLAW="18789"
 def _lan_host():
     h = os.environ.get("LAN_HOST", "").strip()
     if h: return h
+    # Prefer the Wi-Fi interface (en0) so LAN links point to your router-issued IP.
+    try:
+        import subprocess as sp
+        r = sp.run(["ipconfig", "getifaddr", "en0"], capture_output=True, text=True, timeout=5)
+        ip = r.stdout.strip()
+        if ip and ip != "0.0.0.0": return ip
+    except Exception: pass
+    # Fallback: try en1 (USB/Thunderbolt Ethernet on some Macs).
+    try:
+        import subprocess as sp
+        r = sp.run(["ipconfig", "getifaddr", "en1"], capture_output=True, text=True, timeout=5)
+        ip = r.stdout.strip()
+        if ip and ip != "0.0.0.0": return ip
+    except Exception: pass
+    # Last resort: old UDP probe — may grab a Colima/NAT interface, but better than nothing.
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
@@ -791,6 +806,7 @@ def get_model_groups():
                 is_installed = True
                 used_names.add(tag)
             else:
+                # Try partial match (base name)
                 base = tag.split(":")[0]
                 for inst_name, inst_val in installed.items():
                     if isinstance(inst_val, dict) and inst_name.split(":")[0] == base:
@@ -800,6 +816,7 @@ def get_model_groups():
                         break
             items.append({"name": tag, "size": size_display, "installed": is_installed, "when": when})
         groups.append({"specialty": specialty, "items": items})
+    # Collect unlisted installed models
     extra_items = []
     for n, s in installed.items():
         if n not in used_names:
@@ -813,41 +830,52 @@ def get_model_groups():
 # ─── Subagent monitoring ─────────────────────────────────────────────
 
 def get_openclaw_sessions():
-    """Parse `openclaw sessions list` output into structured data."""
+    """Parse `openclaw sessions list --json` output into structured data."""
     try:
+        import json as _json
         result = subprocess.run(
-            ["openclaw", "sessions", "list"],
+            ["openclaw", "sessions", "list", "--json"],
             capture_output=True, text=True, timeout=10
         )
-        combined = (result.stdout + result.stderr).strip()
-        if not combined or result.returncode != 0:
+        if result.returncode != 0 or not result.stdout.strip():
             return []
-        lines = combined.strip().split("\n")
+        data = _json.loads(result.stdout)
+        raw_sessions = data.get("sessions", [])
         sessions = []
-        for line in lines:
-            line_stripped = line.strip()
-            if not line_stripped or (line_stripped.startswith('Kind') and 'Key' in line_stripped):
-                continue
-            if line_stripped.startswith(('Session', 'Loaded', 'Total')):
-                continue
-            m = re.match(r'^(\S+)\s+(\S+)\s+(\S+\s+\S*?)\s+(\S+)\s*(.*)', line_stripped)
-            if not m:
-                continue
-            kind = m.group(1); key = m.group(2)
-            age_raw = m.group(3).strip(); model = m.group(4); rest = m.group(5)
-            age = re.sub(r'\s+ago$', '', age_raw)
+        for s in raw_sessions:
+            key = s.get("key", "")
+            kind = s.get("kind", "")
+            thinking_level = s.get("thinkingLevel", "")
+            age_ms = s.get("ageMs", 0)
+            input_tokens = s.get("inputTokens", 0) or 0
+            output_tokens = s.get("outputTokens", 0) or 0
             is_subagent = (kind == "spawn-child" or "subag" in key.lower())
-            status_tag = "idle"
-            if "think:on" in rest or "thinking" in rest.lower():
+            # Active detection using reliable JSON fields
+            if thinking_level == "on" or thinking_level == "auto":
                 status_tag = "thinking"
-            elif "think:off" in rest:
-                status_tag = "idle"
-            else:
+            elif age_ms < 5 * 60 * 1000 and (input_tokens > 0 or output_tokens > 0):
+                # Recently updated with tokens -> active
                 status_tag = "active"
-            tokens_m = re.search(r'(\d+k/\d+k)\s*\((\d+%)\)', rest)
-            tokens_str = tokens_m.group(1) if tokens_m else ""
-            sessions.append({"kind": kind, "key": key, "age": age, "model": model,
-                             "status": status_tag, "tokens": tokens_str, "is_subagent": is_subagent})
+            else:
+                status_tag = "idle"
+            # Age display in ms-based format
+            if age_ms < 60 * 1000:
+                age = f"{max(1, round(age_ms / 1000))}s ago"
+            elif age_ms < 3600 * 1000:
+                age = f"{max(1, round(age_ms / 60000))}m ago"
+            elif age_ms < 86400 * 1000:
+                age = f"{max(1, round(age_ms / 3600000))}h ago"
+            else:
+                age = f"{max(1, round(age_ms / 86400000))}d ago"
+            sessions.append({
+                "kind": kind,
+                "key": key,
+                "age": age,
+                "model": s.get("model", "unknown"),
+                "status": status_tag,
+                "is_subagent": is_subagent,
+                "sessionId": s.get("sessionId"),
+            })
         return sessions
     except Exception:
         return []
@@ -855,110 +883,314 @@ def get_openclaw_sessions():
 # ─── Ollama memory tracking ──────────────────────────────────────────
 
 def get_ollama_memory():
+    """Get per-model memory info. Uses /api/running for loaded models, falls back to /api/tags for all installed."""
     try:
-        r = requests.get(f"http://127.0.0.1:{P_OLLAMA}/api/tags", timeout=4)
-        models = r.json().get("models", [])
-        total_used = 0; entries = []
-        for m in models:
-            name = m.get("name", "?"); size_bytes = m.get("size", 0) or 0
-            detail = m.get("details", {})
-            total_used += size_bytes
-            entries.append({"name": name, "size_gb": round(size_bytes / 1e9, 1),
-                            "quantization": detail.get("quant_level", "?") if detail else "?",
-                            "parent_model": detail.get("parent_model", "") if detail else ""})
         vm = psutil.virtual_memory()
-        return {"models": entries, "total_used_gb": round(total_used / 1e9, 1),
-                "total_available_gb": round(vm.total / 1e9, 1),
-                "usage_pct": round(min(100, total_used / vm.total * 100), 1)}
+        total_ram_bytes = vm.total
+
+        # Try running models first (only shows models actively in VRAM)
+        running_entries = []
+        try:
+            r = requests.get(f"http://127.0.0.1:{P_OLLAMA}/api/running", timeout=4)
+            running_models = r.json().get("models", [])
+            # Also get model metadata from /api/tags
+            tags_r = requests.get(f"http://127.0.0.1:{P_OLLAMA}/api/tags", timeout=4)
+            all_models = {m["name"]: m for m in tags_r.json().get("models", [])}
+            for rm in running_models:
+                name = rm.get("model", "") or rm.get("name", "?")
+                context_tokens = rm.get("context_tokens", 0) or 0
+                predict_tokens = rm.get("predict_tokens", 0) or 0
+                detail = all_models.get(name, {}).get("details", {})
+                quantization = detail.get("quantization_level", "?") if detail else "?"
+                base_bytes = all_models.get(name, {}).get("size", 0) or 0
+                context_bytes = max(context_tokens * 4, predict_tokens * 4)
+                ram_used = base_bytes + context_bytes
+                pct = round(min(100, ram_used / total_ram_bytes * 100), 1)
+                running_entries.append({
+                    "name": name,
+                    "size_gb": round(base_bytes / 1e9, 1) if base_bytes else "?",
+                    "ram_used_gb": round(ram_used / 1e9, 1),
+                    "quantization": quantization,
+                    "context_tokens": context_tokens,
+                    "predict_tokens": predict_tokens,
+                    "usage_pct": pct,
+                    "loaded": True,
+                })
+        except Exception:
+            pass  # /api/running may not exist in older/newer Ollama versions
+
+        # Always also get installed models from /api/tags for display
+        tags_r = requests.get(f"http://127.0.0.1:{P_OLLAMA}/api/tags", timeout=4)
+        all_tags = {m["name"]: m for m in tags_r.json().get("models", [])}
+
+        installed_entries = []
+        loaded_names = {e["name"] for e in running_entries}
+        for name, m in all_tags.items():
+            if name in loaded_names:
+                continue  # Already added from /api/running
+            detail = m.get("details", {})
+            quantization = detail.get("quantization_level", "?") if detail else "?"
+            size_bytes = m.get("size", 0) or 0
+            # Estimate RAM as the model weight size (Ollama loads full model into RAM/VRAM)
+            pct = round(min(100, size_bytes / total_ram_bytes * 100), 1) if size_bytes else 0
+            installed_entries.append({
+                "name": name,
+                "size_gb": round(size_bytes / 1e9, 1) if size_bytes else "?",
+                "ram_used_gb": round(size_bytes / 1e9, 1) if size_bytes else "?",
+                "quantization": quantization,
+                "context_tokens": 0,
+                "predict_tokens": 0,
+                "usage_pct": pct,
+                "loaded": False,
+            })
+
+        all_entries = running_entries + installed_entries
+        total_used = sum(e["ram_used_gb"] * 1e9 for e in all_entries)
+        return {
+            "models": all_entries,
+            "total_used_gb": round(total_used / 1e9, 1),
+            "total_available_gb": round(vm.total / 1e9, 1),
+            "usage_pct": round(min(100, total_used / vm.total * 100), 1),
+        }
     except Exception:
         return {"models": [], "total_used_gb": 0, "total_available_gb": 64, "usage_pct": 0}
 
 # ─── Auto-cleanup ────────────────────────────────────────────────────
 
-def find_session_trajectory(session_key):
+def get_subagent_prompt(session_id):
+    """Extract the spawn prompt (first user message text) from a session's trajectory file."""
     base_dir = os.path.expanduser("~/.openclaw/agents/main/sessions/")
-    for fname in os.listdir(base_dir):
-        if not fname.endswith('.jsonl') or fname.endswith('.trajectory.jsonl'): continue
-        fpath = os.path.join(base_dir, fname)
-        try:
-            with open(fpath) as tf:
-                for line in tf:
-                    d = json.loads(line)
-                    if d.get('sessionKey') == session_key: return fpath
-        except Exception: pass
-    return None
-
-def is_session_ended(traj_path):
+    traj_path = os.path.join(base_dir, f"{session_id}.jsonl")
     try:
+        if not os.path.isfile(traj_path):
+            return None
         with open(traj_path) as f:
             for line in f:
                 d = json.loads(line)
-                if d.get('type') == 'session.ended': return True
-        return False
-    except Exception: return True
-
-def write_session_ended(traj_path, session_key):
-    import datetime
-    now = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
-    record = {"traceSchema":"openclaw-trajectory","schemaVersion":1,"source":"runtime","type":"session.ended",
-              "ts":now,"status":"cleanup","sessionKey":session_key,
-              "data":{"status":"cleanup","aborted":True,"externalAbort":True}}
-    try:
-        with open(traj_path, 'a') as f: f.write(json.dumps(record) + '\n')
-        return True
+                if d.get('type') == 'message':
+                    msg = d.get('message', {})
+                    if isinstance(msg, dict) and msg.get('role') == 'user':
+                        content_list = msg.get('content', [])
+                        if isinstance(content_list, list):
+                            texts = []
+                            for c in content_list:
+                                if isinstance(c, dict) and c.get('type') == 'text':
+                                    texts.append(c.get('text', ''))
+                            full_text = '\n'.join(texts)
+                            if len(full_text.strip()) > 20:
+                                # Truncate to ~400 chars for display
+                                preview = full_text[:400]
+                                # Clean up subagent wrapper text
+                                lines = preview.split('\n')
+                                cleaned_lines = []
+                                skip_until_task = False
+                                started_task = False
+                                for line in lines:
+                                    if '[Subagent Task]' in line:
+                                        skip_until_task = False
+                                        started_task = True
+                                    if skip_until_task:
+                                        continue
+                                    if not started_task:
+                                        continue
+                                    cleaned_lines.append(line)
+                                result = '\n'.join(cleaned_lines).strip()
+                                # If we still have the wrapper text, take from [Subagent Task]
+                                return result if len(result) > 5 else full_text[:400]
+                if d.get('type') == 'session' and d.get('version', 3) >= 3:
+                    # version 3+ uses different schema
+                    pass
+        return None
     except Exception:
-        print(f'Error writing session.ended to {traj_path}: {e}')
-        return False
+        return None
 
 def cleanup_idle_sessions(max_age_minutes=30):
+    """Kill spawned child sessions older than max_age_minutes."""
     killed = []
     try:
-        result = subprocess.run(["openclaw", "sessions", "list", "--json"], capture_output=True, text=True, timeout=10)
-        if result.returncode != 0: return killed
-        data = json.loads(result.stdout)
-        for s in data.get("sessions", []):
-            key = s.get("key", "")
-            kind = s.get("kind", "")
-            age_ms = s.get("ageMs", 0)
-            if kind != "spawn-child" and "subag" not in key.lower(): continue
-            if age_ms / 60000 <= max_age_minutes: continue
-            traj = find_session_trajectory(key)
-            if traj and is_session_ended(traj): continue
-            target = traj or os.path.expanduser(f'~/.openclaw/agents/main/sessions/{key.split(":")[-1]}.jsonl')
-            if write_session_ended(target, key):
-                killed.append({"key": key, "age": s.get("age", "?")})
-    except Exception: pass
+        result = subprocess.run(
+            ["openclaw", "sessions", "list"],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode != 0:
+            return killed
+        lines = result.stdout.strip().split("\n")
+        for line in lines[2:]:
+            parts = line.split()
+            if len(parts) < 3:
+                continue
+            kind = parts[0]
+            key = parts[1]
+            if "spawn-child" not in kind and "subag" not in key:
+                continue
+            age_str = parts[2]
+            # Parse age: "5m ago", "1h ago", etc.
+            try:
+                if "min" in age_str or "m ago" in age_str:
+                    mins = int(age_str.replace("m", "").replace("ago", "").strip())
+                elif "h ago" in age_str:
+                    mins = int(age_str.split()[0]) * 60
+                else:
+                    mins = 0
+            except (ValueError, IndexError):
+                mins = 0
+            if mins > max_age_minutes:
+                # Truncate key for API call
+                session_key = parts[1]
+                try:
+                    kill_result = subprocess.run(
+                        ["openclaw", "sessions", "kill", session_key],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    if kill_result.returncode == 0:
+                        killed.append({"key": session_key, "age": age_str})
+                except Exception:
+                    pass
+    except Exception:
+        pass
     return killed
 
 @app.route("/api/session/<key>/kill", methods=["POST"])
 def api_kill_session(key):
+    """Kill a specific OpenClaw session by key."""
     try:
-        traj = find_session_trajectory(key)
-        if traj and is_session_ended(traj): return jsonify({"ok":True, "message":f"Session {key} already ended"})
-        if not traj:
-            base_dir = os.path.expanduser("~/.openclaw/agents/main/sessions/")
-            uuid_part = key.split(':')[-1] if ':' in key else key
-            for fname in os.listdir(base_dir):
-                if uuid_part in fname and (fname.endswith('.jsonl') or fname.endswith('.trajectory.jsonl')):
-                    traj = os.path.join(base_dir, fname)
-                    break
-        if not traj or not write_session_ended(traj, key): return jsonify({"ok":False, "error":f"Could not find session trajectory for {key}"}), 400
-        return jsonify({"ok":True, "message":f"Session {key} killed successfully"})
-    except Exception as e: return jsonify({"ok":False, "error":str(e)}), 500
+        # Find matching session from the session list
+        result = subprocess.run(
+            ["openclaw", "sessions", "list", "--json"],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode != 0:
+            return jsonify({"ok": False, "error": "Failed to list sessions"}), 500
+        sessions_data = json.loads(result.stdout)
+        target = None
+        for s in sessions_data.get("sessions", []):
+            if s.get("key") == key:
+                target = s
+                break
+        if not target:
+            return jsonify({"ok": False, "error": f"Session '{key}' not found"}), 404
+
+        sid = target.get("sessionId")
+        if not sid:
+            return jsonify({"ok": False, "error": "No sessionId for this session"}), 400
+
+        # Check if already ended by looking at trajectory file
+        traj_path = os.path.expanduser(f"~/.openclaw/agents/main/sessions/{sid}.trajectory.jsonl")
+        already_ended = False
+        if os.path.isfile(traj_path):
+            with open(traj_path) as f:
+                for line in f:
+                    d = json.loads(line)
+                    if d.get("type") == "session.ended":
+                        already_ended = True
+                        break
+        if already_ended:
+            return jsonify({"ok": False, "error": f"Session '{key}' has already ended"}), 400
+
+        # Write session.ended event to the .jsonl trajectory file
+        jsonl_path = os.path.expanduser(f"~/.openclaw/agents/main/sessions/{sid}.jsonl")
+        if not os.path.isfile(jsonl_path):
+            return jsonify({"ok": False, "error": "Session trajectory file not found"}), 404
+
+        ended_event = {
+            "type": "session.ended",
+            "id": f"killed-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}",
+            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "reason": "killed"
+        }
+        with open(jsonl_path, "a") as f:
+            f.write(json.dumps(ended_event) + "\n")
+
+        return jsonify({"ok": True, "message": f"Session {key} killed successfully"})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+@app.route("/api/session/<key>/history", methods=["GET"])
+def api_session_history(key):
+    """Get recent messages from a session's trajectory file."""
+    try:
+        import glob
+        base_dir = os.path.expanduser("~/.openclaw/agents/main/sessions/")
+        # Find the trajectory files for this session
+        pattern1 = os.path.join(base_dir, key.split(':')[-1] if ':' in key else key + ".*.jsonl")
+        
+        # Try to find by session key parts
+        traj_files = []
+        if os.path.isdir(base_dir):
+            for f in os.listdir(base_dir):
+                if f.endswith(".jsonl") or f.endswith(".trajectory.jsonl"):
+                    traj_files.append(os.path.join(base_dir, f))
+        
+        messages = []
+        for tf in traj_files:
+            with open(tf) as f:
+                for line in f:
+                    try:
+                        d = json.loads(line)
+                        # Look for content in various field locations
+                        text = None
+                        if "content" in d and isinstance(d["content"], str) and len(d["content"]) > 5:
+                            text = d["content"]
+                        elif "text" in d and isinstance(d["text"], str) and len(d["text"]) > 5:
+                            text = d["text"]
+                        if text and d.get("type","").startswith(("session.", "context", "prompt")):
+                            messages.append({
+                                "type": d.get("type", ""),
+                                "role": d.get("role", ""),
+                                "content": text[:500],
+                                "ts": d.get("ts", ""),
+                            })
+                    except json.JSONDecodeError:
+                        continue
+            if messages:
+                break
+        
+        return jsonify({
+            "key": key,
+            "messages": messages[:20],  # Last 20 entries
+            "total": len(messages),
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/api/subagents")
 def api_subagents():
     sessions = get_openclaw_sessions()
+    # Compute active (currently talking) vs idle
     active = [s for s in sessions if s["is_subagent"] and s.get("status") != "idle"]
+    idle = [s for s in sessions if s["is_subagent"]]
     total_children = len([s for s in sessions if s["is_subagent"]])
-    return jsonify({"sessions": sessions, "active_children": len(active),
-                    "total_children": total_children, "parent_session": "main"})
+    # Get prompts for all subagents
+    prompts = {}
+    for s in sessions:
+        if s["is_subagent"] and s.get("sessionId"):
+            try:
+                prompt = get_subagent_prompt(s["sessionId"])
+                if prompt:
+                    prompts[s["key"]] = prompt
+            except Exception as e:
+                print(f"Error getting prompt for {s['sessionId']}: {e}")
+    return jsonify({
+        "sessions": sessions,
+        "prompts": prompts,
+        "active_children": len(active),
+        "total_children": total_children,
+        "parent_session": "main",
+    })
 
 @app.route("/api/memory")
 def api_memory():
-    mem = get_ollama_memory(); vm = psutil.virtual_memory()
-    return jsonify({"ollama": mem, "system_ram": {"used_gb": round(vm.used/1e9,1),
-                "total_gb": round(vm.total/1e9,1), "available_gb": round(vm.available/1e9,1), "pct": round(vm.percent)}})
+    mem = get_ollama_memory()
+    vm = psutil.virtual_memory()
+    return jsonify({
+        "ollama": mem,
+        "system_ram": {
+            "used_gb": round(vm.used / 1e9, 1),
+            "total_gb": round(vm.total / 1e9, 1),
+            "available_gb": round(vm.available / 1e9, 1),
+            "pct": round(vm.percent),
+        },
+    })
 
 @app.route("/api/cleanup", methods=["POST"])
 def api_cleanup():
@@ -970,9 +1202,16 @@ def api_status():
     def _link(name, port):
         path = "/chat?session=main" if name == "OpenClaw" else "/"
         return f"http://{LAN_HOST}:{port}{path}"
-    svcs = [{"name": n, "url": _link(n, p), "port": int(p), "purpose": pu, "ok": probe(h)} for n, h, p, pu in SERVICES]
-    return jsonify({"services": svcs, "hardware": hardware_info(), "model_groups": get_model_groups(),
-                    "lan_host": LAN_HOST, "updated": datetime.datetime.now().strftime("%H:%M:%S")})
+    svcs = [{"name": n, "url": _link(n, p), "port": int(p),
+             "purpose": pu, "ok": probe(h)}
+            for n, h, p, pu in SERVICES]
+    return jsonify({
+        "services":     svcs,
+        "hardware":     hardware_info(),
+        "model_groups": get_model_groups(),
+        "lan_host":     LAN_HOST,
+        "updated":      datetime.datetime.now().strftime("%H:%M:%S"),
+    })
 
 PAGE = r"""<!doctype html>
 <html><head><meta charset="utf-8">
@@ -986,70 +1225,394 @@ PAGE = r"""<!doctype html>
   h1{font-size:20px}
   .tabs{display:flex;gap:4px;margin-bottom:16px;border-bottom:2px solid var(--border)}
   .tab-btn{padding:8px 20px;background:transparent;border:none;color:var(--dim);cursor:pointer;font-size:13px;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .2s}
-  .tab-btn:hover{color:var(--text)}.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
+  .tab-btn:hover{color:var(--text)}
+  .tab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
   .tab-content{display:none}.tab-content.active{display:block}
   .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
   .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px}
   .card h2{font-size:15px;margin-bottom:12px}
   .hw{display:flex;gap:10px;justify-content:space-around;flex-wrap:wrap}
   .donut-wrap{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:84px}
-  .donut{position:relative;width:84px;height:84px}.donut svg{transform:rotate(-90deg)}
-  .donut .ring-bg{stroke:var(--panel2)}.donut .ring-fg{stroke-linecap:round;transition:stroke-dashoffset .6s ease}
+  .donut{position:relative;width:84px;height:84px}
+  .donut svg{transform:rotate(-90deg)}
+  .donut .ring-bg{stroke:var(--panel2)}
+  .donut .ring-fg{stroke-linecap:round;transition:stroke-dashoffset .6s ease}
   .donut .label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px}
-  .donut-cap{font-size:11px;color:var(--dim);text-align:center}.donut-sub{font-size:10px;color:var(--dim);text-align:center}
-  .svc{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)}.svc:last-child{border:none}
-  .led{width:10px;height:10px;border-radius:50%;display:inline-block}.led.on{background:var(--green)}.led.off{background:var(--red)}
-  .mgroup{margin-bottom:14px}.mgroup h3{font-size:12px;text-transform:uppercase;color:var(--accent);margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:4px}
+  .donut-cap{font-size:11px;color:var(--dim);text-align:center}
+  .donut-sub{font-size:10px;color:var(--dim);text-align:center}
+  .svc{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)}
+  .svc:last-child{border:none}
+  .led{width:10px;height:10px;border-radius:50%;display:inline-block}
+  .led.on{background:var(--green)}.led.off{background:var(--red)}
+  .mgroup{margin-bottom:14px}
+  .mgroup h3{font-size:12px;text-transform:uppercase;color:var(--accent);margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:4px}
   .mrow{display:flex;justify-content:space-between;align-items:flex-start;padding:6px 0;gap:10px}
-  .mname{font-family:monospace;font-size:12px}.mwhen{color:var(--dim);font-size:11px;flex:1}
+  .mname{font-family:monospace;font-size:12px}
+  .mwhen{color:var(--dim);font-size:11px;flex:1}
   .mtag{font-size:10px;padding:1px 7px;border-radius:8px;white-space:nowrap}
-  .mtag.in{background:rgba(34,197,94,.18);color:var(--green)}.mtag.out{background:rgba(139,152,165,.12);color:var(--dim)}
-  .hostbar{font-size:12px;color:var(--dim)}.hostbar code{color:var(--accent)}
-  .agent-list{width:100%}.agent-row{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border);font-size:13px}
-  .agent-row:last-child{border:none}.agent-key{font-family:monospace;font-size:12px;color:var(--accent)}
-  .agent-model{color:var(--dim);font-size:11px;flex:1;text-align:center}.agent-age{color:var(--dim);font-size:11px;width:60px;text-align:right}
-  .agent-tag{font-size:10px;padding:2px 8px;border-radius:8px;font-weight:600}
-  .agent-tag.active{background:rgba(34,197,94,.2);color:var(--green)}.agent-tag.idle{background:rgba(139,152,165,.15);color:var(--dim)}
-  .agent-tag.parent{background:rgba(59,130,246,.2);color:var(--accent)}
-  .cleanup-btn{padding:8px 16px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;color:var(--yellow);cursor:pointer;font-size:12px;margin-top:8px}
-  .cleanup-btn:hover{background:rgba(245,158,11,.15)}
-  .delete-btn{background:none;border:1px solid var(--border);color:var(--dim);cursor:pointer;padding:3px 7px;border-radius:5px;font-size:12px;margin-left:6px}
+  .mtag.in{background:rgba(34,197,94,.18);color:var(--green)}
+  .mtag.out{background:rgba(139,152,165,.12);color:var(--dim)}
+  .hostbar{font-size:12px;color:var(--dim)}
+  .hostbar code{color:var(--accent)}
+
+  /* Subagents tab */
+  .agent-group{margin-bottom:16px}
+  .group-header{font-size:14px;font-weight:600;padding:8px 12px;background:var(--panel2);border-radius:8px;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+  .group-count{font-size:11px;color:var(--dim);background:var(--bg);padding:2px 8px;border-radius:10px}
+  .agent-table{width:100%;border-collapse:separate;border-spacing:0 4px}
+  .agent-table thead th{text-align:left;padding:6px 12px;font-size:11px;text-transform:uppercase;color:var(--dim);font-weight:500;border-bottom:1px solid var(--border)}
+  .agent-table tbody tr{background:var(--panel2);transition:all .15s;cursor:pointer}
+  .agent-table tbody tr:hover{background:rgba(59,130,246,.1)}
+  .agent-table tbody td{padding:8px 12px;font-size:12px;vertical-align:middle}
+  .agent-table tbody tr:first-child td{border-radius:8px 8px 0 0}
+  .agent-table tbody tr:last-child td{border-radius:0 0 8px 8px}
+  .agent-id{font-family:monospace;font-weight:700;color:var(--accent);font-size:13px;width:90px}
+  .agent-key-cell{font-family:monospace;font-size:11px;color:var(--dim);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .agent-model{font-size:12px;color:var(--text)}
+  .agent-age{text-align:right;width:70px;color:var(--dim);font-size:11px}
+  .agent-badge{font-size:10px;padding:3px 8px;border-radius:8px;font-weight:600;display:inline-block}
+  .agent-badge.child{background:rgba(139,92,246,.2);color:var(--purple)}
+  .agent-badge.parent{background:rgba(59,130,246,.2);color:var(--accent)}
+  .agent-purpose-toggle{font-size:11px;color:var(--dim);cursor:pointer;transition:all .15s}
+  .agent-purpose-toggle:hover{color:var(--text)}
+  .agent-expand-row td{padding:0 12px 8px;background:transparent}
+  .agent-expand-body{font-size:11px;color:var(--dim);padding:4px 0;display:none}
+  .agent-expand-body.expanded{display:block}
+  .chevron{transition:transform .2s;display:inline-block;margin-right:4px;font-size:10px}
+  .chevron.rotated{transform:rotate(90deg)}
+  .delete-btn{background:none;border:1px solid var(--border);color:var(--dim);cursor:pointer;padding:4px 8px;border-radius:6px;font-size:12px;transition:all .15s}
   .delete-btn:hover{background:rgba(239,68,68,.15);color:var(--red);border-color:var(--red)}
-  .mem-bar{height:12px;background:var(--panel2);border-radius:6px;overflow:hidden;margin:8px 0}
-  .mem-fill{height:100%;border-radius:6px;transition:width .6s ease}.mem-row{display:flex;justify-content:space-between;padding:4px 0;font-size:13px}
-  .mem-name{font-family:monospace;font-size:12px}.mem-quant{color:var(--dim);font-size:10px}
+  .details-toggle{font-size:11px;color:var(--dim);cursor:pointer;transition:all .15s;user-select:none;padding:2px 6px;border-radius:4px}
+  .details-toggle:hover{color:var(--text);background:rgba(59,130,246,.1)}
+  .details-row td{padding:0 12px 8px;background:transparent;max-height:0;overflow:hidden;transition:max-height .2s ease,padding .2s ease}
+  .details-row.expanded td{max-height:300px;padding:8px 12px}
+  .details-body{font-size:11px;color:var(--dim);padding:6px 8px;background:rgba(0,0,0,.15);border-radius:6px;margin-top:4px;max-height:250px;overflow-y:auto;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+  .details-body::before{content:'Prompt / Configuration:';display:block;font-weight:600;color:var(--text);margin-bottom:4px;font-size:11px}
+  .cleanup-btn{padding:8px 16px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;color:var(--yellow);cursor:pointer;font-size:12px;margin-top:8px;transition:all .2s}
+  .cleanup-btn:hover{background:rgba(245,158,11,.15)}
+
+  /* Memory tab */
+  .mem-bar-container{margin-bottom:16px}
+  .mem-bar-track{height:14px;background:var(--panel2);border-radius:7px;overflow:hidden;margin:4px 0}
+  .mem-bar-fill{height:100%;border-radius:7px;transition:width .6s ease;display:flex;align-items:center;justify-content:center;font-size:9px;color:white;font-weight:600;min-width:30px}
+  .mem-table{width:100%;border-collapse:separate;border-spacing:0 4px}
+  .mem-table thead th{text-align:left;padding:6px 12px;font-size:11px;text-transform:uppercase;color:var(--dim);font-weight:500;border-bottom:1px solid var(--border)}
+  .mem-table tbody tr{background:var(--panel2)}
+  .mem-table tbody td{padding:8px 12px;font-size:12px;vertical-align:middle}
+  .mem-table tbody tr:first-child td{border-radius:8px 8px 0 0}
+  .mem-table tbody tr:last-child td{border-radius:0 0 8px 8px}
+  .mem-name{font-family:monospace;font-size:12px}
+  .mem-quant{color:var(--dim);font-size:10px}
+  .mem-size{text-align:right;width:70px}
+  .model-disclaimer{font-size:10px;color:var(--dim);font-style:italic;margin-top:6px;padding:4px 8px;background:var(--panel2);border-radius:6px;display:inline-block}
   .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px}
-  .stat-box{background:var(--panel2);border-radius:8px;padding:12px;text-align:center}.stat-val{font-size:24px;font-weight:700}.stat-label{font-size:11px;color:var(--dim)}
+  .stat-box{background:var(--panel2);border-radius:8px;padding:12px;text-align:center}
+  .stat-val{font-size:24px;font-weight:700}
+  .stat-label{font-size:11px;color:var(--dim)}
 </style></head><body>
 <div class="wrap">
-  <header><h1>● Local AI Workstation</h1><div class="hostbar">Access: <code id="hosttxt">…</code> · Refresh 5s</div></header>
+  <header>
+    <h1>● Local AI Workstation</h1>
+    <div class="hostbar">Access: <code id="hosttxt">…</code> · Refresh 5s</div>
+  </header>
+
   <div class="tabs">
     <button class="tab-btn active" onclick="switchTab('dashboard')">Dashboard</button>
     <button class="tab-btn" onclick="switchTab('subagents')">Subagents <span id="agent-badge"></span></button>
     <button class="tab-btn" onclick="switchTab('memory')">Memory</button>
   </div>
+
+  <!-- Dashboard tab -->
   <div id="tab-dashboard" class="tab-content active">
-    <div class="grid"><div class="card"><h2>System Status</h2><div class="hw" id="hw"></div></div>
-    <div class="card"><h2>Workstation Services</h2><div id="svcs"></div></div></div>
+    <div class="grid">
+      <div class="card"><h2>System Status</h2><div class="hw" id="hw"></div></div>
+      <div class="card"><h2>Workstation Services</h2><div id="svcs"></div></div>
+    </div>
     <div class="card"><h2>AI Models on This Machine</h2><div id="models"></div></div>
   </div>
+
+  <!-- Subagents tab -->
   <div id="tab-subagents" class="tab-content">
-    <div class="card"><h2>Active Sessions</h2><div id="agent-list"><em style="color:var(--dim)">Loading...</em></div>
-    <button class="cleanup-btn" onclick="cleanupIdle()">⚠ Kill Idle Subagents (>30m)</button></div>
+    <div class="card">
+      <h2>All Sessions</h2>
+      <p style="font-size:11px;color:var(--dim);margin-bottom:8px">Models are set at spawn time and cannot be changed hot-swap.</p>
+      <div id="agent-list"><em style="color:var(--dim)">Loading...</em></div>
+      <button class="cleanup-btn" onclick="cleanupIdle()">⚠ Kill Idle Subagents (>30m)</button>
+    </div>
   </div>
+
+  <!-- Memory tab -->
   <div id="tab-memory" class="tab-content">
     <div class="stats-grid" id="mem-stats"></div>
-    <div class="card"><h2>Ollama Model Memory</h2><div id="mem-table"><em style="color:var(--dim)">Loading...</em></div></div>
+    <div class="card">
+      <h2>Ollama Model Memory</h2>
+      <p style="font-size:11px;color:var(--dim);margin-bottom:8px">Green = installed but not loaded · Yellow/Red = in VRAM. Sizes are model weights.</p>
+      <div id="mem-table"><em style="color:var(--dim)">Loading...</em></div>
+    </div>
   </div>
+
 </div>
 <script>
-function donut(pct, caption, sub){pct=Math.max(0,Math.min(100,pct||0));const r=34,c=2*Math.PI*r,off=c*(1-pct/100);let col='var(--green)';if(pct>=85)col='var(--red)';else if(pct>=60)col='var(--yellow)';return '<div class="donut-wrap"><div class="donut"><svg width="84" height="84"><circle class="ring-bg" cx="42" cy="42" r="'+r+'" fill="none" stroke-width="8"/><circle class="ring-fg" cx="42" cy="42" r="'+r+'" fill="none" stroke-width="8" stroke="'+col+'" stroke-dasharray="'+c+'" stroke-dashoffset="'+off+'"/></svg><div class="label">'+pct+'%</div></div><div class="donut-cap">'+caption+'</div><div class="donut-sub">'+(sub||'')+'</div></div>';}
-function switchTab(name){document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));document.getElementById('tab-'+name).classList.add('active');event.target.classList.add('active');}
-async function cleanupIdle(){try{const r=await fetch('/api/cleanup',{method:'POST'});const d=await r.json();alert('Killed '+d.count+' idle session(s)');loadData();}catch(e){alert('Cleanup failed: '+e.message);}}
-async function killSession(key){if(!confirm('Are you sure? This will terminate the session.'))return;try{const r=await fetch('/api/session/'+encodeURIComponent(key)+'/kill',{method:'POST'});const d=await r.json();if(d.ok){alert('Session killed');loadData();}else alert('Failed: '+(d.error||'Unknown'));}catch(e){alert('Kill failed: '+e.message);}}
-async function loadData(){try{const r=await fetch("/api/status");const d=await r.json();document.getElementById("hosttxt").textContent='http://'+d.lan_host+':8800';const hw=d.hardware;let hwHtml='';hwHtml+=donut(hw.cpu.pct,'CPU','');hwHtml+=donut(hw.ram.pct,'RAM',hw.ram.detail);hwHtml+=donut(hw.storage.pct,'Storage',hw.storage.detail);if(hw.battery){const b=hw.battery;hwHtml+=donut(b.percent,'Battery',b.charging?'⚡ charging':'on battery');}document.getElementById("hw").innerHTML=hwHtml;document.getElementById("svcs").innerHTML=d.services.map(s=>'<div class="svc"><span><span class="led">'+(s.ok?'on':'off')+'"></span> <a href="'+s.url+'" target="_blank">'+s.name+'</a></span><span style="color:var(--dim)">'+s.purpose+' (:'+s.port+')</span></div>').join("");document.getElementById("models").innerHTML=d.model_groups.map(g=>'<div class="mgroup"><h3>'+g.specialty+'</h3>'+g.items.map(m=>'<div class="mrow"><span class="mname">'+m.name+'</span><span class="mwhen">'+m.when+'</span><span class="mtag '+(m.installed?'in':'out')+'">'+(m.installed?('✓ '+m.size):'pull')+'</span></div>').join('')+'</div>').join("");const sa=await fetch("/api/subagents").then(r=>r.json());let agentHtml='';if(sa.sessions.length===0){agentHtml='<em style="color:var(--dim)">No active sessions</em>';}else{agentHtml='<div class="agent-list">';for(const s of sa.sessions){const tagClass=s.is_subagent?'idle':(s.key.includes('teleg')||s.key.includes('main')?'parent':'active');const tagLabel=s.is_subagent?'child':'parent';agentHtml+='<div class="agent-row"><span class="agent-key">'+s.key+'</span><span class="agent-model">'+s.model+'</span><span class="agent-age">'+s.age+'</span><span class="agent-tag '+tagClass+'">'+tagLabel+'</span><button class="delete-btn" data-key="'+s.key+'" onclick="event.stopPropagation();killSession('+s.key+')" title="Kill this session">\ud83d\uddd1\ufe0f</button></div>';}agentHtml+='</div>';}<br/>document.getElementById("agent-list").innerHTML=agentHtml;const badge=sa.active_children>0?'<span style="font-size:10px;color:var(--green)">'+sa.active_children+' active</span>':'';document.getElementById("agent-badge").innerHTML=badge;const mem=await fetch("/api/memory").then(r=>r.json());let statsHtml='';statsHtml+=statBox(mem.ollama.total_used_gb+' GB','Ollama Used');statsHtml+=statBox(mem.system_ram.available_gb+' GB','RAM Available');statsHtml+=statBox(mem.ollama.usage_pct+'%','Model RAM %');document.getElementById("mem-stats").innerHTML=statsHtml;let memHtml='';const barPct=Math.min(100,mem.ollama.usage_pct);const barCol=barPct>80?'var(--red)':(barPct>60?'var(--yellow)':'var(--green)');memHtml+='<div class="mem-bar"><div class="mem-fill" style="width:'+barPct+'%;background:'+barCol+'"></div></div>';for(const m of mem.ollama.models){memHtml+='<div class="mem-row"><span class="mem-name">'+m.name+'</span><span class="mem-quant">'+m.quantization+'</span><span style="width:70px;text-align:right">'+m.size_gb+' GB</span></div>';}memHtml+='<div style="margin-top:8px;font-size:12px;color:var(--dim)">Total: '+mem.ollama.total_used_gb+' / '+mem.ollama.total_available_gb+' GB ('+barPct+'%)</div>';document.getElementById("mem-table").innerHTML=memHtml;}catch(e){console.error(e);}}
-function statBox(val,label){return '<div class="stat-box"><div class="stat-val">'+val+'</div><div class="stat-label">'+label+'</div></div>';}
-loadData();setInterval(loadData,5000);</script></body></html>"""
+function donut(pct, caption, sub){
+  pct = Math.max(0, Math.min(100, pct||0));
+  const r=34, c=2*Math.PI*r, off=c*(1-pct/100);
+  let col = 'var(--green)';
+  if(pct>=85) col='var(--red)'; else if(pct>=60) col='var(--yellow)';
+  return '<div class="donut-wrap">'+
+    '<div class="donut">'+
+      '<svg width="84" height="84">'+
+        '<circle class="ring-bg" cx="42" cy="42" r="'+r+'" fill="none" stroke-width="8"/>'+
+        '<circle class="ring-fg" cx="42" cy="42" r="'+r+'" fill="none" stroke-width="8"'+
+          ' stroke="'+col+'" stroke-dasharray="'+c+'" stroke-dashoffset="'+off+'"/>'+
+      '</svg>'+
+      '<div class="label">'+pct+'%</div>'+
+    '</div>'+
+    '<div class="donut-cap">'+caption+'</div>'+
+    '<div class="donut-sub">'+(sub||'')+'</div>'+
+  '</div>';
+}
+
+function switchTab(name){
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  event.target.classList.add('active');
+}
+
+async function cleanupIdle(){
+  try{
+    const r=await fetch('/api/cleanup',{method:'POST'});
+    const d=await r.json();
+    alert('Killed '+d.count+' idle session(s)');
+    loadData(); // refresh
+  }catch(e){alert('Cleanup failed: '+e.message);}
+}
+
+async function killSession(key){
+  if(!confirm('Are you sure? This will terminate the session.')) return;
+  try{
+    const r=await fetch('/api/session/'+encodeURIComponent(key)+'/kill',{method:'POST'});
+    const d=await r.json();
+    if(d.ok){
+      alert('Session killed');
+      loadData(); // refresh
+    } else {
+      alert('Failed: '+(d.error||'Unknown error'));
+    }
+  }catch(e){alert('Kill failed: '+e.message);}
+}
+
+function toggleExpand(key){
+  // Kept for backward compat
+}
+
+function toggleDetails(el){
+  const row = el.closest('.details-row');
+  if (!row) return;
+  const expanded = row.classList.toggle('expanded');
+  const chevron = el.querySelector('.chevron') || el;
+  // Add chevron indicator
+  if (!el.querySelector('.chevron')) {
+    const ch = document.createElement('span');
+    ch.className = 'chevron';
+    ch.textContent = '\u25b6';
+    el.insertBefore(ch, el.firstChild);
+  }
+  el.querySelector('.chevron').classList.toggle('rotated', expanded);
+}
+
+
+async function loadData(){
+  try{
+    const r=await fetch("/api/status");const d=await r.json();
+    document.getElementById("hosttxt").textContent = `http://${d.lan_host}:8800`;
+    const hw=d.hardware; let hwHtml='';
+    hwHtml+=donut(hw.cpu.pct, 'CPU', '');
+    hwHtml+=donut(hw.ram.pct, 'RAM', hw.ram.detail);
+    hwHtml+=donut(hw.storage.pct, 'Storage', hw.storage.detail);
+    if(hw.battery){
+      const b=hw.battery;
+      hwHtml+=donut(b.percent, 'Battery', b.charging?'⚡ charging':'on battery');
+    }
+    document.getElementById("hw").innerHTML=hwHtml;
+    document.getElementById("svcs").innerHTML=d.services.map(s=>
+      '<div class="svc">'+
+        '<span><span class="led '+(s.ok?'on':'off')+'"></span> <a href="'+s.url+'" target="_blank">'+s.name+'</a></span>'+
+        '<span style="color:var(--dim)">'+s.purpose+' (:'+s.port+')</span>'+
+      '</div>'
+    ).join("");
+    document.getElementById("models").innerHTML=d.model_groups.map(g=>
+      '<div class="mgroup"><h3>'+g.specialty+'</h3>'+
+        g.items.map(m=>
+          '<div class="mrow">'+
+            '<span class="mname">'+m.name+'</span>'+
+            '<span class="mwhen">'+m.when+'</span>'+
+            '<span class="mtag '+(m.installed?'in':'out')+'">'+(m.installed?('✓ '+m.size):'pull')+'</span>'+
+          '</div>'
+        ).join("")+
+      '</div>'
+    ).join("");
+
+    // Subagents
+    const sa=await fetch("/api/subagents").then(r=>r.json());
+    let agentHtml='';
+    if(sa.sessions.length===0){
+      agentHtml='<em style="color:var(--dim)">No active sessions</em>';
+    } else {
+      // Group by status
+      const grouped = {active:[], idle:[]};
+      for(const s of sa.sessions){
+        const g = s.status === 'idle' ? 'idle' : 'active';
+        if(!grouped[g]) grouped[g] = [];
+        grouped[g].push(s);
+      }
+      // Inferred purpose based on session key
+      function inferPurpose(s){
+        const k = (s.key||'').toLowerCase();
+        if(k.includes('subag')) return 'Spawned subagent';
+        if(k.includes('teleg') || k.includes('telegram')) return '📱 Telegram chat session';
+        if(k.includes('webchat') || k.includes('web')) return '🌐 Webchat session';
+        if(s.key === 'main' || k.includes(':main')) return '🎯 Main agent session';
+        if(s.kind === 'direct') return '📥 Direct inbound message';
+        if(s.kind === 'spawn-child') return '🤖 Spawned subagent (task details not available)';
+        return '📋 Session — purpose inferred from context';
+      }
+
+      const statusIcons = {active:'\u27a2 Active', idle:'\u2756 Idle'};
+      for(const [group, sessions] of Object.entries(grouped)){
+        if(sessions.length === 0) continue;
+        agentHtml += '<div class="agent-group">'+
+          '<div class="group-header">'+statusIcons[group]+' <span class="group-count">'+sessions.length+'</span></div>'+
+          '<table class="agent-table"><thead><tr>'+
+            '<th style="width:90px">Agent ID</th>'+
+            '<th>Key</th>'+
+            '<th>Model</th>'+
+            '<th>Last Active</th>'+
+            '<th>Type</th>'+
+            '<th></th>'+
+          '</tr></thead><tbody>';
+        for(const s of sessions){
+          const agentId = (s.key||'').substring(0,8);
+          const shortKey = s.key ? (s.key.length>24 ? s.key.substring(0,24)+'\u2026' : s.key) : '';
+          const purpose = inferPurpose(s);
+          const badgeClass = s.is_subagent ? 'child' : 'parent';
+          const badgeLabel = s.is_subagent ? 'child' : 'parent';
+          agentHtml += '<tr data-key="'+s.key+'">'+
+            '<td class="agent-id">'+agentId+'</td>'+
+            '<td class="agent-key-cell" title="'+(s.key||'')+'">'+shortKey+'</td>'+
+            '<td class="agent-model">'+(s.model||'\u2014')+'</td>'+
+            '<td class="agent-age">'+s.age+'</td>'+
+            '<td><span class="agent-badge '+badgeClass+'">'+badgeLabel+'</span></td>'+
+            '<td style="width:80px;text-align:right"><button class="delete-btn" data-key="'+s.key+'" onclick="event.stopPropagation();killSession(this.dataset.key)" title="Kill this session">\ud83d\uddd1\ufe0f</button></td>'+
+          '</tr>';
+          // Collapsible Details row
+          agentHtml += '<tr class="details-row" data-key="'+s.key+'"><td colspan="6">'+
+            '<span class="details-toggle" onclick="event.stopPropagation();toggleDetails(this)" style="display:inline-block;margin-bottom:4px">📄 <strong>Details</strong></span>'+
+            '<div class="details-body">Loading...</div>'+
+          '</td></tr>';
+        }
+        agentHtml += '</tbody></table></div>';
+      }
+    }
+    document.getElementById("agent-list").innerHTML=agentHtml;
+
+    // Populate prompts for details sections
+    const prompts = sa.prompts || {};
+    document.querySelectorAll('.details-body').forEach(el => {
+      el.innerHTML = '<em style="color:var(--dim)">No prompt data available</em>';
+    });
+    // Find corresponding session keys for each details body
+    let detailIdx = 0;
+    sa.sessions.forEach((s, i) => {
+      if (s.is_subagent && prompts[s.key]) {
+        const bodies = document.querySelectorAll('.details-body');
+        if (bodies[detailIdx]) {
+          // Truncate prompt for display (~600 chars)
+          const shortPrompt = prompts[s.key].length > 600 
+            ? prompts[s.key].substring(0, 600) + '\n\u2026 (truncated)'
+            : prompts[s.key];
+          bodies[detailIdx].textContent = shortPrompt;
+        }
+        detailIdx++;
+      }
+    });
+    const badge = sa.active_children > 0 ? `<span style="font-size:10px;color:var(--green)">${sa.active_children} active</span>` : '';
+    document.getElementById("agent-badge").innerHTML = badge;
+
+    // Add modal overlay for history viewing (injected if needed)
+    if (!document.getElementById('history-modal')) {
+      document.querySelector('.wrap').insertAdjacentHTML('beforeend','<div id="history-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999;align-items:center;justify-content:center"><div style="background:var(--panel);border-radius:12px;padding:24px;max-width:800px;width:90%;max-height:80vh;overflow:auto;border:1px solid var(--border)"><h3 id="history-title" style="margin-bottom:12px;font-size:16px"></h3><div id="history-body" style="font-size:12px;line-height:1.6;color:var(--dim)"></div><button onclick="document.getElementById(\'history-modal\').style.display=\'none\';clearTimeout(window._historyTimer)" style="margin-top:12px;padding:8px 16px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;color:var(--text);cursor:pointer">Close</button></div></div>');
+    }
+
+function viewHistory(key){
+  const modal = document.getElementById('history-modal');
+  const title = document.getElementById('history-title');
+  const body = document.getElementById('history-body');
+  if(modal && title && body) {
+    modal.style.display = 'flex';
+    title.textContent = '📋 Session History — ' + key.substring(0,24) + (key.length>24?'...':'');
+    body.innerHTML = '<em style="color:var(--accent)">Loading session data...</em>';
+  }
+}
+
+    // Memory
+    const mem=await fetch("/api/memory").then(r=>r.json());
+    let statsHtml='';
+    statsHtml+=statBox(mem.ollama.total_used_gb+' GB', 'Ollama Used');
+    statsHtml+=statBox(mem.system_ram.available_gb+' GB', 'RAM Available');
+    statsHtml+=statBox(mem.ollama.usage_pct+'%', 'Model RAM %');
+    document.getElementById("mem-stats").innerHTML=statsHtml;
+
+    let memHtml='';
+    // Overall bar with percentage label inside
+    const barPct = Math.min(100, mem.ollama.usage_pct);
+    const barCol = barPct > 80 ? 'var(--red)' : (barPct > 60 ? 'var(--yellow)' : 'var(--green)');
+    memHtml+='<div class="mem-bar-container">'+
+      '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">'+
+        '<span>Total Ollama Usage</span>'+
+        '<span>'+mem.ollama.total_used_gb+' / '+mem.ollama.total_available_gb+' GB ('+barPct+'%)</span>'+
+      '</div>'+
+      '<div class="mem-bar-track"><div class="mem-bar-fill" style="width:'+barPct+'%;background:'+barCol+'">'+barPct+'%</div></div>'+
+    '</div>';
+
+    // Per-model table
+    memHtml+='<table class="mem-table"><thead><tr>'+
+      '<th>Model Name</th>'+
+      '<th>Status</th>'+
+      '<th>Quantization</th>'+
+      '<th style="text-align:right">Size (GB)</th>'+
+      '<th style="text-align:right">RAM %</th>'+
+    '</tr></thead><tbody>';
+    for(const m of mem.ollama.models){
+      const pctColor = m.usage_pct > 80 ? 'var(--red)' : (m.usage_pct > 60 ? 'var(--yellow)' : 'var(--green)');
+      const barWidth = Math.max(2, Math.min(100, m.usage_pct));
+      const loaded = m.loaded ? '🟢 Loaded' : '⚪ Installed';
+      memHtml+='<tr>'+
+        '<td class="mem-name">'+m.name+'</td>'+
+        '<td style="font-size:11px;color:var(--dim)">'+loaded+'</td>'+
+        '<td class="mem-quant">'+(m.quantization||'?')+'</td>'+
+        '<td class="mem-size" style="text-align:right">'+(typeof m.size_gb==="number"?m.size_gb+' GB':'?')+'</td>'+
+        '<td style="width:200px">'+
+          '<div style="display:flex;align-items:center;gap:6px">'+
+            '<div class="mem-bar-track" style="flex:1;height:10px"><div class="mem-bar-fill" style="width:'+barWidth+'%;background:'+pctColor+'">'+m.usage_pct+'%</div></div>'+
+          '</div>'+
+        '</td>'+
+      '</tr>';
+    }
+    memHtml+='</tbody></table>';
+
+
+    document.getElementById("mem-table").innerHTML=memHtml;
+
+  }catch(e){console.error(e);}
+}
+
+function statBox(val, label){
+  return '<div class="stat-box"><div class="stat-val">'+val+'</div><div class="stat-label">'+label+'</div></div>';
+}
+
+loadData();setInterval(loadData,5000);
+</script></body></html>"""
 
 @app.route("/")
 def index():
@@ -1058,7 +1621,9 @@ def index():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT_DASHBOARD", "8800"))
     app.run(host="0.0.0.0", port=port, debug=False)
+
 DASHEOF
+
     ok "Dashboard script written."
 }
 
