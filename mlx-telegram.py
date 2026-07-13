@@ -89,6 +89,22 @@ def edit(mid, text: str, buttons=None, parse_mode=None):
         p.pop("parse_mode", None); p["text"] = _plainish(text)[:4096]; r = tg("editMessageText", **p)
     return r
 
+def _chunks(text: str, limit: int = 3800):
+    """Split text into <=limit pieces at line boundaries (hard-splitting any overlong line),
+    so a long answer can flow across several Telegram messages instead of being cut at 4096."""
+    text = text or ""
+    out, cur = [], ""
+    for line in text.split("\n"):
+        while len(line) > limit:
+            if cur: out.append(cur); cur = ""
+            out.append(line[:limit]); line = line[limit:]
+        if cur and len(cur) + 1 + len(line) > limit:
+            out.append(cur); cur = line
+        else:
+            cur = (cur + "\n" + line) if cur else line
+    if cur: out.append(cur)
+    return out or [""]
+
 def answer_cb(cb_id, text=""):
     tg("answerCallbackQuery", callback_query_id=cb_id, text=text)
 
@@ -231,21 +247,27 @@ class Live:
         visible, thinking = split_thinking(raw)
         foot = (f"\n\n<i>· {esc(self.persona)} · {steps} steps · {int(time.time()-self.start)}s</i>"
                 if steps else "")
-        head = to_html(visible).strip() if visible else ""
-        if not head:                               # model produced only reasoning → don't show empty
+        if not (visible or "").strip():
+            # model produced only reasoning → don't show an empty answer
             head = "<i>(reasoning only — see below)</i>" if thinking else "<i>(no output)</i>"
-        text = head + foot
-        if thinking:                               # keep it, but never let it push the answer out
-            budget = 3900 - len(text)
-            if budget > 80:
-                text += f"\n\n💭 <b>thinking</b>\n<pre>{esc(thinking[:budget])}</pre>"
-        text = text[:4096]
-        self._last_text = text
-        r = edit(self.msg_id, text, parse_mode="HTML")   # edit() auto-falls back to plain on parse error
-        if not r.get("ok") and "not modified" not in str(r).lower():
-            # last resort: never lose content — send answer + thinking as plain text
-            plain = (visible or "") + (("\n\n[thinking]\n" + thinking) if thinking else "")
-            send((plain or "(no output)")[:4096])
+            self._last_text = (head + foot)[:4096]
+            edit(self.msg_id, self._last_text, parse_mode="HTML")
+        else:
+            # Split the FULL answer into <=Telegram-limit pieces so nothing is truncated.
+            # First piece edits the live message; the rest are sent as follow-up messages.
+            parts = _chunks(visible, 3800)
+            first = to_html(parts[0]).strip() + (foot if len(parts) == 1 else "")
+            self._last_text = first[:4096]
+            r = edit(self.msg_id, self._last_text, parse_mode="HTML")
+            if not r.get("ok") and "not modified" not in str(r).lower():
+                edit(self.msg_id, _plainish(parts[0])[:4096])
+            for i, part in enumerate(parts[1:], start=1):
+                tail = foot if i == len(parts) - 1 else ""
+                send(to_html(part).strip() + tail, parse_mode="HTML")
+        if thinking:                               # reasoning as its own (single) message
+            tp = thinking.strip()
+            send("💭 <b>thinking</b>\n<pre>" + esc(tp[:3800]) + ("…" if len(tp) > 3800 else "") + "</pre>",
+                 parse_mode="HTML")
 
 # ── approval + choice handlers injected into the agent ─────────────────────
 def _wait_gate(kind: str, timeout=600):
