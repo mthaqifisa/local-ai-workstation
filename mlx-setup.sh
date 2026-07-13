@@ -2368,7 +2368,7 @@ Usage:
     mlx-agent --yes "..."                              # auto-approve (careful)
 """
 from __future__ import annotations
-import argparse, json, os, re, shlex, subprocess, sys, textwrap, datetime, time, base64
+import argparse, json, os, re, shlex, subprocess, sys, textwrap, datetime, time, base64, shutil
 from pathlib import Path
 
 try:
@@ -2387,11 +2387,14 @@ WORKDIR   = Path(os.environ.get("MLX_WORKDIR", str(Path.home() / ".mlx-ai-workst
 WORKSPACE = Path(os.environ.get("MLX_WORKSPACE", str(Path.home() / "MLX-AI")))
 PERSONAS_FILE = WORKDIR / "personas.json"
 DEFAULT_MODEL = os.environ.get("MLX_AGENT_MODEL", "coder:qwen3.6-27b")
-MAX_STEPS = int(os.environ.get("MLX_AGENT_MAX_STEPS", "16"))
+MAX_STEPS = int(os.environ.get("MLX_AGENT_MAX_STEPS", "0"))               # 0 = unlimited tool steps
+LOOP_GUARD = int(os.environ.get("MLX_AGENT_LOOP_GUARD", "10"))            # stop if the SAME tool call repeats N× in a row (0 = off); not a step cap, just anti-hang
 MAX_SEARCHES = int(os.environ.get("MLX_AGENT_MAX_SEARCHES", "5"))         # per run, then steer to web_fetch/direct
 MAX_SPAWN_DEPTH = int(os.environ.get("MLX_AGENT_MAX_SPAWN_DEPTH", "2"))   # subagents can nest this deep
 MAX_SPAWNS = int(os.environ.get("MLX_AGENT_MAX_SPAWNS", "8"))             # total subagents per top-level run
 SHELL_TIMEOUT = int(os.environ.get("MLX_AGENT_SHELL_TIMEOUT", "60"))
+CODE_TIMEOUT = int(os.environ.get("MLX_AGENT_CODE_TIMEOUT", "120"))       # run_python wall-clock bound
+MAX_TOKENS = int(os.environ.get("MLX_AGENT_MAX_TOKENS", "0"))            # 0 = uncapped (bounded only by the model's context window)
 
 ALLOWED_ROOTS = [Path.home(), Path("/tmp"), WORKDIR, WORKSPACE, Path.cwd()]
 
@@ -2460,6 +2463,13 @@ BASE_SYSTEM = (
     "INTERNET: you DO have live web access via web_search and web_fetch. For anything current or "
     "factual you're unsure of — news, sports scores, prices, release dates, docs — search first. "
     "NEVER tell the user you can't access the internet or browse the web; you can, so do it.\n"
+    "CODE: for anything without a dedicated tool, WRITE AND RUN a short Python script with run_python "
+    "(the runtime has mlx, requests, psutil, etc.) instead of giving up or stringing together many shell "
+    "calls. print() the result so you get it back. This is your general-purpose way to actually do work.\n"
+    "SWIFT/XCODE: to start ANY Swift, macOS, or iOS app, call scaffold_swift first (it uses SwiftPM and "
+    "produces a buildable Package.swift that opens in Xcode). NEVER hand-write .xcodeproj or "
+    "project.pbxproj — they will not work. Then write source under Sources/ with write_file, and run "
+    "`swift build` via run_shell to compile and fix errors iteratively before moving on.\n"
     "SELF-HEALING: if a task needs a tool/package/library/CLI you don't have, DO NOT give up or "
     "say you lack the capability. Instead: (1) use web_search to find what to install and the exact "
     "commands, then (2) call propose_capability with a concrete plan. The user will review and approve. "
@@ -2468,9 +2478,14 @@ BASE_SYSTEM = (
     "DELEGATION: when a task spans specialties, you may call spawn_subagent(persona, task) to hand a "
     "sub-task to a specialist (personas include researcher, dev, qa, ba, reasoner, general). Do simple "
     "steps yourself; delegate the ones a specialist fits, then synthesize the results.\n"
-    "FILES: when you create files and the user didn't give a path, write them under the shared "
-    "workspace ~/MLX-AI (e.g. ~/MLX-AI/<short-name>). Never invent absolute paths for other users "
-    "or directories you haven't confirmed exist — check with list_dir or pwd first if unsure.\n"
+    "FILES: when the user asks you to CREATE, WRITE, SAVE, PRODUCE, GENERATE, or UPDATE a file "
+    "(a README, script, config, document, etc.), you MUST call write_file with the COMPLETE final "
+    "content and the target path — do NOT print the file's contents as your chat answer and stop. "
+    "Writing the file IS the deliverable. To study or summarize an existing file first, call read_file "
+    "to get its real content (never guess it). After writing, your answer is just a short confirmation "
+    "of what you wrote and the path — not the whole file again. If the user gives a path, use it exactly; "
+    "if not, write under the shared workspace ~/MLX-AI (e.g. ~/MLX-AI/<short-name>). Never invent absolute "
+    "paths for directories you haven't confirmed exist — check with list_dir or pwd first if unsure.\n"
     "SEARCH DISCIPLINE: web_search is for finding a URL or a quick fact. Do NOT search repeatedly for the "
     "same thing. Once a search returns a promising link, use web_fetch to READ it. To learn a library's "
     "API, the fastest route is usually propose_capability to install it, then introspect (python -c "
@@ -2490,7 +2505,11 @@ DEFAULT_PERSONAS = {
                           "yourself. ALWAYS finish with a short synthesized answer to the user that states the key "
                           "findings and what each subagent produced — never end on a raw tool result. Do NOT spawn "
                           "the same task twice: if a subagent already attempted a step, use its result or refine it "
-                          "yourself rather than re-delegating the identical task."),
+                          "yourself rather than re-delegating the identical task. "
+                          "If the goal is to PRODUCE A FILE (a README, script, doc, etc.), the deliverable is "
+                          "the file WRITTEN TO DISK: call write_file yourself with the complete content (or have "
+                          "a subagent do it), then finish with a one-line confirmation of the path — do NOT paste "
+                          "the file's full contents as your answer and stop, and do NOT end on a raw tool result."),
     },
     "general": {
         "description": "General-purpose daily assistant.",
@@ -2675,7 +2694,71 @@ def t_run_shell(command: str) -> str:
     except subprocess.TimeoutExpired: return f"[timed out after {SHELL_TIMEOUT}s]"
     except Exception as e: return f"[error: {e}]"
 
+def t_scaffold_swift(directory: str, name: str = "App", kind: str = "executable") -> str:
+    """Create a buildable Swift package with SwiftPM (`swift package init`). This is the RELIABLE
+    way to start a Swift/Xcode project: it produces a Package.swift that `swift build` compiles and
+    that opens directly in Xcode — no fragile .xcodeproj/project.pbxproj to hand-write."""
+    d = Path(directory).expanduser()
+    if not _within_allowed(d):
+        return f"[refused: {directory} is outside allowed paths]"
+    kinds = {"executable", "library", "tool", "empty", "macro", "build-tool-plugin", "command-plugin"}
+    k = kind if kind in kinds else "executable"
+    if shutil.which("swift") is None:
+        return "[swift not found — install Xcode Command Line Tools: `xcode-select --install`, then retry]"
+    if not confirm(f"scaffold Swift {k} package {c(name,'bold')} in {c(str(d),'bold')} (swift package init)?"):
+        return "[denied by user]"
+    emit(c(f"  🛠  scaffold_swift({name} · {k} · {d})", "cyan"))
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+        r = subprocess.run(["swift", "package", "init", "--type", k, "--name", name],
+                           cwd=str(d), capture_output=True, text=True, timeout=120)
+        if r.returncode != 0:
+            return f"[scaffold failed: {((r.stderr or r.stdout) or '').strip()[-400:]}]"
+        tree = subprocess.run(["find", str(d), "-maxdepth", "2", "-not", "-path", "*/.*"],
+                              capture_output=True, text=True, timeout=20).stdout.strip()
+        return (f"[scaffolded Swift {k} package '{name}' in {d}]\n{tree}\n"
+                f"Build: (cd {d} && swift build)   ·   Open in Xcode: open {d}/Package.swift\n"
+                f"Now write the Swift source under {d}/Sources/ with write_file, then run `swift build` "
+                f"via run_shell and fix any errors before moving on.")
+    except subprocess.TimeoutExpired:
+        return "[scaffold timed out]"
+    except Exception as e:
+        return f"[error: {e}]"
+
 def t_disk_usage(_: str = "") -> str: return t_run_shell("df -h /")
+
+def t_run_python(code: str, timeout: int = 0) -> str:
+    """Write an ephemeral Python script and run it in the workstation's Python (which has
+    mlx, requests, psutil, etc.). This is the general-purpose 'do it in code' escape hatch —
+    for anything without a dedicated tool. print() whatever you want returned."""
+    code = (code or "").strip()
+    if not code:
+        return "[no code provided]"
+    to = int(timeout) if (timeout and int(timeout) > 0) else CODE_TIMEOUT
+    preview = code if len(code) <= 400 else code[:400] + " …"
+    if not confirm(f"run python script ({len(code)} chars, {to}s):\n{c(preview,'dim')}"):
+        return "[denied by user]"
+    emit(c(f"  🐍 run_python ({len(code)} chars)", "cyan"))
+    import tempfile
+    path = None
+    try:
+        fd, path = tempfile.mkstemp(suffix=".py", prefix="agent_", dir="/tmp")
+        with os.fdopen(fd, "w") as fh:
+            fh.write(code)
+        r = subprocess.run([sys.executable, path], capture_output=True, text=True, timeout=to)
+        out = (r.stdout or "") + (("\n[stderr] " + r.stderr) if r.stderr else "")
+        if r.returncode != 0 and not out.strip():
+            out = f"[exited {r.returncode} with no output]"
+        out = out.strip() or "[ran OK, no output — print() what you want back]"
+        return out[:6000] + ("\n…[truncated]" if len(out) > 6000 else "")
+    except subprocess.TimeoutExpired:
+        return f"[timed out after {to}s]"
+    except Exception as e:
+        return f"[error: {e}]"
+    finally:
+        if path:
+            try: os.remove(path)
+            except Exception: pass
 
 def t_read_file(path: str) -> str:
     p = Path(path).expanduser()
@@ -2695,15 +2778,20 @@ def t_list_dir(path: str = ".") -> str:
         return "\n".join(("📁 " if i.is_dir() else "📄 ") + i.name for i in items[:200]) or "[empty]"
     except Exception as e: return f"[error: {e}]"
 
-def t_write_file(path: str, content: str) -> str:
+def t_write_file(path: str, content: str, mode: str = "w") -> str:
     p = Path(path).expanduser()
     if not _within_allowed(p): return f"[refused: {path} is outside allowed paths]"
+    append = str(mode).lower() in ("a", "append")
+    verb = "append to" if append else "write"
     preview = content if len(content) < 300 else content[:300] + "…"
-    if not confirm(f"write {len(content)} chars to {c(str(p),'bold')}?\n{c(preview,'dim')}\n"):
+    if not confirm(f"{verb} {len(content)} chars {'onto' if append else 'to'} {c(str(p),'bold')}?\n{c(preview,'dim')}\n"):
         return "[write denied by user]"
     try:
-        p.parent.mkdir(parents=True, exist_ok=True); p.write_text(content)
-        return f"[wrote {len(content)} chars to {p}]"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with p.open("a" if append else "w") as fh:
+            fh.write(content)
+        total = p.stat().st_size
+        return f"[{'appended' if append else 'wrote'} {len(content)} chars to {p} (file now {total} bytes)]"
     except Exception as e: return f"[error writing {path}: {e}]"
 
 def t_web_search(query: str) -> str:
@@ -2829,9 +2917,24 @@ TOOLS = {
     "run_shell":  (t_run_shell,  "Run a shell command on the host and return its output. Read-only commands "
                                  "run automatically; others ask the user first."),
     "disk_usage": (t_disk_usage, "Return human-readable free/used disk space for the root volume."),
+    "run_python": (t_run_python, "Write and run an ephemeral Python script in the workstation's Python "
+                   "(which has mlx, requests, psutil, etc.). This is your general-purpose way to DO a task "
+                   "that has no dedicated tool — parse/transform data, call a library, do multi-step logic, "
+                   "or build file content programmatically. print() whatever you want back (stdout is returned). "
+                   "Prefer one short script over many shell calls or giving up. Args: code (str), timeout (int, "
+                   "optional seconds). Asks the user to confirm first."),
     "read_file":  (t_read_file,  "Read a text file from an allowed path."),
     "list_dir":   (t_list_dir,   "List the contents of a directory in an allowed path."),
-    "write_file": (t_write_file, "Write text to a file (asks the user for confirmation first)."),
+    "write_file": (t_write_file, "Create or overwrite a file on disk with the given content. "
+                   "Call this WHENEVER the user asks you to create, write, save, produce, generate, "
+                   "or update a file (README, script, config, doc). Pass the COMPLETE final content — "
+                   "do not just print it in chat. For a file too large for one call, write the first "
+                   "part then call again with mode='a' to append more. Asks the user to confirm first."),
+    "scaffold_swift": (t_scaffold_swift, "Start a buildable Swift/Xcode project the RELIABLE way, using "
+                   "SwiftPM (swift package init). Produces a Package.swift that `swift build` compiles and "
+                   "that opens in Xcode. Use this to begin ANY Swift/macOS/iOS app — NEVER hand-write "
+                   ".xcodeproj or project.pbxproj. Args: directory, name, kind (executable|library|empty). "
+                   "After scaffolding, write source files under Sources/ and build with run_shell."),
     "web_search": (t_web_search, "Search the web via the local private SearXNG for current info."),
     "web_fetch":  (t_web_fetch,  "Fetch and read the actual text of a web page by URL. Use this to READ a "
                                  "doc, README, or source file instead of repeatedly searching — e.g. after a "
@@ -2859,9 +2962,15 @@ def schema(name, props, req):
 ALL_SCHEMAS = {
     "run_shell":  schema("run_shell", {"command":{"type":"string"}}, ["command"]),
     "disk_usage": schema("disk_usage", {}, []),
+    "run_python": schema("run_python", {"code":{"type":"string","description":"the Python source to run"},
+                                        "timeout":{"type":"integer","description":"optional wall-clock seconds"}}, ["code"]),
     "read_file":  schema("read_file", {"path":{"type":"string"}}, ["path"]),
     "list_dir":   schema("list_dir", {"path":{"type":"string"}}, []),
-    "write_file": schema("write_file", {"path":{"type":"string"},"content":{"type":"string"}}, ["path","content"]),
+    "write_file": schema("write_file", {"path":{"type":"string"},"content":{"type":"string"},
+                                         "mode":{"type":"string","enum":["w","a"],"description":"w=overwrite (default), a=append"}}, ["path","content"]),
+    "scaffold_swift": schema("scaffold_swift", {"directory":{"type":"string","description":"folder to create the package in"},
+                                                "name":{"type":"string","description":"package/app name"},
+                                                "kind":{"type":"string","enum":["executable","library","empty"]}}, ["directory"]),
     "web_search": schema("web_search", {"query":{"type":"string"}}, ["query"]),
     "web_fetch":  schema("web_fetch", {"url":{"type":"string"}}, ["url"]),
     "see_image":  schema("see_image", {"image_path":{"type":"string","description":"local path or http(s) URL of the image"},
@@ -2900,54 +3009,18 @@ def strip_thinking(text: str) -> str:
     return text.strip()
 
 def call_gateway(model: str, messages: list, schemas: list) -> dict:
+    # Always non-streaming. Reliable tool-call detection is the whole point of the
+    # agent, and streaming tool-calls through the local MLX backend is unreliable —
+    # the model's tool call can arrive as plain text and get mistaken for the answer.
+    # The final answer is streamed to live front-ends separately (see run_agent), by
+    # replaying it once generation is safely complete.
     body = {"model": model, "messages": messages, "tools": schemas,
-            "tool_choice": "auto", "temperature": 0.3}
-    # Non-streaming (default) — used by the CLI and the dashboard's step view.
-    if STREAM_FN is None:
-        r = requests.post(f"{GATEWAY}/chat/completions", json={**body, "stream": False}, timeout=600)
-        r.raise_for_status()
-        return r.json()["choices"][0]["message"]
-    # Streaming — a front-end wants the answer token-by-token. Content deltas are
-    # streamed via STREAM_FN; tool-call deltas are accumulated (never streamed to the
-    # user). The final answer turn is what actually streams; tool turns emit no content.
-    content = ""; tcs = {}
-    try:
-        with requests.post(f"{GATEWAY}/chat/completions", json={**body, "stream": True},
-                           stream=True, timeout=600) as r:
-            r.raise_for_status()
-            for line in r.iter_lines(decode_unicode=True):
-                if not line or not line.startswith("data:"):
-                    continue
-                payload = line[5:].strip()
-                if payload == "[DONE]":
-                    break
-                try:
-                    delta = json.loads(payload)["choices"][0].get("delta", {})
-                except Exception:
-                    continue
-                piece = delta.get("content")
-                if piece:
-                    content += piece
-                    try: STREAM_FN(piece)
-                    except Exception: pass
-                for tcd in (delta.get("tool_calls") or []):
-                    idx = tcd.get("index", 0)
-                    slot = tcs.setdefault(idx, {"id": "", "type": "function",
-                                                "function": {"name": "", "arguments": ""}})
-                    if tcd.get("id"): slot["id"] = tcd["id"]
-                    fn = tcd.get("function") or {}
-                    if fn.get("name"): slot["function"]["name"] += fn["name"]
-                    if fn.get("arguments"): slot["function"]["arguments"] += fn["arguments"]
-    except Exception:
-        content, tcs = "", {}     # fall through to a non-streaming retry
-    if not content and not tcs:   # backend didn't stream usably → safe non-streaming fallback
-        r = requests.post(f"{GATEWAY}/chat/completions", json={**body, "stream": False}, timeout=600)
-        r.raise_for_status()
-        return r.json()["choices"][0]["message"]
-    msg = {"role": "assistant", "content": content}
-    if tcs:
-        msg["tool_calls"] = [tcs[i] for i in sorted(tcs)]
-    return msg
+            "tool_choice": "auto", "temperature": 0.3, "stream": False}
+    if MAX_TOKENS > 0:                       # 0 → don't cap; let the model run to its context limit
+        body["max_tokens"] = MAX_TOKENS
+    r = requests.post(f"{GATEWAY}/chat/completions", json=body, timeout=600)
+    r.raise_for_status()
+    return r.json()["choices"][0]["message"]
 
 def execute_tool_call(tc: dict, allowed_names: set) -> str:
     name = tc["function"]["name"]
@@ -3015,12 +3088,40 @@ def run_agent(query: str, persona: dict, depth: int = 0, spawn_ctx: dict = None,
         prior = prior[-20:]                               # cap to keep context bounded
         messages = [{"role":"system","content":system}] + prior + [{"role":"user","content":query}]
         searches = 0
-        for _ in range(MAX_STEPS):
+        step = 0
+        last_sig = None; repeats = 0
+        while True:
+            step += 1
+            if MAX_STEPS > 0 and step > MAX_STEPS:
+                return "[stopped: reached configured step cap MLX_AGENT_MAX_STEPS]"
             act.update("thinking…")
             msg = call_gateway(model, messages, schemas)
             tool_calls = msg.get("tool_calls") or []
             if not tool_calls:
-                return strip_thinking(msg.get("content") or "") or "[no answer]"
+                ans = strip_thinking(msg.get("content") or "") or "[no answer]"
+                # Live-stream the answer to front-ends (e.g. Telegram) ONLY at the top
+                # level and ONLY now that generation is safely complete — never during
+                # tool turns and never from a subagent (which would interleave garbage).
+                if depth == 0 and STREAM_FN is not None and not ans.startswith("[no answer"):
+                    try:
+                        piece = max(24, len(ans) // 20)
+                        for i in range(0, len(ans), piece):
+                            STREAM_FN(ans[i:i + piece])
+                    except Exception:
+                        pass
+                return ans
+            # Anti-hang guard (NOT a step cap): if the model emits the exact same tool
+            # call over and over, it's stuck in a loop — break instead of spinning forever.
+            if LOOP_GUARD > 0:
+                sig = json.dumps([[tc["function"].get("name"), tc["function"].get("arguments")]
+                                  for tc in tool_calls], sort_keys=True)
+                repeats = repeats + 1 if sig == last_sig else 0
+                last_sig = sig
+                if repeats >= LOOP_GUARD:
+                    return (f"[stopped: the model repeated the identical tool call {repeats+1}× without "
+                            "making progress — it's stuck. Try rephrasing the task, or switch to a dense "
+                            "model like qwen3.6-27b (MoE models tend to loop on tool chains). "
+                            "Disable this guard with MLX_AGENT_LOOP_GUARD=0.]")
             messages.append({"role":"assistant","content":msg.get("content") or "","tool_calls":tool_calls})
             for tc in tool_calls:
                 name = tc["function"]["name"]
@@ -3046,7 +3147,6 @@ def run_agent(query: str, persona: dict, depth: int = 0, spawn_ctx: dict = None,
                 if trace_out is not None: trace_out.append(name)
                 messages.append({"role":"tool","tool_call_id":tc.get("id",""),
                                  "name":name,"content":result})
-        return "[stopped: reached max tool steps]"
     finally:
         STRICT_RUN = prev_strict
         act.done()
@@ -3312,6 +3412,22 @@ def edit(mid, text: str, buttons=None, parse_mode=None):
         p.pop("parse_mode", None); p["text"] = _plainish(text)[:4096]; r = tg("editMessageText", **p)
     return r
 
+def _chunks(text: str, limit: int = 3800):
+    """Split text into <=limit pieces at line boundaries (hard-splitting any overlong line),
+    so a long answer can flow across several Telegram messages instead of being cut at 4096."""
+    text = text or ""
+    out, cur = [], ""
+    for line in text.split("\n"):
+        while len(line) > limit:
+            if cur: out.append(cur); cur = ""
+            out.append(line[:limit]); line = line[limit:]
+        if cur and len(cur) + 1 + len(line) > limit:
+            out.append(cur); cur = line
+        else:
+            cur = (cur + "\n" + line) if cur else line
+    if cur: out.append(cur)
+    return out or [""]
+
 def answer_cb(cb_id, text=""):
     tg("answerCallbackQuery", callback_query_id=cb_id, text=text)
 
@@ -3454,21 +3570,27 @@ class Live:
         visible, thinking = split_thinking(raw)
         foot = (f"\n\n<i>· {esc(self.persona)} · {steps} steps · {int(time.time()-self.start)}s</i>"
                 if steps else "")
-        head = to_html(visible).strip() if visible else ""
-        if not head:                               # model produced only reasoning → don't show empty
+        if not (visible or "").strip():
+            # model produced only reasoning → don't show an empty answer
             head = "<i>(reasoning only — see below)</i>" if thinking else "<i>(no output)</i>"
-        text = head + foot
-        if thinking:                               # keep it, but never let it push the answer out
-            budget = 3900 - len(text)
-            if budget > 80:
-                text += f"\n\n💭 <b>thinking</b>\n<pre>{esc(thinking[:budget])}</pre>"
-        text = text[:4096]
-        self._last_text = text
-        r = edit(self.msg_id, text, parse_mode="HTML")   # edit() auto-falls back to plain on parse error
-        if not r.get("ok") and "not modified" not in str(r).lower():
-            # last resort: never lose content — send answer + thinking as plain text
-            plain = (visible or "") + (("\n\n[thinking]\n" + thinking) if thinking else "")
-            send((plain or "(no output)")[:4096])
+            self._last_text = (head + foot)[:4096]
+            edit(self.msg_id, self._last_text, parse_mode="HTML")
+        else:
+            # Split the FULL answer into <=Telegram-limit pieces so nothing is truncated.
+            # First piece edits the live message; the rest are sent as follow-up messages.
+            parts = _chunks(visible, 3800)
+            first = to_html(parts[0]).strip() + (foot if len(parts) == 1 else "")
+            self._last_text = first[:4096]
+            r = edit(self.msg_id, self._last_text, parse_mode="HTML")
+            if not r.get("ok") and "not modified" not in str(r).lower():
+                edit(self.msg_id, _plainish(parts[0])[:4096])
+            for i, part in enumerate(parts[1:], start=1):
+                tail = foot if i == len(parts) - 1 else ""
+                send(to_html(part).strip() + tail, parse_mode="HTML")
+        if thinking:                               # reasoning as its own (single) message
+            tp = thinking.strip()
+            send("💭 <b>thinking</b>\n<pre>" + esc(tp[:3800]) + ("…" if len(tp) > 3800 else "") + "</pre>",
+                 parse_mode="HTML")
 
 # ── approval + choice handlers injected into the agent ─────────────────────
 def _wait_gate(kind: str, timeout=600):
