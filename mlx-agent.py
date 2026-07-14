@@ -35,7 +35,7 @@ except ImportError:
              "  ~/.mlx-ai-workstation/.venv/bin/python mlx-agent.py \"...\"")
 
 # ───────────────────────────── configuration ──────────────────────────────
-GATEWAY   = os.environ.get("MLX_GATEWAY", "http://localhost:4000/v1")
+GATEWAY   = os.environ.get("MLX_GATEWAY", "http://localhost:8000/v1")   # mlx-openai-server direct — LiteLLM drops tool calls
 VISION_MODEL = os.environ.get("MLX_VISION_MODEL", "mlx-community/Qwen3-VL-8B-Instruct-4bit")
 VISION_PORT  = os.environ.get("MLX_VISION_PORT", "8081")
 VISION_SERVER = f"http://localhost:{VISION_PORT}"   # resident mlx_vlm.server (warm model)
@@ -51,7 +51,10 @@ MAX_SPAWN_DEPTH = int(os.environ.get("MLX_AGENT_MAX_SPAWN_DEPTH", "2"))   # suba
 MAX_SPAWNS = int(os.environ.get("MLX_AGENT_MAX_SPAWNS", "8"))             # total subagents per top-level run
 SHELL_TIMEOUT = int(os.environ.get("MLX_AGENT_SHELL_TIMEOUT", "60"))
 CODE_TIMEOUT = int(os.environ.get("MLX_AGENT_CODE_TIMEOUT", "120"))       # run_python wall-clock bound
-MAX_TOKENS = int(os.environ.get("MLX_AGENT_MAX_TOKENS", "0"))            # 0 = uncapped (bounded only by the model's context window)
+MAX_TOKENS = int(os.environ.get("MLX_AGENT_MAX_TOKENS", "16384"))       # per model call; 0 = uncapped. A finite value stops a degenerate loop from running to the whole context.
+TEMPERATURE = float(os.environ.get("MLX_AGENT_TEMPERATURE", "0.3"))
+FREQ_PENALTY = float(os.environ.get("MLX_AGENT_FREQ_PENALTY", "0.4"))    # >0 discourages the "same phrase over and over" loops; 0 = don't send
+PRESENCE_PENALTY = float(os.environ.get("MLX_AGENT_PRESENCE_PENALTY", "0.0"))
 
 ALLOWED_ROOTS = [Path.home(), Path("/tmp"), WORKDIR, WORKSPACE, Path.cwd()]
 
@@ -63,6 +66,55 @@ SAFE_COMMANDS = {
     "brew","git","pip","uv","python3","node","docker","launchctl","hf","ollama",
 }
 DANGEROUS = re.compile(r"(;|&&|\|\||>|<|`|\$\(|\brm\b|\bmv\b|\bdd\b|\bmkfs\b|\bsudo\b|\bkillall\b)")
+
+# Autonomy: by default the agent RUNS everything (shell, code, file writes) without
+# asking. Only two categories still require a human: installing packages, and deleting
+# files/folders. Truly catastrophic commands are refused outright. Set
+# MLX_AGENT_AUTONOMOUS=0 to go back to confirm-everything; a persona with
+# approval:"strict" always asks regardless.
+AUTONOMOUS = os.environ.get("MLX_AGENT_AUTONOMOUS", "1") != "0"
+
+_INSTALL_RE = re.compile(
+    r"\b(pip3?|pipx|uv|conda|mamba|poetry)\b[^\n]*\b(install|add|sync)\b"
+    r"|\bbrew\b[^\n]*\b(install|reinstall|upgrade|tap)\b"
+    r"|\b(npm|pnpm|yarn|bun)\b[^\n]*\b(i|install|add|ci)\b"
+    r"|\b(cargo|gem|go)\b[^\n]*\binstall\b"
+    r"|\b(apt|apt-get|port|dnf|yum)\b[^\n]*\binstall\b"
+    r"|\bpip3?\s+install\b"
+    r"|curl[^\n]*\|\s*(sudo\s+)?(sh|bash|zsh)\b", re.I)
+
+_DELETE_RE = re.compile(
+    r"\brm\b|\brmdir\b|\bunlink\b|\bshred\b|\btrash\b"
+    r"|\bfind\b[^\n]*-delete\b|\bfind\b[^\n]*-exec\s+rm\b|\bgit\s+clean\b", re.I)
+
+# Never run these, even with approval — they can wreck the machine.
+_CATASTROPHIC_RE = re.compile(
+    r"\bsudo\b|\bdd\b\s|\bmkfs\b|\bdiskutil\s+(erase|reformat|partition)\b"
+    r"|:\s*\(\s*\)\s*\{|\bshutdown\b|\breboot\b|\bhalt\b"
+    r"|\brm\s+-[a-zA-Z]*f[a-zA-Z]*\s+(/|~|\$HOME|/\*)(\s|$)"
+    r"|>\s*/dev/(r?disk|sd)", re.I)
+
+def _in_git_repo(path: str) -> bool:
+    """True if `path` lives inside a git work tree (so changes/deletes are recoverable)."""
+    try:
+        p = os.path.abspath(os.path.expanduser(path))
+        d = p if os.path.isdir(p) else (os.path.dirname(p) or ".")
+        r = subprocess.run(["git", "-C", d, "rev-parse", "--is-inside-work-tree"],
+                           capture_output=True, text=True, timeout=5)
+        return r.returncode == 0 and r.stdout.strip() == "true"
+    except Exception:
+        return False
+
+def _delete_is_git_safe(command: str) -> bool:
+    """True when EVERY path a delete command targets is inside a git work tree — then the
+    deletion is version-controlled/recoverable, so it's safe to auto-approve without asking."""
+    try: toks = shlex.split(command)
+    except Exception: return False
+    skip = {"rm","rmdir","unlink","shred","trash","find","git","clean","xargs","-exec",";","+","{}"}
+    targets = [t for t in toks if not t.startswith("-") and t not in skip]
+    if not targets:                       # e.g. `git clean -fd` acts on the cwd repo
+        return _in_git_repo(os.getcwd())
+    return all(_in_git_repo(t) for t in targets)
 
 C = {"dim":"\033[2m","cyan":"\033[36m","yellow":"\033[33m","green":"\033[32m",
      "red":"\033[31m","bold":"\033[1m","magenta":"\033[35m","reset":"\033[0m"}
@@ -98,13 +150,18 @@ def _ask_yn(prompt: str, can_all: bool) -> str:
     if ans in ("a","all") and can_all: return "a"
     return "n"
 
-def confirm(prompt: str, force_ask: bool = False) -> bool:
+def confirm(prompt: str, force_ask: bool = False, kind: str = "general") -> bool:
+    """Approve an action. In AUTONOMOUS mode the agent runs freely; only kind in
+    {install, delete} still asks a human. A strict persona (STRICT_RUN) always asks."""
     global RUN_APPROVE_ALL
+    gated = kind in ("install", "delete")
     if AUTO_YES:
         emit(c(f"  (auto-approved) {prompt}", "dim")); return True
-    if RUN_APPROVE_ALL and not STRICT_RUN and not force_ask:
+    if AUTONOMOUS and not STRICT_RUN and not force_ask and not gated:
+        return True                                   # silent auto-run for normal task actions
+    if RUN_APPROVE_ALL and not STRICT_RUN and not force_ask and not gated:
         emit(c(f"  (approved for this run) {prompt}", "dim")); return True
-    can_all = not (STRICT_RUN or force_ask)
+    can_all = not (STRICT_RUN or force_ask or gated)  # no 'allow-all' for installs/deletes — each asks
     ans = _ask_yn(prompt, can_all)
     if ans == "y": return True
     if ans == "a" and can_all:
@@ -117,6 +174,12 @@ BASE_SYSTEM = (
     "needs live system data, files, code execution, or current web info, CALL A TOOL rather "
     "than guessing or claiming you lack access. Use the fewest tool calls that answer the task. "
     "After tools return, answer concisely from their ACTUAL output. Never fabricate tool results.\n"
+    "AUTONOMY: you are cleared to act. Run shell commands, execute code, and read/write/overwrite "
+    "files freely to complete the task — do NOT ask the user for permission for ordinary steps, and "
+    "do NOT stop to narrate what you're about to do; just call the tool and do it. The ONLY actions "
+    "that need the user's approval are installing packages and deleting files or folders; the system "
+    "handles asking for those, so proceed normally and let it prompt when needed. Inside a git "
+    "repository, deletions are auto-approved (git can recover them), so you can refactor freely there.\n"
     "INTERNET: you DO have live web access via web_search and web_fetch. For anything current or "
     "factual you're unsure of — news, sports scores, prices, release dates, docs — search first. "
     "NEVER tell the user you can't access the internet or browse the web; you can, so do it.\n"
@@ -324,24 +387,37 @@ def t_see_image(image_path: str, question: str = "Describe this image in detail.
 
 def t_run_shell(command: str) -> str:
     command = command.strip()
-    # Block raw package installs — they must go through propose_capability, which is
-    # venv-scoped, logged, and verified. A bare `pip install X` would hit the system
-    # Python and pollute the global environment.
-    if re.search(r"\b(pip3?|python3?\s+-m\s+pip|uv\s+pip|brew|npm|pipx)\b.*\binstall\b", command) \
-       or re.search(r"\bpip3?\s+install\b", command):
-        return ("[blocked: don't install packages with raw shell. Call propose_capability "
-                "with kind='package' and the install commands instead — it installs into the "
-                "workstation venv, logs it, and verifies. Retry via propose_capability.]")
-    segments = [s.strip() for s in command.split("|")]
-    first_tokens = []
-    for seg in segments:
-        try: first_tokens.append(shlex.split(seg)[0])
-        except Exception: first_tokens.append("")
-    all_safe = bool(first_tokens) and all(t in SAFE_COMMANDS for t in first_tokens)
-    risky = bool(DANGEROUS.search(command))
-    if not (all_safe and not risky):
-        if not confirm(f"run shell: {c(command,'bold')}"):
+    # 1) Refuse machine-wrecking commands outright — no approval path.
+    if _CATASTROPHIC_RE.search(command):
+        return ("[blocked: refusing a destructive/system-level command (sudo, disk wipe, "
+                "rm -rf / , shutdown, etc.). If this is truly intended, run it yourself.]")
+    # 2) Installs and deletes need a human, even in autonomous mode.
+    if _INSTALL_RE.search(command):
+        if not confirm(f"install packages: {c(command,'bold')}", kind="install"):
+            return "[install denied by user]"
+    elif _DELETE_RE.search(command):
+        # Deletes inside a git work tree are recoverable → auto-approve (unless a strict persona).
+        git_safe = AUTONOMOUS and not STRICT_RUN and _delete_is_git_safe(command)
+        if git_safe:
+            emit(c("  (git-tracked → recoverable → auto-approved delete)", "dim"))
+        elif not confirm(f"DELETE files/folders: {c(command,'bold')}", kind="delete"):
+            return "[delete denied by user]"
+    elif STRICT_RUN:
+        # A strict persona confirms every command, autonomy notwithstanding.
+        if not confirm(f"run shell: {c(command,'bold')}", kind="run"):
             return "[denied by user]"
+    elif not AUTONOMOUS:
+        # Legacy confirm-the-risky behaviour when autonomy is switched off.
+        segments = [s.strip() for s in command.split("|")]
+        first_tokens = []
+        for seg in segments:
+            try: first_tokens.append(shlex.split(seg)[0])
+            except Exception: first_tokens.append("")
+        all_safe = bool(first_tokens) and all(t in SAFE_COMMANDS for t in first_tokens)
+        if not (all_safe and not DANGEROUS.search(command)):
+            if not confirm(f"run shell: {c(command,'bold')}", kind="run"):
+                return "[denied by user]"
+    # 3) Everything else runs freely.
     emit(c(f"  $ {command}", "cyan"))
     try:
         r = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=SHELL_TIMEOUT)
@@ -362,7 +438,7 @@ def t_scaffold_swift(directory: str, name: str = "App", kind: str = "executable"
     k = kind if kind in kinds else "executable"
     if shutil.which("swift") is None:
         return "[swift not found — install Xcode Command Line Tools: `xcode-select --install`, then retry]"
-    if not confirm(f"scaffold Swift {k} package {c(name,'bold')} in {c(str(d),'bold')} (swift package init)?"):
+    if not confirm(f"scaffold Swift {k} package {c(name,'bold')} in {c(str(d),'bold')} (swift package init)?", kind="run"):
         return "[denied by user]"
     emit(c(f"  🛠  scaffold_swift({name} · {k} · {d})", "cyan"))
     try:
@@ -393,7 +469,7 @@ def t_run_python(code: str, timeout: int = 0) -> str:
         return "[no code provided]"
     to = int(timeout) if (timeout and int(timeout) > 0) else CODE_TIMEOUT
     preview = code if len(code) <= 400 else code[:400] + " …"
-    if not confirm(f"run python script ({len(code)} chars, {to}s):\n{c(preview,'dim')}"):
+    if not confirm(f"run python script ({len(code)} chars, {to}s):\n{c(preview,'dim')}", kind="run"):
         return "[denied by user]"
     emit(c(f"  🐍 run_python ({len(code)} chars)", "cyan"))
     import tempfile
@@ -441,7 +517,7 @@ def t_write_file(path: str, content: str, mode: str = "w") -> str:
     append = str(mode).lower() in ("a", "append")
     verb = "append to" if append else "write"
     preview = content if len(content) < 300 else content[:300] + "…"
-    if not confirm(f"{verb} {len(content)} chars {'onto' if append else 'to'} {c(str(p),'bold')}?\n{c(preview,'dim')}\n"):
+    if not confirm(f"{verb} {len(content)} chars {'onto' if append else 'to'} {c(str(p),'bold')}?\n{c(preview,'dim')}\n", kind="write"):
         return "[write denied by user]"
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -557,7 +633,7 @@ def t_propose_capability(need: str, kind: str = "package", commands=None,
     print(c("  │ plan   :", "magenta"))
     for cmd in commands: print(c(f"  │   $ {cmd}", "bold"))
     print(c("  └────────────────────────────────────────────────────", "magenta"))
-    approved = confirm("install plan (into workstation venv):\n  " + "\n  ".join(commands))
+    approved = confirm("install plan (into workstation venv):\n  " + "\n  ".join(commands), kind="install")
     _log_capability({"ts":ts,"kind":"package","need":need,"commands":commands,"approved":approved})
     if not approved: return "[user declined the install — do not retry it]"
     outs = []
@@ -659,11 +735,45 @@ def tools_for(persona: dict) -> tuple:
     return set(names), [ALL_SCHEMAS[n] for n in names]
 
 # ─────────────────────────── model plumbing ───────────────────────────────
+def _looks_degenerate(text: str) -> bool:
+    """True when a generation fell into a repetition loop: many lines, almost none unique."""
+    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+    return len(lines) >= 15 and len(set(lines)) <= 5
+
 def strip_thinking(text: str) -> str:
     if not text: return ""
     if "</think>" in text: text = text.split("</think>")[-1]
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
     return text.strip()
+
+_SERVED = {"names": None, "t": 0.0}
+def _served_models():
+    """Cache the server's real model IDs (served_model_name) for ~60s."""
+    now = time.time()
+    if _SERVED["names"] is None or now - _SERVED["t"] > 60:
+        try:
+            r = requests.get(f"{GATEWAY}/models", timeout=8)
+            _SERVED["names"] = [d.get("id") for d in (r.json().get("data") or []) if d.get("id")]
+        except Exception:
+            _SERVED["names"] = _SERVED["names"] or []
+        _SERVED["t"] = now
+    return _SERVED["names"]
+
+def _resolve_model(m: str) -> str:
+    """Map a persona/LiteLLM-style alias to the server's actual served_model_name.
+    e.g. 'orchestrator:qwen3.6-35b' -> 'qwen36-35b'. Bypassing LiteLLM means the mlx
+    server only knows its served names, so we translate before every call."""
+    m = (m or "").strip()
+    served = _served_models()
+    if served and m in served:
+        return m
+    cand = m.split(":")[-1].replace(".", "")        # 'coder:qwen3.6-27b' -> 'qwen36-27b'
+    if not served or cand in served:
+        return cand
+    for s in served:                                 # last resort: loose match
+        if cand and (cand in s or s in cand):
+            return s
+    return cand
 
 def call_gateway(model: str, messages: list, schemas: list) -> dict:
     # Always non-streaming. Reliable tool-call detection is the whole point of the
@@ -671,10 +781,14 @@ def call_gateway(model: str, messages: list, schemas: list) -> dict:
     # the model's tool call can arrive as plain text and get mistaken for the answer.
     # The final answer is streamed to live front-ends separately (see run_agent), by
     # replaying it once generation is safely complete.
-    body = {"model": model, "messages": messages, "tools": schemas,
-            "tool_choice": "auto", "temperature": 0.3, "stream": False}
-    if MAX_TOKENS > 0:                       # 0 → don't cap; let the model run to its context limit
+    body = {"model": _resolve_model(model), "messages": messages, "tools": schemas,
+            "tool_choice": "auto", "temperature": TEMPERATURE, "stream": False}
+    if MAX_TOKENS > 0:                       # 0 → uncapped; a finite value bounds a runaway loop
         body["max_tokens"] = MAX_TOKENS
+    if FREQ_PENALTY:                         # curbs degenerate "I will run the script" repetition loops
+        body["frequency_penalty"] = FREQ_PENALTY
+    if PRESENCE_PENALTY:
+        body["presence_penalty"] = PRESENCE_PENALTY
     r = requests.post(f"{GATEWAY}/chat/completions", json=body, timeout=600)
     r.raise_for_status()
     return r.json()["choices"][0]["message"]
@@ -756,6 +870,11 @@ def run_agent(query: str, persona: dict, depth: int = 0, spawn_ctx: dict = None,
             tool_calls = msg.get("tool_calls") or []
             if not tool_calls:
                 ans = strip_thinking(msg.get("content") or "") or "[no answer]"
+                if _looks_degenerate(ans):
+                    ans = ("[the model fell into a repetition loop instead of answering — this usually "
+                           "means it's too weak at tool-calling for this task. Try /reset and rephrase, "
+                           "or switch the persona to the dense qwen3.6-27b coder (MoE models loop here). "
+                           "You can also raise MLX_AGENT_FREQ_PENALTY.]")
                 # Live-stream the answer to front-ends (e.g. Telegram) ONLY at the top
                 # level and ONLY now that generation is safely complete — never during
                 # tool turns and never from a subagent (which would interleave garbage).
