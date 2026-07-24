@@ -46,6 +46,21 @@ if not TOKEN or not USER_ID:
     sys.exit("Set TELEGRAM_BOT_TOKEN and TELEGRAM_USER_ID in .env — run ./mlx-setup.sh --configure")
 API = f"https://api.telegram.org/bot{TOKEN}"
 
+# ── wait for network (launchd may start before DNS is ready) ──────────────
+def _wait_network(max_wait: int = 120):
+    import socket
+    for attempt in range(max_wait // 5):
+        try:
+            socket.getaddrinfo("api.telegram.org", 443, socket.AF_INET)
+            return True
+        except socket.gaierror:
+            print(f"[telegram] DNS not ready, waiting 5s (attempt {attempt+1})...", flush=True)
+            time.sleep(5)
+    return False
+
+if not _wait_network():
+    print("[telegram] Network never became available — will try anyway", flush=True)
+
 # ── load the agent as a module and point it at our workspace ───────────────
 spec = importlib.util.spec_from_file_location("mlx_agent", str(AGENT_PATH))
 agent = importlib.util.module_from_spec(spec)
@@ -309,10 +324,21 @@ def run_task(text: str):
     # fire — so tool-heavy tasks can't trip Telegram's rate limit. Fully wrapped so a
     # transient API error can never kill the loop (the old failure mode).
     stop_keeper = threading.Event()
+    _last_buf_len = [0]
+    _last_activity_ts = [time.time()]
     def _keeper():
         while not stop_keeper.is_set():
             try:
                 typing()
+                cur_len = len(live.buf)
+                if cur_len != _last_buf_len[0]:
+                    _last_buf_len[0] = cur_len
+                    _last_activity_ts[0] = time.time()
+                idle = time.time() - _last_activity_ts[0]
+                if idle > 12 and not live.buf and not live.answer:
+                    with live.lk:
+                        live.buf.append(f"Loading model… ({int(idle)}s)")
+                        _last_activity_ts[0] = time.time()
                 live.render()
             except Exception as e:
                 print("keeper (non-fatal):", e)
