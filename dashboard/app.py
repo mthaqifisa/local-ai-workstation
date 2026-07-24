@@ -290,22 +290,35 @@ def _build_nav(active: str = "") -> str:
         'border-radius:6px;color:#94a3b8;cursor:pointer;font-size:17px;padding:3px 10px;'
         'line-height:1;margin-left:auto}'
         '.snav-burger:hover{color:#e2e8f0;border-color:#0ea5e9}'
+        '.snav-backdrop{display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.5);'
+        'backdrop-filter:blur(2px)}'
+        '.snav-backdrop.open{display:block}'
         '@media(max-width:680px){'
         '.snav-burger{display:flex;align-items:center;justify-content:center}'
-        '.snav-hdr{flex-wrap:wrap;height:auto;min-height:52px;padding:0 14px}'
-        '.snav-logo{padding:10px 0}'
-        '.snav-links{display:none;width:100%;flex-direction:column;'
-        'padding:6px 0 10px;gap:2px;order:3}'
+        '.snav-hdr{height:52px;padding:0 14px;flex-wrap:nowrap}'
+        '.snav-links{display:none;position:fixed;top:52px;left:0;right:0;'
+        'flex-direction:column;background:rgba(2,8,23,.97);'
+        'border-bottom:1px solid rgba(14,165,233,.15);'
+        'padding:8px;gap:2px;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,.6)}'
         '.snav-links.open{display:flex}'
-        '.snav-link{padding:10px 12px;font-size:14px;width:100%;display:block}'
+        '.snav-link{padding:11px 14px;font-size:14px;width:100%;display:block;border-radius:8px}'
         '}'
         '</style>'
+        '<div class="snav-backdrop" id="snavBd" onclick="closeSnav()"></div>'
         '<header class="snav-hdr">'
         '<a class="snav-logo" href="/"><div class="snav-dot"></div>'
         '<span class="snav-name">NEXUS</span></a>'
         f'<nav class="snav-links" id="snav">{items}</nav>'
-        '<button class="snav-burger" onclick="document.getElementById(\'snav\').classList.toggle(\'open\')">&#9776;</button>'
+        '<button class="snav-burger" id="snavBurger" onclick="toggleSnav()">&#9776;</button>'
         '</header>'
+        '<script>'
+        'function toggleSnav(){var n=document.getElementById("snav"),b=document.getElementById("snavBd");'
+        'var open=n.classList.toggle("open");b.classList.toggle("open",open);}'
+        'function closeSnav(){document.getElementById("snav").classList.remove("open");'
+        'document.getElementById("snavBd").classList.remove("open");}'
+        'document.querySelectorAll("#snav .snav-link").forEach(function(a){'
+        'a.addEventListener("click",closeSnav);});'
+        '</script>'
     )
 
 PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -347,6 +360,7 @@ a{color:var(--blue);text-decoration:none}a:hover{color:#38bdf8}
 @media(max-width:900px){.main-grid{grid-template-columns:1fr;}}
 .panel{background:var(--card);border:1px solid var(--bdr);border-radius:14px;backdrop-filter:blur(12px);
   padding:16px;display:flex;flex-direction:column;gap:12px;overflow:hidden;}
+@media(max-width:900px){.panel{overflow:visible;}}
 .panel:hover{border-color:var(--bdrbrt);transition:border-color .3s}
 .ph{display:flex;align-items:center;gap:8px;padding-bottom:12px;border-bottom:1px solid var(--bdr)}
 .ph-icon{width:20px;height:20px;border-radius:5px;background:rgba(14,165,233,.15);
@@ -421,17 +435,22 @@ canvas.spark{width:100%;height:24px;border-radius:4px;background:rgba(255,255,25
 .burger{display:none;background:none;border:1px solid var(--bdr);border-radius:6px;
   color:var(--muted);cursor:pointer;font-size:18px;padding:4px 10px;line-height:1;margin-left:auto}
 .burger:hover{color:var(--text);border-color:var(--blue)}
+.nav-backdrop{display:none;position:fixed;inset:0;z-index:99;background:rgba(0,0,0,.5);backdrop-filter:blur(2px)}
+.nav-backdrop.open{display:block}
 @media(max-width:680px){
   .burger{display:flex;align-items:center;justify-content:center}
-  .site-header{position:sticky;top:0;flex-wrap:wrap;padding:0 14px;height:auto;min-height:52px}
-  .logo{padding:10px 0}
-  .nav{display:none;width:100%;flex-direction:column;padding:6px 0 10px;gap:2px;order:3}
+  .site-header{position:sticky;top:0;height:52px;flex-wrap:nowrap;padding:0 14px;z-index:200}
+  .nav{display:none;position:fixed;top:52px;left:0;right:0;
+    flex-direction:column;background:rgba(2,8,23,.97);
+    border-bottom:1px solid rgba(14,165,233,.2);
+    padding:8px;gap:2px;z-index:100;box-shadow:0 8px 32px rgba(0,0,0,.6)}
   .nav.open{display:flex}
-  .nav a{padding:10px 12px;border-radius:8px;font-size:14px;width:100%;display:block}
+  .nav a{padding:11px 14px;border-radius:8px;font-size:14px;display:block}
   .header-r{display:none}
   .main-grid{padding:10px 12px;gap:10px}
 }
 </style></head><body>
+<div class="nav-backdrop" id="navBd" onclick="closeNav()"></div>
 <header class="site-header">
   <div class="logo">
     <div class="logo-dot"></div>
@@ -450,7 +469,7 @@ canvas.spark{width:100%;height:24px;border-radius:4px;background:rgba(255,255,25
     <div class="status-pill" id="statusPill"><div class="dot2"></div><span id="statusTxt">ONLINE</span></div>
     <div class="hclock" id="clock"></div>
   </div>
-  <button class="burger" onclick="document.getElementById('mainNav').classList.toggle('open')">&#9776;</button>
+  <button class="burger" onclick="toggleNav()">&#9776;</button>
 </header>
 
 <div class="main-grid">
@@ -536,6 +555,10 @@ const HOST=window.location.hostname||'localhost';
 document.querySelectorAll('.nav a').forEach(function(a){
   a.classList.toggle('active', a.getAttribute('href')===window.location.pathname);
 });
+// floating mobile nav
+function toggleNav(){var n=document.getElementById('mainNav'),b=document.getElementById('navBd');var o=n.classList.toggle('open');b.classList.toggle('open',o);}
+function closeNav(){document.getElementById('mainNav').classList.remove('open');document.getElementById('navBd').classList.remove('open');}
+document.querySelectorAll('#mainNav a').forEach(function(a){a.addEventListener('click',closeNav);});
 function su(port){return 'http://'+HOST+':'+port;}
 function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function ts(){const n=new Date();return n.toLocaleTimeString('en-GB',{hour12:false});}
@@ -798,24 +821,36 @@ def api_personas_delete():
 
 PERSONA_PAGE = r"""<!doctype html><html><head><meta charset=utf-8><title>Personas - MLX</title>
 <meta name=viewport content="width=device-width,initial-scale=1"><style>
-*{box-sizing:border-box}body{font:15px system-ui;background:#0b1020;color:#e6edf3;margin:0;padding:0}
+*{box-sizing:border-box}body{font:15px system-ui;background:#0b1020;color:#e6edf3;margin:0;padding:0;overflow-y:auto}
 a{color:#60a5fa;text-decoration:none}h1{font-size:20px;margin:0 0 4px}.sub{color:#8b98b8;font-size:13px;margin-bottom:20px}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
 .card{background:#141b2e;border:1px solid #223052;border-radius:12px;padding:14px}
 .card h3{margin:0 0 4px;font-size:16px}.tag{display:inline-block;font-size:11px;padding:2px 7px;border-radius:20px;background:#1e293b;color:#93c5fd;margin-right:4px}
 .strict{background:#3b1d1d;color:#fca5a5}.mono{font-family:ui-monospace,monospace;font-size:12px;color:#9fb3d1}
 .desc{color:#b6c2da;font-size:13px;margin:6px 0}.row{margin-top:10px}
 button{border:0;border-radius:8px;padding:7px 12px;font-weight:600;cursor:pointer;font-size:13px}
 .edit{background:#334155;color:#e6edf3}.del{background:#7f1d1d;color:#fee2e2;margin-left:6px}.add{background:#3b82f6;color:#fff}
-dialog{background:#141b2e;color:#e6edf3;border:1px solid #223052;border-radius:14px;padding:20px;width:min(560px,92vw)}
+dialog{background:#141b2e;color:#e6edf3;border:1px solid #223052;border-radius:14px;
+  padding:20px;width:min(560px,94vw);max-height:88vh;overflow-y:auto;
+  display:flex;flex-direction:column;gap:0}
+dialog::backdrop{background:rgba(0,0,0,.7);backdrop-filter:blur(4px)}
 label{display:block;font-size:13px;margin:10px 0 4px;color:#b6c2da}
 input,select,textarea{width:100%;padding:9px;border-radius:8px;border:1px solid #2a3550;background:#0b1020;color:#e6edf3;font:14px system-ui}
-textarea{min-height:90px;resize:vertical}.tools{display:flex;flex-wrap:wrap;gap:8px;max-height:120px;overflow:auto;border:1px solid #2a3550;border-radius:8px;padding:8px}
+textarea{min-height:80px;max-height:240px;resize:vertical}
+.tools{display:flex;flex-wrap:wrap;gap:8px;max-height:140px;overflow-y:auto;border:1px solid #2a3550;border-radius:8px;padding:8px}
 .tools label{display:flex;align-items:center;gap:5px;margin:0;font-size:12px}.tools input{width:auto}
-.err{color:#f87171;font-size:13px;min-height:16px;margin-top:8px}.actions{margin-top:16px;display:flex;justify-content:flex-end;gap:8px}
+.err{color:#f87171;font-size:13px;min-height:16px;margin-top:8px}
+.actions{margin-top:16px;display:flex;justify-content:flex-end;gap:8px;flex-shrink:0;position:sticky;bottom:0;background:#141b2e;padding:10px 0 0}
+@media(max-width:600px){
+  dialog{padding:14px;border-radius:10px;max-height:92vh}
+  .grid{grid-template-columns:1fr}
+  textarea{min-height:60px;max-height:160px}
+  .tools{max-height:100px}
+  input,select,textarea{font-size:16px}
+}
 </style></head><body>
 <!--NAV-->
-<div style="padding:20px 24px 24px">
+<div style="padding:16px 20px 24px">
 <h1>🎭 Personas</h1><div class=sub>Each persona = a model + system prompt + tool permissions + approval level. Used by the agent & Telegram (not the web-chat dropdown).</div>
 <p><button class=add onclick="openEdit()">+ New persona</button></p>
 <div class=grid id=grid></div>
@@ -1037,7 +1072,7 @@ def api_models_remove():
 
 MODELS_PAGE = r"""<!doctype html><html><head><meta charset=utf-8><title>Models - MLX</title>
 <meta name=viewport content="width=device-width,initial-scale=1"><style>
-*{box-sizing:border-box}body{font:15px system-ui;background:#0b1020;color:#e6edf3;margin:0;padding:0}
+*{box-sizing:border-box}body{font:15px system-ui;background:#0b1020;color:#e6edf3;margin:0;padding:0;overflow-y:auto}
 a{color:#60a5fa;text-decoration:none}h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;color:#93c5fd;margin:22px 0 8px}
 .sub{color:#8b98b8;font-size:13px;margin-bottom:16px}.mono{font-family:ui-monospace,monospace;font-size:12px}
 .bar{display:flex;gap:8px}input,select{padding:9px;border-radius:8px;border:1px solid #2a3550;background:#0b1020;color:#e6edf3;font:14px system-ui}
@@ -1227,7 +1262,9 @@ CHAT_PAGE = r"""<!doctype html><html lang="en"><head><meta charset=utf-8>
 --blue:#0ea5e9;--purple:#7c3aed;--green:#10b981;--red:#ef4444;
 --text:#e2e8f0;--muted:#94a3b8;--mono:'JetBrains Mono',monospace;--sans:'Space Grotesk',system-ui,sans-serif;}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:var(--sans);background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;
+html{height:100%}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);height:100vh;height:100dvh;
+display:flex;flex-direction:column;overflow:hidden;
 background-image:radial-gradient(ellipse 60% 40% at 50% -20%,rgba(14,165,233,.06),transparent);}
 a{color:var(--blue);text-decoration:none}
 .hdr{display:flex;align-items:center;gap:12px;padding:0 16px;height:52px;
@@ -1244,7 +1281,7 @@ padding:5px 10px;border-radius:6px;border:1px solid var(--bdr);transition:.15s;u
 .clr-btn{margin-left:auto;background:rgba(255,255,255,.04);border:1px solid var(--bdr);border-radius:6px;
 padding:5px 10px;color:var(--muted);cursor:pointer;font:12px var(--sans);transition:.15s}
 .clr-btn:hover{color:var(--text);border-color:var(--muted)}
-.thread{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px;
+.thread{flex:1;overflow-y:auto;min-height:0;padding:20px;display:flex;flex-direction:column;gap:14px;
 scrollbar-width:thin;scrollbar-color:rgba(14,165,233,.15) transparent}
 .msg-wrap{display:flex;flex-direction:column;animation:fi .25s ease}
 .msg-wrap.user{align-items:flex-end}.msg-wrap.ai{align-items:flex-start}
@@ -1283,15 +1320,15 @@ border:1px solid rgba(124,58,237,.3);background:rgba(124,58,237,.08);font-size:1
 .foot{padding:12px 16px;border-top:1px solid var(--bdr);background:rgba(2,8,23,.8);backdrop-filter:blur(12px);flex-shrink:0}
 .inp-row{display:flex;gap:8px;align-items:flex-end}
 @media(max-width:640px){
-  .hdr{flex-wrap:wrap;height:auto;padding:8px 10px;gap:6px}
-  .hdr-sep,.note{display:none}
-  .hdr-logo{font-size:12px}
-  #model{flex:1;min-width:0;max-width:none!important}
-  .mode-toggle{padding:5px 8px;font-size:11px}
-  .clr-btn{padding:5px 8px;font-size:11px}
-  .thread{padding:12px 10px}
-  .bubble{max-width:92%}
+  .hdr{height:44px;padding:0 10px;flex-wrap:nowrap;gap:6px;overflow:hidden}
+  .hdr-back,.hdr-logo,.hdr-sep,.note{display:none}
+  #model{flex:1;min-width:0;max-width:none!important;font-size:12px;padding:4px 8px}
+  .mode-toggle{padding:4px 8px;font-size:11px;flex-shrink:0}
+  .clr-btn{padding:4px 8px;font-size:11px;flex-shrink:0;margin-left:0}
+  .thread{padding:10px 8px}
+  .bubble{max-width:94%;font-size:14px}
   .foot{padding:8px 10px}
+  #in{font-size:16px}
 }
 .att-btn{width:38px;height:38px;border:1px solid var(--bdr);border-radius:8px;background:var(--surf);
 color:var(--muted);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.15s}
@@ -1309,7 +1346,7 @@ body.drag{outline:3px dashed var(--purple);outline-offset:-4px}
 </style></head><body>
 <!--NAV-->
 <div class="hdr">
-<a href="/">&#8592;</a>
+<a class="hdr-back" href="/">&#8592;</a>
 <span class="hdr-logo"><span>NEXUS</span> CHAT</span>
 <span class="hdr-sep">|</span>
 <div class="mode-toggle on" id="modeBtn" onclick="toggleMode()">&#127760; Agent</div>
@@ -1481,7 +1518,7 @@ loadDropdown();
 
 IMAGINE_PAGE = r"""<!doctype html><html><head><meta charset=utf-8><title>Create image - MLX</title>
 <meta name=viewport content="width=device-width,initial-scale=1"><style>
-*{box-sizing:border-box}body{font:15px system-ui;background:#0b1020;color:#e6edf3;margin:0;padding:0}
+*{box-sizing:border-box}body{font:15px system-ui;background:#0b1020;color:#e6edf3;margin:0;padding:0;overflow-y:auto}
 a{color:#60a5fa;text-decoration:none}h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;color:#93c5fd;margin:24px 0 10px}
 .sub{color:#8b98b8;font-size:13px;margin-bottom:16px}label{display:block;font-size:13px;margin:12px 0 4px;color:#b6c2da}
 textarea,select,input{width:100%;padding:9px;border-radius:8px;border:1px solid #2a3550;background:#141b2e;color:#e6edf3;font:14px system-ui}
