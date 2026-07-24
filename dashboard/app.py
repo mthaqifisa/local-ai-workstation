@@ -170,12 +170,20 @@ def api_metrics():
             bat = {"pct": round(b.percent), "charging": b.power_plugged, "time_str": hrs}
     except Exception: pass
     def _col(key): return [d.get(key, 0) for d in data]
+    try:
+        _disk = psutil.disk_usage(os.path.expanduser("~"))
+        disk_pct = round(_disk.percent)
+        disk_used_gb = round(_disk.used / 1e9)
+        disk_total_gb = round(_disk.total / 1e9)
+    except Exception:
+        disk_pct, disk_used_gb, disk_total_gb = 0, 0, 0
     return jsonify({
         "cpu": _col("cpu"), "ram": _col("ram"), "ram_gb": _col("ram_gb"),
         "disk_r": _col("dr"), "disk_w": _col("dw"),
         "net_r": _col("nr"), "net_s": _col("ns"),
         "bat": _col("bat"),
         "ram_total_gb": round(vm.total / 1e9),
+        "disk_pct": disk_pct, "disk_used_gb": disk_used_gb, "disk_total_gb": disk_total_gb,
         "battery": bat, "window_sec": 300,
     })
 
@@ -278,11 +286,25 @@ def _build_nav(active: str = "") -> str:
         'color:var(--muted);transition:.15s;text-decoration:none}'
         '.snav-link:hover{color:var(--text);background:rgba(14,165,233,.1)}'
         '.snav-link.active{color:var(--blue);background:rgba(14,165,233,.1)}'
+        '.snav-burger{display:none;background:none;border:1px solid rgba(14,165,233,.2);'
+        'border-radius:6px;color:#94a3b8;cursor:pointer;font-size:17px;padding:3px 10px;'
+        'line-height:1;margin-left:auto}'
+        '.snav-burger:hover{color:#e2e8f0;border-color:#0ea5e9}'
+        '@media(max-width:680px){'
+        '.snav-burger{display:flex;align-items:center;justify-content:center}'
+        '.snav-hdr{flex-wrap:wrap;height:auto;min-height:52px;padding:0 14px}'
+        '.snav-logo{padding:10px 0}'
+        '.snav-links{display:none;width:100%;flex-direction:column;'
+        'padding:6px 0 10px;gap:2px;order:3}'
+        '.snav-links.open{display:flex}'
+        '.snav-link{padding:10px 12px;font-size:14px;width:100%;display:block}'
+        '}'
         '</style>'
         '<header class="snav-hdr">'
         '<a class="snav-logo" href="/"><div class="snav-dot"></div>'
         '<span class="snav-name">NEXUS</span></a>'
-        f'<nav class="snav-links">{items}</nav>'
+        f'<nav class="snav-links" id="snav">{items}</nav>'
+        '<button class="snav-burger" onclick="document.getElementById(\'snav\').classList.toggle(\'open\')">&#9776;</button>'
         '</header>'
     )
 
@@ -381,11 +403,12 @@ a{color:var(--blue);text-decoration:none}a:hover{color:#38bdf8}
 .qlinks{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
 .qlink{font-size:12px;padding:5px 10px;border-radius:6px;border:1px solid var(--bdr);color:var(--muted);transition:.15s}
 .qlink:hover{border-color:var(--blue);color:var(--blue)}
-.spark-wrap{display:flex;flex-direction:column;gap:6px}
-.spark-row{display:flex;align-items:center;gap:8px}
-.spark-lbl{font-family:var(--mono);font-size:10px;color:var(--muted);width:32px;flex-shrink:0}
-.spark-val{font-family:var(--mono);font-size:11px;color:var(--text);width:38px;text-align:right;flex-shrink:0}
-canvas.spark{flex:1;height:28px;border-radius:4px;background:rgba(255,255,255,.02)}
+.spark-wrap{display:flex;flex-direction:column;gap:8px}
+.spark-row{display:flex;flex-direction:column;gap:3px}
+.spark-hdr{display:flex;justify-content:space-between;align-items:baseline;gap:6px}
+.spark-lbl{font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--muted)}
+.spark-val{font-family:var(--mono);font-size:11px;color:var(--text);text-align:right}
+canvas.spark{width:100%;height:24px;border-radius:4px;background:rgba(255,255,255,.02)}
 .model-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.04)}
 .model-row:last-child{border:none}
 .model-role{font-weight:600;font-size:13px}
@@ -393,14 +416,21 @@ canvas.spark{flex:1;height:28px;border-radius:4px;background:rgba(255,255,255,.0
 .model-pill{font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:4px;margin-left:auto}
 .model-pill.ready{background:rgba(16,185,129,.15);color:var(--green)}
 .model-pill.idle{background:rgba(148,163,184,.08);color:var(--muted)}
-.bottom-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:0 20px 16px;max-width:1400px;margin:0 auto}
-@media(max-width:900px){.bottom-row{grid-template-columns:1fr}}
-.chart-card{background:var(--card);border:1px solid var(--bdr);border-radius:14px;padding:16px;backdrop-filter:blur(12px)}
-.chart-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-.chart-ttl{font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--muted)}
-.chart-val{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--text)}
-canvas.bigchart{width:100%;height:80px;display:block;border-radius:6px}
+.hw-info{font-family:var(--mono);font-size:10px;color:var(--muted);padding:4px 0 8px;letter-spacing:.06em}
 .footer{font-family:var(--mono);font-size:10px;color:var(--muted);text-align:center;padding:12px 20px 20px;letter-spacing:.05em}
+.burger{display:none;background:none;border:1px solid var(--bdr);border-radius:6px;
+  color:var(--muted);cursor:pointer;font-size:18px;padding:4px 10px;line-height:1;margin-left:auto}
+.burger:hover{color:var(--text);border-color:var(--blue)}
+@media(max-width:680px){
+  .burger{display:flex;align-items:center;justify-content:center}
+  .site-header{position:sticky;top:0;flex-wrap:wrap;padding:0 14px;height:auto;min-height:52px}
+  .logo{padding:10px 0}
+  .nav{display:none;width:100%;flex-direction:column;padding:6px 0 10px;gap:2px;order:3}
+  .nav.open{display:flex}
+  .nav a{padding:10px 12px;border-radius:8px;font-size:14px;width:100%;display:block}
+  .header-r{display:none}
+  .main-grid{padding:10px 12px;gap:10px}
+}
 </style></head><body>
 <header class="site-header">
   <div class="logo">
@@ -408,7 +438,7 @@ canvas.bigchart{width:100%;height:80px;display:block;border-radius:6px}
     <span class="logo-name">NEXUS</span>
     <span class="logo-sub">AI CONTROL CENTER</span>
   </div>
-  <nav class="nav">
+  <nav class="nav" id="mainNav">
     <a href="/">Dashboard</a>
     <a href="/chat">Chat</a>
     <a href="/vision">Vision</a>
@@ -420,27 +450,14 @@ canvas.bigchart{width:100%;height:80px;display:block;border-radius:6px}
     <div class="status-pill" id="statusPill"><div class="dot2"></div><span id="statusTxt">ONLINE</span></div>
     <div class="hclock" id="clock"></div>
   </div>
+  <button class="burger" onclick="document.getElementById('mainNav').classList.toggle('open')">&#9776;</button>
 </header>
 
 <div class="main-grid">
   <!-- LEFT: System Core -->
   <div class="panel">
     <div class="ph"><div class="ph-icon">⬡</div><span class="ph-title">SYSTEM CORE</span><span class="ph-badge" id="sysTs">--:--</span></div>
-    <div class="stat-block">
-      <div class="stat-lbl">UNIFIED MEMORY</div>
-      <div class="stat-bar-wrap"><div class="stat-bar" id="ramBar" style="width:0%"></div></div>
-      <div class="stat-nums"><span class="stat-big" id="ramPct">--%</span><span class="stat-det" id="ramTxt">-- / -- GB</span></div>
-    </div>
-    <div class="stat-block">
-      <div class="stat-lbl">CPU</div>
-      <div class="stat-bar-wrap"><div class="stat-bar cpu" id="cpuBar" style="width:0%"></div></div>
-      <div class="stat-nums"><span class="stat-big" id="cpuPct">--%</span></div>
-    </div>
-    <div class="stat-block">
-      <div class="stat-lbl">STORAGE</div>
-      <div class="stat-bar-wrap"><div class="stat-bar disk" id="diskBar" style="width:0%"></div></div>
-      <div class="stat-nums"><span class="stat-big" id="diskPct">--%</span><span class="stat-det" id="diskTxt">-- / -- GB</span></div>
-    </div>
+    <div class="hw-info" id="hwInfo">M5 Pro · 64 GB · 1 TB</div>
     <div style="padding-top:8px;border-top:1px solid var(--bdr)">
       <div class="stat-lbl" style="margin-bottom:8px">SERVICES</div>
       <div id="svcs"></div>
@@ -480,30 +497,38 @@ canvas.bigchart{width:100%;height:80px;display:block;border-radius:6px}
       <a href="/personas" class="qlink">🎭 Personas</a>
     </div>
     <div style="padding-top:8px;border-top:1px solid var(--bdr)">
-      <div class="stat-lbl" style="margin-bottom:6px">LIVE METRICS</div>
+      <div class="stat-lbl" style="margin-bottom:8px">LIVE METRICS</div>
       <div class="spark-wrap">
-        <div class="spark-row"><span class="spark-lbl">CPU</span><canvas class="spark" id="sCpu"></canvas><span class="spark-val" id="sCpuV">--%</span></div>
-        <div class="spark-row"><span class="spark-lbl">RAM</span><canvas class="spark" id="sRam"></canvas><span class="spark-val" id="sRamV">--%</span></div>
-        <div class="spark-row"><span class="spark-lbl">BAT</span><canvas class="spark" id="sBat"></canvas><span class="spark-val" id="sBatV">--%</span></div>
-        <div class="spark-row"><span class="spark-lbl">DSK</span><canvas class="spark" id="sDsk"></canvas><span class="spark-val" id="sDskV">0 MB/s</span></div>
-        <div class="spark-row"><span class="spark-lbl">NET</span><canvas class="spark" id="sNet"></canvas><span class="spark-val" id="sNetV">0 MB/s</span></div>
+        <div class="spark-row">
+          <div class="spark-hdr"><span class="spark-lbl">CPU</span><span class="spark-val" id="sCpuV">--%</span></div>
+          <canvas class="spark" id="sCpu"></canvas>
+        </div>
+        <div class="spark-row">
+          <div class="spark-hdr"><span class="spark-lbl">MEMORY</span><span class="spark-val" id="sRamV">-- · --/-- GB</span></div>
+          <canvas class="spark" id="sRam"></canvas>
+        </div>
+        <div class="spark-row">
+          <div class="spark-hdr"><span class="spark-lbl">BATTERY</span><span class="spark-val" id="sBatV">-- · --</span></div>
+          <canvas class="spark" id="sBat"></canvas>
+        </div>
+        <div class="spark-row">
+          <div class="spark-hdr"><span class="spark-lbl">STORAGE</span><span class="spark-val" id="sStrV">-- · --/-- GB</span></div>
+          <canvas class="spark" id="sStr"></canvas>
+        </div>
+        <div class="spark-row">
+          <div class="spark-hdr"><span class="spark-lbl">DISK I/O</span><span class="spark-val" id="sDskV">0 MB/s</span></div>
+          <canvas class="spark" id="sDsk"></canvas>
+        </div>
+        <div class="spark-row">
+          <div class="spark-hdr"><span class="spark-lbl">NETWORK</span><span class="spark-val" id="sNetV">0 MB/s</span></div>
+          <canvas class="spark" id="sNet"></canvas>
+        </div>
       </div>
     </div>
   </div>
 </div>
 
-<div class="bottom-row">
-  <div class="chart-card">
-    <div class="chart-hdr"><span class="chart-ttl">CPU - LAST 5 MIN</span><span class="chart-val" id="cpuNow">--%</span></div>
-    <canvas class="bigchart" id="cpuChart" height="80"></canvas>
-  </div>
-  <div class="chart-card">
-    <div class="chart-hdr"><span class="chart-ttl">MEMORY - LAST 5 MIN</span><span class="chart-val" id="ramNow">--GB</span></div>
-    <canvas class="bigchart" id="ramChart" height="80"></canvas>
-  </div>
-</div>
-
-<div class="footer" id="foot">NEXUS AI CONTROL CENTER - M5 Pro - 100% LOCAL - $0 API</div>
+<div class="footer" id="foot">NEXUS AI CONTROL CENTER · M5 Pro · 100% LOCAL · $0 API</div>
 
 <script>
 const HOST=window.location.hostname||'localhost';
@@ -529,15 +554,10 @@ async function pollStatus(){
     const d=await(await fetch('/api/status')).json();
     const h=d.hardware;
     document.getElementById('sysTs').textContent=d.updated||'';
-    const rp=h.ram_pct||0,cp=h.cpu||0,dp=h.disk_pct||0;
-    document.getElementById('ramBar').style.width=rp+'%';
-    document.getElementById('cpuBar').style.width=cp+'%';
-    document.getElementById('diskBar').style.width=dp+'%';
-    document.getElementById('ramPct').textContent=rp+'%';
-    document.getElementById('cpuPct').textContent=cp+'%';
-    document.getElementById('diskPct').textContent=dp+'%';
-    document.getElementById('ramTxt').textContent=h.ram_txt||'';
-    document.getElementById('diskTxt').textContent=h.disk_txt||'';
+    // compact hw info line
+    const ramTotalGB=Math.round((h.ram_txt||'').split('/').pop()||64);
+    document.getElementById('hwInfo').textContent=
+      'M5 Pro · '+(h.ram_txt||'').split('/').pop().trim()+' RAM · '+(h.disk_txt||'').split('/').pop().trim()+' disk';
     const up=d.services.filter(s=>s.ok).length;
     document.getElementById('svcs').innerHTML=d.services.map(s=>
       '<div class="svc-row"><div class="svc-dot '+(s.ok?'on':'off')+'"></div>'+
@@ -546,7 +566,7 @@ async function pollStatus(){
     document.getElementById('modelRoles').innerHTML=d.models.map(m=>
       '<div class="model-row"><div><div class="model-role">'+esc(m.role)+'</div><div class="model-id">'+esc(m.id)+'</div></div>'+
       '<span class="model-pill '+(m.ready?'ready':'idle')+'">'+(m.ready?'loaded':'on demand')+'</span></div>').join('');
-    document.getElementById('foot').textContent='NEXUS AI - '+up+'/'+d.services.length+' services online - M5 Pro - 100% LOCAL';
+    document.getElementById('foot').textContent='NEXUS AI · '+up+'/'+d.services.length+' services online · M5 Pro · 100% LOCAL';
     document.getElementById('statusPill').style.borderColor=up>0?'var(--green)':'var(--red)';
     document.getElementById('statusPill').querySelector('.dot2').style.background=up>0?'var(--green)':'var(--red)';
     document.getElementById('statusTxt').textContent=up>0?'ONLINE':'OFFLINE';
@@ -598,7 +618,6 @@ function startSSE(){
 startSSE();
 
 // Metrics + sparklines
-const sparkBuf={cpu:[],ram:[]};
 function drawSpark(id,vals,color){
   const cv=document.getElementById(id);if(!cv)return;
   cv.width=cv.clientWidth||120;const h=cv.height=28,w=cv.width,ctx=cv.getContext('2d');
@@ -614,51 +633,40 @@ function drawSpark(id,vals,color){
   ctx.beginPath();vals.forEach((v,i)=>{const x=i*xs,y=yof(v);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
   ctx.strokeStyle=color;ctx.lineWidth=1.5;ctx.stroke();
 }
-function drawBigChart(id,vals,color){
-  const cv=document.getElementById(id);if(!cv)return;
-  cv.width=cv.clientWidth||600;const h=cv.height=80,w=cv.width,ctx=cv.getContext('2d');
-  ctx.clearRect(0,0,w,h);
-  ctx.strokeStyle='rgba(255,255,255,.04)';ctx.lineWidth=1;
-  for(let i=0;i<=4;i++){const y=Math.round(h*i/4)+.5;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
-  if(!vals||!vals.length)return;
-  const xs=w/Math.max(vals.length-1,1),x0=0;
-  const yof=v=>h-(Math.min(100,Math.max(0,v))/100)*h;
-  const grad=ctx.createLinearGradient(0,0,0,h);
-  grad.addColorStop(0,color+'33');grad.addColorStop(1,color+'00');
-  ctx.beginPath();vals.forEach((v,i)=>{const x=x0+i*xs,y=yof(v);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
-  ctx.lineTo(x0+(vals.length-1)*xs,h);ctx.lineTo(x0,h);ctx.closePath();
-  ctx.fillStyle=grad;ctx.fill();
-  ctx.beginPath();vals.forEach((v,i)=>{const x=x0+i*xs,y=yof(v);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
-  ctx.strokeStyle=color;ctx.lineWidth=2;ctx.stroke();
-}
 async function pollMetrics(){
   try{
     const m=await(await fetch('/api/metrics')).json();
     const last=a=>a&&a.length?a[a.length-1]:0;
-    const cpu=m.cpu||[],ram=m.ram||[];
+    const cpu=m.cpu||[],ram=m.ram||[],ramGb=m.ram_gb||[];
     const dr=m.disk_r||[],dw=m.disk_w||[];
     const nr=m.net_r||[],ns=m.net_s||[];
     const bat=m.bat||[];
     function merge(a,b){return a.map((v,i)=>v+(b[i]||0));}
-    const disk=merge(dr,dw), net=merge(nr,ns);
-    sparkBuf.cpu=cpu.slice(-20);sparkBuf.ram=ram.slice(-20);
+    const diskIO=merge(dr,dw), net=merge(nr,ns);
     const batPct=last(bat);const batChg=m.battery&&m.battery.charging;
+    const ramTot=m.ram_total_gb||64;
+    const diskPct=m.disk_pct||0,diskUsed=m.disk_used_gb||0,diskTot=m.disk_total_gb||0;
+    // Update value labels with pct + actual
     document.getElementById('sCpuV').textContent=last(cpu)+'%';
-    document.getElementById('sRamV').textContent=last(ram)+'%';
-    document.getElementById('sBatV').textContent=batPct>=0?(batPct+'%'+(batChg?' ⚡':'')):'—';
-    const dv=last(disk),nv=last(net);
-    document.getElementById('sDskV').textContent=dv>1?dv.toFixed(0)+' MB/s':dv.toFixed(1)+' MB/s';
-    document.getElementById('sNetV').textContent=nv>1?nv.toFixed(0)+' MB/s':nv.toFixed(1)+' MB/s';
-    drawSpark('sCpu',sparkBuf.cpu,'#7c3aed');
-    drawSpark('sRam',sparkBuf.ram,'#0ea5e9');
-    drawSpark('sBat',bat.slice(-20).map(v=>v>=0?v:0),batChg?'#10b981':'#f59e0b');
-    // disk/net: normalize to max of series for display (auto-scale)
+    document.getElementById('sRamV').textContent=last(ram)+'% · '+last(ramGb)+'/'+ramTot+' GB';
+    if(batPct>=0){
+      const batTime=m.battery&&m.battery.time_str?m.battery.time_str:'';
+      document.getElementById('sBatV').textContent=batPct+'%'+(batChg?' ⚡ charging':batTime?' · '+batTime:'');
+    }else{document.getElementById('sBatV').textContent='—';}
+    document.getElementById('sStrV').textContent=diskPct+'% · '+diskUsed+'/'+diskTot+' GB';
+    const dv=last(diskIO),nv=last(net);
+    document.getElementById('sDskV').textContent=dv>1?dv.toFixed(0)+' MB/s':dv.toFixed(2)+' MB/s';
+    document.getElementById('sNetV').textContent=nv>1?nv.toFixed(0)+' MB/s':nv.toFixed(2)+' MB/s';
+    // Draw sparklines
     const normSpark=(vals)=>{const mx=Math.max(...vals,0.01);return vals.map(v=>v/mx*100);};
-    drawSpark('sDsk',normSpark(disk.slice(-20)),'#f59e0b');
+    // storage pct array: fill with constant current value (no history, but shows as flat line)
+    const storArr=Array(20).fill(diskPct);
+    drawSpark('sCpu',cpu.slice(-20),'#7c3aed');
+    drawSpark('sRam',ram.slice(-20),'#0ea5e9');
+    drawSpark('sBat',bat.slice(-20).map(v=>v>=0?v:0),batChg?'#10b981':'#f59e0b');
+    drawSpark('sStr',storArr,'#94a3b8');
+    drawSpark('sDsk',normSpark(diskIO.slice(-20)),'#f59e0b');
     drawSpark('sNet',normSpark(net.slice(-20)),'#10b981');
-    document.getElementById('cpuNow').textContent=last(cpu)+'%';
-    document.getElementById('ramNow').textContent=last(m.ram_gb||[])+' / '+(m.ram_total_gb||64)+' GB';
-    drawBigChart('cpuChart',cpu,'#7c3aed');drawBigChart('ramChart',ram,'#0ea5e9');
   }catch(e){}
 }
 pollMetrics();setInterval(pollMetrics,3000);
@@ -1274,6 +1282,17 @@ border:1px solid rgba(124,58,237,.3);background:rgba(124,58,237,.08);font-size:1
 .img-chip .rm{cursor:pointer;color:var(--red);font-weight:700;font-size:14px;padding:0 4px}
 .foot{padding:12px 16px;border-top:1px solid var(--bdr);background:rgba(2,8,23,.8);backdrop-filter:blur(12px);flex-shrink:0}
 .inp-row{display:flex;gap:8px;align-items:flex-end}
+@media(max-width:640px){
+  .hdr{flex-wrap:wrap;height:auto;padding:8px 10px;gap:6px}
+  .hdr-sep,.note{display:none}
+  .hdr-logo{font-size:12px}
+  #model{flex:1;min-width:0;max-width:none!important}
+  .mode-toggle{padding:5px 8px;font-size:11px}
+  .clr-btn{padding:5px 8px;font-size:11px}
+  .thread{padding:12px 10px}
+  .bubble{max-width:92%}
+  .foot{padding:8px 10px}
+}
 .att-btn{width:38px;height:38px;border:1px solid var(--bdr);border-radius:8px;background:var(--surf);
 color:var(--muted);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:.15s}
 .att-btn:hover{border-color:var(--purple);color:var(--purple)}

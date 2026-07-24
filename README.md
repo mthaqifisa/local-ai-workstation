@@ -6,17 +6,50 @@ A production-grade local AI setup for Apple M-series Macs. One command brings up
 
 ---
 
+## Architecture
+
+![Architecture Diagram](screenshots/architecture.png)
+
+Full stack: user interfaces → LiteLLM role-alias gateway → mlx-openai-server on Apple Metal → 9 quantized models in HuggingFace cache. Sequential multi-agent SDLC loads one model at a time, allowing 42 GB+ models to run on 64 GB.
+
+---
+
 ## Screenshots
 
 ### Main Dashboard
 ![Main Dashboard](screenshots/dashboard-main.png)
 
-Three-column command center: **System Core** (hardware stats, service health, model roster) · **Neural Activity** (live SSE event feed + active agent tracker) · **Command** (quick dispatch + 5-metric sparklines: CPU, RAM, Battery, Disk I/O, Network).
+Three-column layout: **System Core** (service health, model roster) · **Neural Activity** (live SSE event feed + active agent tracker) · **Command** (quick dispatch + 6-metric sparklines: CPU, Memory with GB, Battery with time remaining, Storage with GB, Disk I/O, Network I/O).
+
+### Chat
+![Chat](screenshots/dashboard-chat.png)
+
+Full-screen chat in **Agent** mode (tool-calling with thinking panel + step trace) or **Direct** mode (raw model, faster). Supports image attachments for vision-capable models. Sticky nav stays accessible from all pages.
 
 ### Vision Analysis
 ![Vision Page](screenshots/dashboard-vision.png)
 
-Drop an image, pick a model from the dropdown (no typos possible), get local OCR / Q&A. No data leaves the machine.
+Drop an image, pick a vision model from the dropdown (no free-typing = no typos), ask a question. Runs Qwen3-VL-8B or Gemma-4 locally. No data leaves the machine.
+
+### Image Generation
+![Create Page](screenshots/dashboard-create.png)
+
+Text-to-image with Z-Image Turbo. Configure steps, resolution, seed. ~15 seconds for 512×512 on M5 Pro.
+
+### Personas
+![Personas](screenshots/dashboard-personas.png)
+
+Create and edit agent personas — each is a name + model alias + system prompt + allowed tools. The same tool loop runs any persona; switching just changes what model and instructions are used.
+
+### Models
+![Models](screenshots/dashboard-models.png)
+
+Search HuggingFace, download new models, probe-load to test, and register into the serving config — all from the browser.
+
+### Mobile View
+![Mobile Dashboard](screenshots/dashboard-mobile.png)
+
+Hamburger menu collapses the nav on small screens. Chat and all sub-pages are fully usable on mobile.
 
 ---
 
