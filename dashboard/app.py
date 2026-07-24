@@ -260,50 +260,55 @@ def api_vision_models():
     ]})
 
 # ── shared site nav — injected into every sub-page template ──────────────────
+NAV_CSS = (
+    '<style>'
+    ':root{--bg:#020817;--bdr:rgba(14,165,233,.13);--blue:#0ea5e9;'
+    '--text:#e2e8f0;--muted:#94a3b8;--mono:\'JetBrains Mono\',ui-monospace,monospace;'
+    '--sans:\'Space Grotesk\',system-ui,sans-serif;}'
+    '.snav-hdr{display:flex;align-items:center;gap:0;padding:0 20px;height:56px;'
+    'border-bottom:1px solid rgba(14,165,233,.13);background:rgba(2,8,23,.95);'
+    'backdrop-filter:blur(14px);position:sticky;top:0;z-index:200;flex-shrink:0;'
+    'font-family:\'Space Grotesk\',system-ui,sans-serif;}'
+    '.snav-logo{display:flex;align-items:center;gap:10px;margin-right:28px;text-decoration:none}'
+    '.snav-dot{width:9px;height:9px;border-radius:50%;background:#0ea5e9;'
+    'box-shadow:0 0 10px #0ea5e9;animation:sndot 2s infinite}'
+    '@keyframes sndot{0%,100%{opacity:1}50%{opacity:.4}}'
+    '.snav-name{font-family:\'JetBrains Mono\',monospace;font-weight:600;font-size:14px;'
+    'letter-spacing:.08em;color:#e2e8f0}'
+    '.snav-links{display:flex;gap:2px;flex:1}'
+    '.snav-link{font-size:13px;font-weight:500;padding:6px 12px;border-radius:6px;'
+    'color:#94a3b8;transition:.15s;text-decoration:none}'
+    '.snav-link:hover{color:#e2e8f0;background:rgba(14,165,233,.1)}'
+    '.snav-link.active{color:#0ea5e9;background:rgba(14,165,233,.1)}'
+    '.snav-burger{display:none;background:none;border:1px solid rgba(14,165,233,.2);'
+    'border-radius:6px;color:#94a3b8;cursor:pointer;font-size:17px;padding:3px 10px;'
+    'line-height:1;margin-left:auto}'
+    '.snav-burger:hover{color:#e2e8f0;border-color:#0ea5e9}'
+    '.snav-backdrop{display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.5);'
+    'backdrop-filter:blur(2px)}'
+    '.snav-backdrop.open{display:block}'
+    '@media(max-width:680px){'
+    '.snav-burger{display:flex!important;align-items:center;justify-content:center}'
+    '.snav-hdr{height:52px!important;padding:0 14px;flex-wrap:nowrap}'
+    '.snav-links{display:none!important;position:fixed;top:52px;left:0;right:0;'
+    'flex-direction:column;background:rgba(2,8,23,.97);'
+    'border-bottom:1px solid rgba(14,165,233,.15);'
+    'padding:8px;gap:2px;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,.6)}'
+    '.snav-links.open{display:flex!important}'
+    '.snav-link{padding:11px 14px;font-size:14px;width:100%;display:block;border-radius:8px}'
+    '}'
+    '</style>'
+)
+
+
 def _build_nav(active: str = "") -> str:
-    """Return <style>…</style><header>…</header> block for sub-pages."""
+    """Return header HTML block for sub-pages (CSS is injected via NAV_CSS in <head>)."""
     links = [("/","Dashboard"),("/chat","Chat"),("/vision","Vision"),
              ("/imagine","Create"),("/personas","Personas"),("/models","Models")]
     items = "".join(
         f'<a href="{h}" class="snav-link{" active" if active==lbl.lower() or (not active and h=="/") else ""}">{lbl}</a>'
         for h, lbl in links)
     return (
-        '<style>:root{--bg:#020817;--bdr:rgba(14,165,233,.13);--blue:#0ea5e9;'
-        '--text:#e2e8f0;--muted:#94a3b8;--mono:\'JetBrains Mono\',ui-monospace,monospace;'
-        '--sans:\'Space Grotesk\',system-ui,sans-serif;}'
-        '.snav-hdr{display:flex;align-items:center;gap:0;padding:0 20px;height:56px;'
-        'border-bottom:1px solid var(--bdr);background:rgba(2,8,23,.88);'
-        'backdrop-filter:blur(14px);position:sticky;top:0;z-index:200;'
-        'font-family:var(--sans);}'
-        '.snav-logo{display:flex;align-items:center;gap:10px;margin-right:28px;text-decoration:none}'
-        '.snav-dot{width:9px;height:9px;border-radius:50%;background:var(--blue);'
-        'box-shadow:0 0 10px var(--blue);animation:sndot 2s infinite}'
-        '@keyframes sndot{0%,100%{opacity:1}50%{opacity:.4}}'
-        '.snav-name{font-family:var(--mono);font-weight:600;font-size:14px;'
-        'letter-spacing:.08em;color:var(--text)}'
-        '.snav-links{display:flex;gap:2px;flex:1}'
-        '.snav-link{font-size:13px;font-weight:500;padding:6px 12px;border-radius:6px;'
-        'color:var(--muted);transition:.15s;text-decoration:none}'
-        '.snav-link:hover{color:var(--text);background:rgba(14,165,233,.1)}'
-        '.snav-link.active{color:var(--blue);background:rgba(14,165,233,.1)}'
-        '.snav-burger{display:none;background:none;border:1px solid rgba(14,165,233,.2);'
-        'border-radius:6px;color:#94a3b8;cursor:pointer;font-size:17px;padding:3px 10px;'
-        'line-height:1;margin-left:auto}'
-        '.snav-burger:hover{color:#e2e8f0;border-color:#0ea5e9}'
-        '.snav-backdrop{display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.5);'
-        'backdrop-filter:blur(2px)}'
-        '.snav-backdrop.open{display:block}'
-        '@media(max-width:680px){'
-        '.snav-burger{display:flex;align-items:center;justify-content:center}'
-        '.snav-hdr{height:52px;padding:0 14px;flex-wrap:nowrap}'
-        '.snav-links{display:none;position:fixed;top:52px;left:0;right:0;'
-        'flex-direction:column;background:rgba(2,8,23,.97);'
-        'border-bottom:1px solid rgba(14,165,233,.15);'
-        'padding:8px;gap:2px;z-index:9999;box-shadow:0 8px 32px rgba(0,0,0,.6)}'
-        '.snav-links.open{display:flex}'
-        '.snav-link{padding:11px 14px;font-size:14px;width:100%;display:block;border-radius:8px}'
-        '}'
-        '</style>'
         '<div class="snav-backdrop" id="snavBd" onclick="closeSnav()"></div>'
         '<header class="snav-hdr">'
         '<a class="snav-logo" href="/"><div class="snav-dot"></div>'
@@ -357,7 +362,8 @@ a{color:var(--blue);text-decoration:none}a:hover{color:#38bdf8}
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
 @keyframes borderGlow{0%,100%{border-color:rgba(14,165,233,.13)}50%{border-color:rgba(14,165,233,.4)}}
 .main-grid{display:grid;grid-template-columns:260px 1fr 280px;gap:16px;padding:16px 20px;max-width:1400px;margin:0 auto}
-@media(max-width:900px){.main-grid{grid-template-columns:1fr;}}
+@media(max-width:900px){.main-grid{grid-template-columns:1fr;}
+  #pnl-sys{order:3}#pnl-neural{order:2}#pnl-cmd{order:1}}
 .panel{background:var(--card);border:1px solid var(--bdr);border-radius:14px;backdrop-filter:blur(12px);
   padding:16px;display:flex;flex-direction:column;gap:12px;overflow:hidden;}
 @media(max-width:900px){.panel{overflow:visible;}}
@@ -474,7 +480,7 @@ canvas.spark{width:100%;height:24px;border-radius:4px;background:rgba(255,255,25
 
 <div class="main-grid">
   <!-- LEFT: System Core -->
-  <div class="panel">
+  <div class="panel" id="pnl-sys">
     <div class="ph"><div class="ph-icon">⬡</div><span class="ph-title">SYSTEM CORE</span><span class="ph-badge" id="sysTs">--:--</span></div>
     <div class="hw-info" id="hwInfo">M5 Pro · 64 GB · 1 TB</div>
     <div style="padding-top:8px;border-top:1px solid var(--bdr)">
@@ -488,7 +494,7 @@ canvas.spark{width:100%;height:24px;border-radius:4px;background:rgba(255,255,25
   </div>
 
   <!-- CENTER: Neural Activity Feed -->
-  <div class="panel">
+  <div class="panel" id="pnl-neural">
     <div class="ph">
       <div class="ph-icon" style="background:rgba(16,185,129,.15)">◉</div>
       <span class="ph-title">NEURAL ACTIVITY</span>
@@ -504,7 +510,7 @@ canvas.spark{width:100%;height:24px;border-radius:4px;background:rgba(255,255,25
   </div>
 
   <!-- RIGHT: Command Panel -->
-  <div class="panel">
+  <div class="panel" id="pnl-cmd">
     <div class="ph"><div class="ph-icon" style="background:rgba(124,58,237,.15)">◈</div><span class="ph-title">COMMAND</span></div>
     <textarea class="qchat-inp" id="quickIn" rows="3" placeholder="Quick message to orchestrator…"></textarea>
     <button class="qchat-btn" onclick="quickSend()">DISPATCH →</button>
@@ -820,7 +826,7 @@ def api_personas_delete():
     return jsonify({"ok": True})
 
 PERSONA_PAGE = r"""<!doctype html><html><head><meta charset=utf-8><title>Personas - MLX</title>
-<meta name=viewport content="width=device-width,initial-scale=1"><style>
+<meta name=viewport content="width=device-width,initial-scale=1"><!--NAV_CSS--><style>
 *{box-sizing:border-box}body{font:15px system-ui;background:#0b1020;color:#e6edf3;margin:0;padding:0;overflow-y:auto}
 a{color:#60a5fa;text-decoration:none}h1{font-size:20px;margin:0 0 4px}.sub{color:#8b98b8;font-size:13px;margin-bottom:20px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
@@ -831,8 +837,8 @@ a{color:#60a5fa;text-decoration:none}h1{font-size:20px;margin:0 0 4px}.sub{color
 button{border:0;border-radius:8px;padding:7px 12px;font-weight:600;cursor:pointer;font-size:13px}
 .edit{background:#334155;color:#e6edf3}.del{background:#7f1d1d;color:#fee2e2;margin-left:6px}.add{background:#3b82f6;color:#fff}
 dialog{background:#141b2e;color:#e6edf3;border:1px solid #223052;border-radius:14px;
-  padding:20px;width:min(560px,94vw);max-height:88vh;overflow-y:auto;
-  display:flex;flex-direction:column;gap:0}
+  padding:20px;width:min(560px,94vw);max-height:88vh;overflow-y:auto}
+dialog[open]{display:flex;flex-direction:column;gap:0}
 dialog::backdrop{background:rgba(0,0,0,.7);backdrop-filter:blur(4px)}
 label{display:block;font-size:13px;margin:10px 0 4px;color:#b6c2da}
 input,select,textarea{width:100%;padding:9px;border-radius:8px;border:1px solid #2a3550;background:#0b1020;color:#e6edf3;font:14px system-ui}
@@ -919,7 +925,7 @@ load();
 @app.route("/personas")
 @require_auth
 def personas_page():
-    return Response(PERSONA_PAGE.replace('<!--NAV-->', _build_nav('personas')), mimetype="text/html")
+    return Response(PERSONA_PAGE.replace('<!--NAV_CSS-->', NAV_CSS).replace('<!--NAV-->', _build_nav('personas')), mimetype="text/html")
 
 # ── model management (thin layer over the installer's tested commands) ──────
 import subprocess, threading as _th, time as _time
@@ -1071,7 +1077,7 @@ def api_models_remove():
         return jsonify({"error": str(e)}), 500
 
 MODELS_PAGE = r"""<!doctype html><html><head><meta charset=utf-8><title>Models - MLX</title>
-<meta name=viewport content="width=device-width,initial-scale=1"><style>
+<meta name=viewport content="width=device-width,initial-scale=1"><!--NAV_CSS--><style>
 *{box-sizing:border-box}body{font:15px system-ui;background:#0b1020;color:#e6edf3;margin:0;padding:0;overflow-y:auto}
 a{color:#60a5fa;text-decoration:none}h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;color:#93c5fd;margin:22px 0 8px}
 .sub{color:#8b98b8;font-size:13px;margin-bottom:16px}.mono{font-family:ui-monospace,monospace;font-size:12px}
@@ -1173,6 +1179,7 @@ VISION_PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Vision - NEXUS</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<!--NAV_CSS-->
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#020817;color:#e2e8f0;font-family:'Space Grotesk',system-ui,sans-serif;font-size:14px;min-height:100vh;
@@ -1257,7 +1264,7 @@ CHAT_PAGE = r"""<!doctype html><html lang="en"><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
 <title>NEXUS Chat</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<style>
+<!--NAV_CSS--><style>
 :root{--bg:#020817;--surf:#0a1628;--card:rgba(13,30,53,.9);--bdr:rgba(14,165,233,.13);
 --blue:#0ea5e9;--purple:#7c3aed;--green:#10b981;--red:#ef4444;
 --text:#e2e8f0;--muted:#94a3b8;--mono:'JetBrains Mono',monospace;--sans:'Space Grotesk',system-ui,sans-serif;}
@@ -1517,7 +1524,7 @@ loadDropdown();
 
 
 IMAGINE_PAGE = r"""<!doctype html><html><head><meta charset=utf-8><title>Create image - MLX</title>
-<meta name=viewport content="width=device-width,initial-scale=1"><style>
+<meta name=viewport content="width=device-width,initial-scale=1"><!--NAV_CSS--><style>
 *{box-sizing:border-box}body{font:15px system-ui;background:#0b1020;color:#e6edf3;margin:0;padding:0;overflow-y:auto}
 a{color:#60a5fa;text-decoration:none}h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;color:#93c5fd;margin:24px 0 10px}
 .sub{color:#8b98b8;font-size:13px;margin-bottom:16px}label{display:block;font-size:13px;margin:12px 0 4px;color:#b6c2da}
@@ -1584,7 +1591,7 @@ loadGallery();
 @app.route("/models")
 @require_auth
 def models_page():
-    return Response(MODELS_PAGE.replace('<!--NAV-->', _build_nav('models')), mimetype="text/html")
+    return Response(MODELS_PAGE.replace('<!--NAV_CSS-->', NAV_CSS).replace('<!--NAV-->', _build_nav('models')), mimetype="text/html")
 
 # ── vision: prefer the resident mlx_vlm.server (warm, fast); fall back to a fresh
 #    bounded subprocess (always works) if that server isn't up ─────────────────
@@ -1642,7 +1649,7 @@ def api_vision():
 @app.route("/vision")
 @require_auth
 def vision_page():
-    return Response(VISION_PAGE.replace('<!--NAV-->', _build_nav('vision')), mimetype="text/html")
+    return Response(VISION_PAGE.replace('<!--NAV_CSS-->', NAV_CSS).replace('<!--NAV-->', _build_nav('vision')), mimetype="text/html")
 
 # ── chat (streams tokens from the LiteLLM gateway — OWUI-style, in the dashboard) ──
 @app.route("/api/chat", methods=["POST"])
@@ -1679,7 +1686,7 @@ def api_chat():
 @app.route("/chat")
 @require_auth
 def chat_page():
-    return Response(CHAT_PAGE.replace('<!--NAV-->', _build_nav('chat')), mimetype="text/html")
+    return Response(CHAT_PAGE.replace('<!--NAV_CSS-->', NAV_CSS).replace('<!--NAV-->', _build_nav('chat')), mimetype="text/html")
 
 # ── agentic chat: runs the query through the AGENT (web_search, web_fetch,
 #    self-upgrade, subagents) and streams its live steps + final answer ───────
@@ -1794,7 +1801,7 @@ def api_images():
 @app.route("/imagine")
 @require_auth
 def imagine_page():
-    return Response(IMAGINE_PAGE.replace('<!--NAV-->', _build_nav('create')), mimetype="text/html")
+    return Response(IMAGINE_PAGE.replace('<!--NAV_CSS-->', NAV_CSS).replace('<!--NAV-->', _build_nav('create')), mimetype="text/html")
 
 @app.route("/")
 @require_auth
