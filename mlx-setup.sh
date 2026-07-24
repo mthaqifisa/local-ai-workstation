@@ -29,6 +29,7 @@ if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
 
 # ─────────────────────────────── CONFIGURATION ────────────────────────────────
 SCRIPT_PATH="$(cd "$(dirname "$0")" >/dev/null 2>&1 && pwd)/$(basename "$0")"
+SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"    # directory containing setup.sh + co-located sources
 WORKDIR="${HOME}/.mlx-ai-workstation"
 ENV_FILE="$WORKDIR/.env"
 VENV="$WORKDIR/.venv"
@@ -58,37 +59,29 @@ if [ "$LOCAL_ONLY" = "1" ]; then BIND_HOST="127.0.0.1"; else BIND_HOST="0.0.0.0"
 INSTALL_LANGFUSE="${INSTALL_LANGFUSE:-0}"   # set 1 to add Langfuse tracing (heavy)
 
 # ── Models ────────────────────────────────────────────────────────────────────
-# Best-per-task lineup that fits 64 GB unified memory AND runs on MLX (mid-2026).
-# Frontier models (GLM-5.2 754B, DeepSeek V4 1.6T, Kimi K2 1T, Qwen3.5-397B) are
-# data-center-only and deliberately excluded. All HF repo IDs verified on
-# huggingface.co. Everything loads on-demand ONE AT A TIME (see write_mlx_config):
-# a 40 GB coder and a 43 GB 70B cannot coexist on 64 GB, so we never pin a big
-# model resident — the server loads what you pick and frees it when idle.
+# Best-per-task lineup for M5 Pro 64 GB (mid-2026). All verified on HF.
+# Everything is on_demand — only the active model occupies RAM.
 # Format: "hf_repo|role_label|CORE|approx_disk"
 CORE_MODELS=(
-  "unsloth/Qwen3.6-35B-A3B-UD-MLX-4bit|orchestrator + general (MoE, 3B active, fast)|CORE|~20 GB"
-  "mlx-community/Qwen3.6-27B-8bit|coder + QA, fast daily driver (dense)|CORE|~29 GB"
-  "mlx-community/DeepSeek-R1-Distill-Qwen-32B-4bit|deep reasoning + math (MIT)|CORE|~18 GB"
+  "unsloth/Qwen3.6-35B-A3B-UD-MLX-4bit|orchestrator + researcher + BA (MoE 3B active)|CORE|~20 GB"
+  "mlx-community/Qwen3.6-27B-8bit|writer + QA, dense model (stable for long output)|CORE|~29 GB"
+  "mlx-community/DeepSeek-R1-Distill-Qwen-32B-4bit|fast reasoner (32B, MIT, <think> CoT)|CORE|~18 GB"
   "mlx-community/Qwen3-Embedding-8B-4bit-DWQ|RAG embeddings|CORE|~5 GB"
 )
-# HEAVY: best-in-class but large; downloaded only via --pull-heavy or the UI so a
-# fresh box isn't forced to grab 80+ GB. Both load on-demand (cold-load pause).
+# HEAVY: already-downloaded on this machine. Enabled in config by default.
+# Both are on_demand so they only use RAM when called — never both at once.
 HEAVY_MODELS=(
-  "mlx-community/Qwen3-Coder-Next-4bit|best agentic coding (80B MoE, SWE-rebench #1)|OPT|~40 GB"
-  "mlx-community/DeepSeek-R1-Distill-Llama-70B-4bit|70B for manual heavy lifting (MIT)|OPT|~43 GB"
+  "mlx-community/Qwen3-Coder-Next-4bit|best coder (80B MoE, SWE-Bench #1, tool-calling)|HEAVY|~42 GB"
+  "mlx-community/DeepSeek-R1-Distill-Llama-70B-4bit|deep reasoner (70B, MIT, <think> CoT)|HEAVY|~37 GB"
 )
-# VISION: PROBE-FIRST. Two gates remain: (1) mlx-vlm must be current (gemma4_unified
-# landed AFTER 0.4.4 — bootstrap now upgrades mlx-vlm), and (2) the mlx-openai-server
-# multimodal GENERATION path hung on us before and must be re-probed with a real image.
-# Not wired to any persona until one actually generates. qwen3_vl + gemma3 archs are in
-# mlx-vlm 0.4.4; gemma4 needs the upgrade.
+# VISION: Qwen3-VL-8B is small and works well for OCR/screenshots.
+# Gemma-4-12B also downloaded for design analysis.
 VISION_MODELS=(
-  "mlx-community/Qwen3-VL-8B-Instruct-4bit|vision/OCR (arch qwen3_vl, SOTA small VLM)|OPT|~6 GB"
-  "mlx-community/gemma-3-27b-it-4bit|vision (arch gemma3, MMMU leader, proven arch)|OPT|~16 GB"
-  "unsloth/gemma-4-26b-a4b-it-MLX-8bit|vision (Gemma 4 MoE, needs upgraded mlx-vlm)|OPT|~28 GB"
+  "mlx-community/Qwen3-VL-8B-Instruct-4bit|vision/OCR (SOTA small VLM, ~5 GB)|OPT|~6 GB"
+  "mlx-community/gemma-4-12B-4bit|design analysis + vision (Gemma 4, ~10 GB)|OPT|~10 GB"
 )
 OPTIONAL_MODELS=(
-  # kept for --add-model discoverability; DeepSeek-R1 distill tags confirmed on huggingface.co
+  "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit|lighter coding model (30B MoE, ~15 GB)|OPT|~15 GB"
   "mlx-community/Devstral-Small-2-4bit|alt coder (Mistral 24B, 256K ctx)|OPT|~14 GB"
 )
 
@@ -387,74 +380,26 @@ pull_vision_models() {
 write_mlx_config() {
     log "mlx-openai-server config"
     local CFG="$WORKDIR/mlx-server.config.yaml"
-    # PARSER NOTE: tool_call_parser / reasoning_parser names are version-specific.
-    # These match mlx-openai-server's documented Qwen/Gemma parsers. If tool calls
-    # misbehave after first run, check the current names with:
-    #     "$VENV/bin/mlx-openai-server" launch --help
-    # and the model card, then adjust below. on_demand keeps only the in-use model
-    # in RAM — correct for 64 GB. Set on_demand:false on the orchestrator only if
-    # you have headroom and want it always hot.
     cat > "$CFG" <<YAMLEOF
 server:
-  host: "${BIND_HOST}"        # 0.0.0.0 by default (LAN-reachable); LOCAL_ONLY=1 → 127.0.0.1
+  host: "${BIND_HOST}"
   port: ${PORT_MLX}
   log_level: INFO
-  log_file: "${WORKDIR}/logs/mlx-inference.log"   # ABSOLUTE — under launchd a relative
-                                                  # 'logs/' resolves to /logs (read-only) and crashes startup
+  log_file: "${WORKDIR}/logs/mlx-inference.log"
 
 models:
-  # Everything is on_demand:true — with a 40 GB coder and 43 GB 70B in the catalog,
-  # nothing can be pinned resident on 64 GB. The server loads what you request and
-  # frees it when idle, so only ONE big model occupies memory at a time. First use
-  # of each model has a cold-load pause; queue_timeout 900 covers it.
+  # All models on_demand:true — only the active model occupies RAM. 64 GB supports
+  # one large model at a time (40 GB coder OR 37 GB 70B, not both). Sequential
+  # subagent dispatch keeps them from loading simultaneously.
 
-  # ── Orchestrator + general (Qwen3.6 MoE, arch qwen3_5_moe, `lm` text path) ──
+  # ── Orchestrator / Researcher / BA (Qwen3.6-35B MoE, ~20 GB, 3.3B active) ──
   - model_path: unsloth/Qwen3.6-35B-A3B-UD-MLX-4bit
     served_model_name: qwen36-35b
     model_type: lm
     enable_auto_tool_choice: true
     tool_call_parser: qwen3_coder
     reasoning_parser: qwen3
-    context_length: 65536            # big room; 4-bit MoE (~20 GB) leaves headroom on 64 GB
-    kv_bits: 8                       # halve KV-cache memory (minimal quality loss) — enables large context
-    kv_group_size: 64
-    batch_completion_size: 2         # single-user; NOT the default 32 (that inflates KV memory hugely)
-    batch_prefill_size: 1
-    prompt_cache_size: 2
-    prompt_cache_max_bytes: 8589934592   # 8 GB hard KV-cache cap — OOM guard so it "won't break"
-    default_max_tokens: 2048
-    queue_timeout: 900
-    on_demand: true
-    on_demand_idle_timeout: 600
-
-  # ── Coder + QA, fast daily driver (dense 27B, arch qwen3_5, `lm`) ──
-  - model_path: mlx-community/Qwen3.6-27B-8bit
-    served_model_name: qwen36-27b
-    model_type: lm
-    enable_auto_tool_choice: true
-    tool_call_parser: qwen3_coder
-    reasoning_parser: qwen3
-    context_length: 49152            # 8-bit (~27 GB) is the heaviest daily model — generous but leaves RAM
-    kv_bits: 8
-    kv_group_size: 64
-    batch_completion_size: 2
-    batch_prefill_size: 1
-    prompt_cache_size: 2
-    prompt_cache_max_bytes: 8589934592   # 8 GB KV-cache cap
-    default_max_tokens: 2048
-    queue_timeout: 900
-    on_demand: true
-    on_demand_idle_timeout: 600
-
-  # ── Deep reasoning / math (DeepSeek-R1-Distill-Qwen-32B, MIT). Served as bare
-  #    `lm`: it emits <think> traces but its tool-call format differs from Qwen, so
-  #    parsers are omitted until probed (the agent strips <think> client-side).
-  #    Add reasoning_parser/tool_call_parser here only after confirming the exact
-  #    accepted names via `mlx-openai-server launch --help`. ──
-  - model_path: mlx-community/DeepSeek-R1-Distill-Qwen-32B-4bit
-    served_model_name: deepseek-r1-32b
-    model_type: lm
-    context_length: 65536            # 4-bit (~18 GB); reasoner benefits from room for long <think>
+    context_length: 65536
     kv_bits: 8
     kv_group_size: 64
     batch_completion_size: 2
@@ -466,54 +411,128 @@ models:
     on_demand: true
     on_demand_idle_timeout: 600
 
-  # ── RAG embeddings ──
+  # ── Writer / QA (Qwen3.6-27B dense 8-bit, ~28 GB) ──
+  - model_path: mlx-community/Qwen3.6-27B-8bit
+    served_model_name: qwen36-27b
+    model_type: lm
+    enable_auto_tool_choice: true
+    tool_call_parser: qwen3_coder
+    reasoning_parser: qwen3
+    context_length: 49152
+    kv_bits: 8
+    kv_group_size: 64
+    batch_completion_size: 2
+    batch_prefill_size: 1
+    prompt_cache_size: 2
+    prompt_cache_max_bytes: 8589934592
+    default_max_tokens: 4096
+    queue_timeout: 900
+    on_demand: true
+    on_demand_idle_timeout: 600
+
+  # ── Fast Reasoner (DeepSeek-R1-Distill-Qwen-32B, ~18 GB) ──
+  - model_path: mlx-community/DeepSeek-R1-Distill-Qwen-32B-4bit
+    served_model_name: deepseek-r1-32b
+    model_type: lm
+    context_length: 65536
+    kv_bits: 8
+    kv_group_size: 64
+    batch_completion_size: 2
+    batch_prefill_size: 1
+    prompt_cache_size: 2
+    prompt_cache_max_bytes: 8589934592
+    default_max_tokens: 8192
+    queue_timeout: 900
+    on_demand: true
+    on_demand_idle_timeout: 600
+
+  # ── Deep Reasoner (DeepSeek-R1-Distill-Llama-70B, ~37 GB) ──
+  - model_path: mlx-community/DeepSeek-R1-Distill-Llama-70B-4bit
+    served_model_name: deepseek-r1-70b
+    model_type: lm
+    context_length: 32768
+    kv_bits: 8
+    kv_group_size: 64
+    batch_completion_size: 2
+    batch_prefill_size: 1
+    prompt_cache_size: 1
+    prompt_cache_max_bytes: 4294967296
+    default_max_tokens: 8192
+    queue_timeout: 1200
+    on_demand: true
+    on_demand_idle_timeout: 300
+
+  # ── Best Coder (Qwen3-Coder-Next 80B MoE, ~42 GB, SWE-Bench #1) ──
+  - model_path: mlx-community/Qwen3-Coder-Next-4bit
+    served_model_name: qwen3-coder-next
+    model_type: lm
+    enable_auto_tool_choice: true
+    tool_call_parser: qwen3_coder
+    reasoning_parser: qwen3
+    context_length: 32768
+    kv_bits: 8
+    kv_group_size: 64
+    batch_completion_size: 2
+    batch_prefill_size: 1
+    prompt_cache_size: 1
+    prompt_cache_max_bytes: 4294967296
+    default_max_tokens: 4096
+    queue_timeout: 1200
+    on_demand: true
+    on_demand_idle_timeout: 300
+
+  # ── RAG Embeddings ──
   - model_path: mlx-community/Qwen3-Embedding-8B-4bit-DWQ
     served_model_name: qwen3-embed
     model_type: embeddings
     on_demand: true
     on_demand_idle_timeout: 900
 
-  # ── HEAVY (best-in-class, large). Uncomment AFTER 'mlx-setup.sh --pull-heavy'
-  #    and a load-probe. Both are on_demand so they only occupy RAM when used. ──
-  # - model_path: mlx-community/Qwen3-Coder-Next-4bit          # best agentic coder, 80B MoE ~40 GB
-  #   served_model_name: qwen3-coder-next
-  #   model_type: lm
-  #   enable_auto_tool_choice: true
-  #   tool_call_parser: qwen3_coder
-  #   reasoning_parser: qwen3
-  #   default_max_tokens: 2048
-  #   queue_timeout: 1200
-  #   on_demand: true
-  #   on_demand_idle_timeout: 300
-  # - model_path: mlx-community/DeepSeek-R1-Distill-Llama-70B-4bit   # 70B manual heavy-lift ~43 GB
-  #   served_model_name: deepseek-r1-70b
-  #   model_type: lm
-  #   default_max_tokens: 4096
-  #   queue_timeout: 1200
-  #   on_demand: true
-  #   on_demand_idle_timeout: 300
+  # ── Vision / OCR (Qwen3-VL-8B, ~5.4 GB) ──
+  - model_path: mlx-community/Qwen3-VL-8B-Instruct-4bit
+    served_model_name: qwen3-vl-8b
+    model_type: multimodal
+    context_length: 16384
+    kv_bits: 8
+    kv_group_size: 64
+    batch_completion_size: 2
+    batch_prefill_size: 1
+    default_max_tokens: 2048
+    queue_timeout: 900
+    on_demand: true
+    on_demand_idle_timeout: 300
 
-  # ── VISION (PROBE-FIRST). Needs mlx-vlm>=0.5 (bootstrap upgrades it) AND the
-  #    multimodal generation hang resolved. Uncomment ONE at a time, restart, and
-  #    probe with a real image before trusting it. model_type: multimodal. ──
-  # - model_path: mlx-community/Qwen3-VL-8B-Instruct-4bit      # arch qwen3_vl, small+fast
-  #   served_model_name: qwen3-vl-8b
-  #   model_type: multimodal
-  #   queue_timeout: 900
-  #   on_demand: true
-  #   on_demand_idle_timeout: 300
-  # - model_path: mlx-community/gemma-3-27b-it-4bit            # arch gemma3 (proven in mlx-vlm)
-  #   served_model_name: gemma3-27b
-  #   model_type: multimodal
-  #   queue_timeout: 900
-  #   on_demand: true
-  #   on_demand_idle_timeout: 300
-  # - model_path: unsloth/gemma-4-26b-a4b-it-MLX-8bit         # Gemma 4 MoE, needs mlx-vlm>=0.5
-  #   served_model_name: gemma4-26b
-  #   model_type: multimodal
-  #   queue_timeout: 900
-  #   on_demand: true
-  #   on_demand_idle_timeout: 300
+  # ── Design / Vision Analysis (Gemma-4-12B, ~10 GB) ──
+  - model_path: mlx-community/gemma-4-12B-4bit
+    served_model_name: gemma4-12b
+    model_type: lm
+    context_length: 32768
+    kv_bits: 8
+    kv_group_size: 64
+    batch_completion_size: 2
+    batch_prefill_size: 1
+    prompt_cache_size: 1
+    prompt_cache_max_bytes: 4294967296
+    default_max_tokens: 2048
+    queue_timeout: 900
+    on_demand: true
+    on_demand_idle_timeout: 300
+
+  # ── Gemma-4-31B (large general-purpose, ~18 GB) ──
+  - model_path: mlx-community/gemma-4-31B-4bit
+    served_model_name: gemma4-31b
+    model_type: lm
+    context_length: 32768
+    kv_bits: 8
+    kv_group_size: 64
+    batch_completion_size: 2
+    batch_prefill_size: 1
+    prompt_cache_size: 1
+    prompt_cache_max_bytes: 4294967296
+    default_max_tokens: 2048
+    queue_timeout: 900
+    on_demand: true
+    on_demand_idle_timeout: 300
 YAMLEOF
     ok "wrote $CFG"
     append_custom_mlx_models "$CFG"
@@ -558,28 +577,60 @@ append_custom_mlx_models() {
 write_litellm_config() {
     log "LiteLLM gateway config"
     local CFG="$WORKDIR/litellm.config.yaml"
-    # Gateway aliases are the user-facing names (OWUI dropdown + agent/personas).
-    # Named specialty:model so the flat OWUI list clusters by specialty when sorted.
-    # The colon lives ONLY here — the MLX server keeps clean names (qwen36-27b…),
-    # so nothing downstream has to accept a colon. reasoner/qa/vision reuse the 27B.
     cat > "$CFG" <<YAMLEOF
 model_list:
+  # ── Specialty aliases (role:model — clusters by role in OWUI dropdown) ──
   - model_name: "orchestrator:qwen3.6-35b"
-    litellm_params: { model: openai/qwen36-35b,  api_base: http://127.0.0.1:${PORT_MLX}/v1, api_key: not-needed }
+    litellm_params: { model: "openai/qwen36-35b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
+  - model_name: "researcher:qwen3.6-35b"
+    litellm_params: { model: "openai/qwen36-35b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
+  - model_name: "ba:qwen3.6-35b"
+    litellm_params: { model: "openai/qwen36-35b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
+  - model_name: "coder:qwen3-coder-next"
+    litellm_params: { model: "openai/qwen3-coder-next", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
+  - model_name: "dev:qwen3-coder-next"
+    litellm_params: { model: "openai/qwen3-coder-next", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
   - model_name: "coder:qwen3.6-27b"
-    litellm_params: { model: openai/qwen36-27b,  api_base: http://127.0.0.1:${PORT_MLX}/v1, api_key: not-needed }
+    litellm_params: { model: "openai/qwen36-27b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
+  - model_name: "writer:qwen3.6-27b"
+    litellm_params: { model: "openai/qwen36-27b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
   - model_name: "qa:qwen3.6-27b"
-    litellm_params: { model: openai/qwen36-27b,  api_base: http://127.0.0.1:${PORT_MLX}/v1, api_key: not-needed }
+    litellm_params: { model: "openai/qwen36-27b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
   - model_name: "reasoner:deepseek-r1-32b"
-    litellm_params: { model: openai/deepseek-r1-32b, api_base: http://127.0.0.1:${PORT_MLX}/v1, api_key: not-needed }
+    litellm_params: { model: "openai/deepseek-r1-32b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
+  - model_name: "reasoner:deepseek-r1-70b"
+    litellm_params: { model: "openai/deepseek-r1-70b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
+  - model_name: "deep-reasoner:deepseek-r1-70b"
+    litellm_params: { model: "openai/deepseek-r1-70b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
+  - model_name: "vision:qwen3-vl-8b"
+    litellm_params: { model: "openai/qwen3-vl-8b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
+  - model_name: "designer:gemma4-12b"
+    litellm_params: { model: "openai/gemma4-12b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
+  - model_name: "designer:gemma4-31b"
+    litellm_params: { model: "openai/gemma4-31b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
   - model_name: "embed:qwen3-8b"
-    litellm_params: { model: openai/qwen3-embed, api_base: http://127.0.0.1:${PORT_MLX}/v1, api_key: not-needed }
-  # After a successful load-probe, add heavy/vision aliases here (or via --add-model):
-  #   "coder:qwen3-coder-next" → qwen3-coder-next   (best agentic coder, 80B)
-  #   "reasoner:deepseek-r1-70b" → deepseek-r1-70b  (70B manual heavy-lift)
-  #   "vision:qwen3-vl-8b" → qwen3-vl-8b            (once multimodal generation is proven)
+    litellm_params: { model: "openai/qwen3-embed", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
+  # ── Bare names (backward compat — direct model access by name) ──
+  - model_name: "qwen36-35b"
+    litellm_params: { model: "openai/qwen36-35b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
+  - model_name: "qwen36-27b"
+    litellm_params: { model: "openai/qwen36-27b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
+  - model_name: "deepseek-r1-32b"
+    litellm_params: { model: "openai/deepseek-r1-32b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
+  - model_name: "deepseek-r1-70b"
+    litellm_params: { model: "openai/deepseek-r1-70b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
+  - model_name: "qwen3-coder-next"
+    litellm_params: { model: "openai/qwen3-coder-next", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
+  - model_name: "qwen3-embed"
+    litellm_params: { model: "openai/qwen3-embed", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
+  - model_name: "qwen3-vl-8b"
+    litellm_params: { model: "openai/qwen3-vl-8b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
+  - model_name: "gemma4-12b"
+    litellm_params: { model: "openai/gemma4-12b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
+  - model_name: "gemma4-31b"
+    litellm_params: { model: "openai/gemma4-31b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
 YAMLEOF
-    append_custom_litellm_models "$CFG"          # custom roles slot in here, before settings
+    append_custom_litellm_models "$CFG"
     cat >> "$CFG" <<YAMLEOF
 
 litellm_settings:
@@ -1045,6 +1096,11 @@ cmd_wizard() {
 write_dashboard() {
     log "Control dashboard"
     local DD="$WORKDIR/dashboard"; mkdir -p "$DD"
+    if [ -f "$SCRIPT_DIR/dashboard/app.py" ]; then
+        cp "$SCRIPT_DIR/dashboard/app.py" "$DD/app.py"
+        ok "dashboard copied from repo"
+        return 0
+    fi
     cat > "$DD/app.py" <<'PYEOF'
 #!/usr/bin/env python3
 """MLX AI Workstation — control dashboard: live status, persona management, docs."""
@@ -2341,31 +2397,42 @@ PYEOF
 write_image_tool() {
     log "Image generation wrapper (mflux)"
     mkdir -p "$DOCS_WORKSPACE/images"
+    if [ -f "$SCRIPT_DIR/mlx-image.sh" ]; then
+        cp "$SCRIPT_DIR/mlx-image.sh" "$WORKDIR/mlx-image.sh"
+        chmod +x "$WORKDIR/mlx-image.sh"
+        ok "mlx-image.sh copied from repo"
+        return 0
+    fi
     cat > "$WORKDIR/mlx-image.sh" <<SHEOF
 #!/usr/bin/env bash
-# Generate an image locally with mflux. Default model is Z-Image Turbo — NON-GATED
-# (no Hugging Face access grant needed), fast, commercial-friendly. FLUX.1 schnell/dev
-# are supported too but require accepting their gated HF license first.
+# Generate an image locally with mflux.
+# Default model: Z-Image Turbo (non-gated, fast, commercial-friendly).
 # Usage: mlx-image.sh "PROMPT" [OUT] [MODEL] [STEPS] [WIDTH] [HEIGHT] [SEED]
 set -euo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:\$HOME/.local/bin:\$PATH"
 PROMPT="\${1:-a friendly robot reading a book, flat vector illustration}"
 OUT="\${2:-$DOCS_WORKSPACE/images/img_\$(date +%s).png}"
 MODEL="\${3:-z-image-turbo}"; STEPS="\${4:-}"; WIDTH="\${5:-1024}"; HEIGHT="\${6:-1024}"; SEED="\${7:-}"
-if [ -z "\$STEPS" ] || [ "\$STEPS" = 0 ]; then
-  case "\$MODEL" in z-image-turbo) STEPS=9 ;; dev) STEPS=20 ;; *) STEPS=4 ;; esac
+mkdir -p "\$(dirname "\$OUT")"
+if [ -z "\$STEPS" ] || [ "\$STEPS" = "0" ]; then
+  case "\$MODEL" in z-image-turbo|z-image) STEPS=9 ;; dev) STEPS=20 ;; *) STEPS=4 ;; esac
 fi
-ARGS=(--model "\$MODEL" --steps "\$STEPS" --width "\$WIDTH" --height "\$HEIGHT" -q 8 --prompt "\$PROMPT" --output "\$OUT")
-case "\$MODEL" in                       # only the FLUX family takes a guidance value
-  dev)     ARGS+=(--guidance 3.5) ;;
-  schnell) ARGS+=(--guidance 0.0) ;;
-esac
+ARGS=(--steps "\$STEPS" --width "\$WIDTH" --height "\$HEIGHT" --prompt "\$PROMPT" --output "\$OUT")
 [ -n "\$SEED" ] && ARGS+=(--seed "\$SEED")
-uv tool run --from mflux mflux-generate "\${ARGS[@]}"
+case "\$MODEL" in
+  z-image-turbo|zimage-turbo) CMD="mflux-generate-z-image-turbo" ;;
+  z-image|zimage)             CMD="mflux-generate-z-image" ;;
+  dev|schnell|krea-dev)
+    CMD="mflux-generate"; ARGS+=(--model "\$MODEL")
+    case "\$MODEL" in dev) ARGS+=(--guidance 3.5) ;; schnell) ARGS+=(--guidance 0.0) ;; esac ;;
+  *)
+    CMD="mflux-generate"; ARGS+=(--model "\$MODEL") ;;
+esac
+uv tool run --from mflux "\$CMD" "\${ARGS[@]}"
 echo "saved: \$OUT"
 SHEOF
     chmod +x "$WORKDIR/mlx-image.sh"
-    ok "wrote mlx-image.sh (use: ./mlx-setup.sh --image \"your prompt\")"
+    ok "wrote mlx-image.sh"
 }
 
 # =============================================================================
@@ -2374,6 +2441,10 @@ SHEOF
 write_agent() {
     log "Tool-executor agent (mlx-agent)"
     local AD="$WORKDIR/agent"; mkdir -p "$AD"
+    if [ -f "$SCRIPT_DIR/mlx-agent.py" ]; then
+        cp "$SCRIPT_DIR/mlx-agent.py" "$AD/mlx-agent.py"
+        log "agent copied from repo"
+    else
     cat > "$AD/mlx-agent.py" <<'AGENTEOF'
 #!/usr/bin/env python3
 """
@@ -3444,6 +3515,7 @@ def main():
 if __name__ == "__main__":
     main()
 AGENTEOF
+    fi
     chmod +x "$AD/mlx-agent.py"
     # First-class 'mlx-agent' command on PATH (uv tools bin), running under the venv.
     mkdir -p "$HOME/.local/bin" "$HOME/MLX-AI"
@@ -3473,6 +3545,10 @@ cmd_agent() { [ -f "$WORKDIR/agent/mlx-agent.py" ] || { err "run --bootstrap fir
 write_telegram() {
     log "Telegram bridge (mlx-telegram)"
     local AD="$WORKDIR/agent"; mkdir -p "$AD"
+    if [ -f "$SCRIPT_DIR/mlx-telegram.py" ]; then
+        cp "$SCRIPT_DIR/mlx-telegram.py" "$AD/mlx-telegram.py"
+        log "telegram bridge copied from repo"
+    else
     cat > "$AD/mlx-telegram.py" <<'TELEGRAMEOF'
 #!/usr/bin/env python3
 """
@@ -3924,6 +4000,7 @@ def main():
 if __name__ == "__main__":
     main()
 TELEGRAMEOF
+    fi
     chmod +x "$AD/mlx-telegram.py"
     ok "telegram bridge installed — start it with: ./mlx-setup.sh --telegram"
 }
