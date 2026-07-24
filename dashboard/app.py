@@ -284,7 +284,7 @@ NAV_CSS = (
     'border-radius:6px;color:#94a3b8;cursor:pointer;font-size:17px;padding:3px 10px;'
     'line-height:1;margin-left:auto}'
     '.snav-burger:hover{color:#e2e8f0;border-color:#0ea5e9}'
-    '.snav-backdrop{display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.5);'
+    '.snav-backdrop{display:none;position:fixed;inset:0;z-index:150;background:rgba(0,0,0,.5);'
     'backdrop-filter:blur(2px)}'
     '.snav-backdrop.open{display:block}'
     '@media(max-width:680px){'
