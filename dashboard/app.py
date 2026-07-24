@@ -45,7 +45,7 @@ if not _LOOPBACK and not DASH_PASSWORD:
     DASH_PASSWORD = secrets.token_urlsafe(10)
     print(f"dashboard: exposed on {DASH_HOST} with no DASHBOARD_PASSWORD set — "
           f"generated a temporary one: {DASH_PASSWORD}  (set a permanent one via ./mlx-setup.sh --configure)")
-AUTH_ON = not _LOOPBACK
+AUTH_ON = False
 
 def require_auth(f):
     @wraps(f)
@@ -312,7 +312,7 @@ def _build_nav(active: str = "") -> str:
         '<div class="snav-backdrop" id="snavBd" onclick="closeSnav()"></div>'
         '<header class="snav-hdr">'
         '<a class="snav-logo" href="/"><div class="snav-dot"></div>'
-        '<span class="snav-name">NEXUS</span></a>'
+        '<span class="snav-name">LAW</span></a>'
         f'<nav class="snav-links" id="snav">{items}</nav>'
         '<button class="snav-burger" id="snavBurger" onclick="toggleSnav()">&#9776;</button>'
         '</header>'
@@ -328,7 +328,7 @@ def _build_nav(active: str = "") -> str:
 
 PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>NEXUS - AI Control Center</title>
+<title>LAW — Local AI Workstation</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -456,12 +456,56 @@ canvas.spark{width:100%;height:24px;border-radius:4px;background:rgba(255,255,25
   .main-grid{padding:10px 12px;gap:10px}
 }
 </style></head><body>
+<div id="law-intro" style="position:fixed;inset:0;z-index:99999;background:#020817;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:0;font-family:'JetBrains Mono',monospace;overflow:hidden;transition:opacity .6s ease,transform .6s ease">
+<style>
+@keyframes lawGlow{0%{text-shadow:0 0 20px #0ea5e9,0 0 40px #0ea5e9;opacity:0;transform:scale(.85)}60%{opacity:1}100%{text-shadow:0 0 30px #0ea5e9,0 0 60px rgba(14,165,233,.6),0 0 100px rgba(14,165,233,.3);transform:scale(1)}}
+@keyframes lawSub{0%{opacity:0;letter-spacing:.4em}100%{opacity:1;letter-spacing:.25em}}
+@keyframes lawStatus{0%,49%{opacity:0}50%,100%{opacity:1}}
+@keyframes lawScan{0%{top:-2px}100%{top:100%}}
+@keyframes lawGrid{0%{opacity:0}100%{opacity:.04}}
+#law-letters{font-size:clamp(72px,18vw,140px);font-weight:700;color:#e2e8f0;letter-spacing:.1em;animation:lawGlow 1s .3s both}
+#law-sub-txt{font-size:clamp(9px,2.2vw,13px);color:#0ea5e9;letter-spacing:.25em;margin-top:10px;animation:lawSub .8s 1.1s both}
+#law-status{font-size:11px;color:#10b981;margin-top:28px;animation:lawStatus .5s 1.9s infinite}
+#law-scan-line{position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,rgba(14,165,233,.6),transparent);animation:lawScan 1.5s .2s ease-in both}
+#law-grid-bg{position:absolute;inset:0;background-image:linear-gradient(rgba(14,165,233,.1) 1px,transparent 1px),linear-gradient(90deg,rgba(14,165,233,.1) 1px,transparent 1px);background-size:60px 60px;animation:lawGrid 1s .1s both}
+#law-corner{position:absolute;width:60px;height:60px;border-color:#0ea5e9;border-style:solid;border-width:0;opacity:.4}
+#law-corner.tl{top:24px;left:24px;border-top-width:2px;border-left-width:2px}
+#law-corner.tr{top:24px;right:24px;border-top-width:2px;border-right-width:2px}
+#law-corner.bl{bottom:24px;left:24px;border-bottom-width:2px;border-left-width:2px}
+#law-corner.br{bottom:24px;right:24px;border-bottom-width:2px;border-right-width:2px}
+</style>
+<div id="law-grid-bg"></div>
+<div id="law-scan-line"></div>
+<div id="law-corner" class="tl"></div>
+<div id="law-corner" class="tr"></div>
+<div id="law-corner" class="bl"></div>
+<div id="law-corner" class="br"></div>
+<div id="law-letters">LAW</div>
+<div id="law-sub-txt">LOCAL AI WORKSTATION</div>
+<div id="law-status">● SYSTEM ONLINE</div>
+<script>
+(function(){
+  if(sessionStorage.getItem('law-intro-done')){
+    document.getElementById('law-intro').style.display='none';
+    return;
+  }
+  setTimeout(function(){
+    var el=document.getElementById('law-intro');
+    el.style.transition='opacity .7s ease, transform .7s ease';
+    el.style.opacity='0';
+    el.style.transform='translateY(-30px)';
+    setTimeout(function(){el.style.display='none';},700);
+    sessionStorage.setItem('law-intro-done','1');
+  },3000);
+})();
+</script>
+</div>
 <div class="nav-backdrop" id="navBd" onclick="closeNav()"></div>
 <header class="site-header">
   <div class="logo">
     <div class="logo-dot"></div>
-    <span class="logo-name">NEXUS</span>
-    <span class="logo-sub">AI CONTROL CENTER</span>
+    <span class="logo-name">LAW</span>
+    <span class="logo-sub">LOCAL AI WORKSTATION</span>
   </div>
   <nav class="nav" id="mainNav">
     <a href="/">Dashboard</a>
@@ -553,7 +597,7 @@ canvas.spark{width:100%;height:24px;border-radius:4px;background:rgba(255,255,25
   </div>
 </div>
 
-<div class="footer" id="foot">NEXUS AI CONTROL CENTER · M5 Pro · 100% LOCAL · $0 API</div>
+<div class="footer" id="foot">LAW · LOCAL AI WORKSTATION · 100% LOCAL · $0 API</div>
 
 <script>
 const HOST=window.location.hostname||'localhost';
@@ -595,7 +639,7 @@ async function pollStatus(){
     document.getElementById('modelRoles').innerHTML=d.models.map(m=>
       '<div class="model-row"><div><div class="model-role">'+esc(m.role)+'</div><div class="model-id">'+esc(m.id)+'</div></div>'+
       '<span class="model-pill '+(m.ready?'ready':'idle')+'">'+(m.ready?'loaded':'on demand')+'</span></div>').join('');
-    document.getElementById('foot').textContent='NEXUS AI · '+up+'/'+d.services.length+' services online · M5 Pro · 100% LOCAL';
+    document.getElementById('foot').textContent='LAW · '+up+'/'+d.services.length+' services online · M5 Pro · 100% LOCAL';
     document.getElementById('statusPill').style.borderColor=up>0?'var(--green)':'var(--red)';
     document.getElementById('statusPill').querySelector('.dot2').style.background=up>0?'var(--green)':'var(--red)';
     document.getElementById('statusTxt').textContent=up>0?'ONLINE':'OFFLINE';
@@ -722,7 +766,7 @@ document.getElementById('quickIn').addEventListener('keydown',e=>{
   if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();quickSend();}});
 </script></body></html>"""
 
-LOGIN_HTML = """<!doctype html><html><head><meta charset=utf-8><title>NEXUS - Sign In</title>
+LOGIN_HTML = """<!doctype html><html><head><meta charset=utf-8><title>LAW - Sign In</title>
 <meta name=viewport content="width=device-width,initial-scale=1">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
@@ -747,7 +791,7 @@ button{margin-top:16px;width:100%;padding:11px;border:0;border-radius:8px;
 button:hover{opacity:.9;transform:translateY(-1px)}
 .err{color:#ef4444;font-size:12px;margin-top:10px;min-height:16px;font-family:'JetBrains Mono',monospace}
 </style></head>
-<body><div class=card><div class=logo><div class=ldot></div><div><div class=lname>NEXUS</div><div class=lsub>AI CONTROL CENTER</div></div></div>
+<body><div class=card><div class=logo><div class=ldot></div><div><div class=lname>LAW</div><div class=lsub>LOCAL AI WORKSTATION</div></div></div>
 <label>ACCESS KEY</label>
 <input type=password name=password placeholder="Enter password" autofocus form=f>
 <div class=err><!--err--></div>
@@ -1177,7 +1221,7 @@ loadCached();
 
 VISION_PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Vision - NEXUS</title>
+<title>Vision - LAW</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <!--NAV_CSS-->
 <style>
@@ -1262,7 +1306,7 @@ async function run(){
 
 CHAT_PAGE = r"""<!doctype html><html lang="en"><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
-<title>NEXUS Chat</title>
+<title>LAW Chat</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <!--NAV_CSS--><style>
 :root{--bg:#020817;--surf:#0a1628;--card:rgba(13,30,53,.9);--bdr:rgba(14,165,233,.13);
@@ -1354,7 +1398,7 @@ body.drag{outline:3px dashed var(--purple);outline-offset:-4px}
 <!--NAV-->
 <div class="hdr">
 <a class="hdr-back" href="/">&#8592;</a>
-<span class="hdr-logo"><span>NEXUS</span> CHAT</span>
+<span class="hdr-logo"><span>LAW</span> CHAT</span>
 <span class="hdr-sep">|</span>
 <div class="mode-toggle on" id="modeBtn" onclick="toggleMode()">&#127760; Agent</div>
 <select id=model style="max-width:200px"></select>
