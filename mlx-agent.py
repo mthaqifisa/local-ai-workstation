@@ -240,13 +240,20 @@ BASE_SYSTEM = (
     "writer, designer, general). Do simple steps yourself; delegate the ones a specialist fits, "
     "then synthesize the results.\n"
     "FILES: when the user asks you to CREATE, WRITE, SAVE, PRODUCE, GENERATE, or UPDATE a file "
-    "(a README, script, config, document, etc.), you MUST call write_file with the COMPLETE final "
-    "content and the target path — do NOT print the file's contents as your chat answer and stop. "
+    "(a README, script, config, document, etc.), you MUST call the appropriate write tool with the "
+    "COMPLETE final content and the target path — do NOT print the file's contents as your chat answer and stop. "
     "Writing the file IS the deliverable. To study or summarize an existing file first, call read_file "
     "to get its real content (never guess it). After writing, your answer is just a short confirmation "
     "of what you wrote and the path — not the whole file again. If the user gives a path, use it exactly; "
-    "if not, write under the shared workspace ~/MLX-AI (e.g. ~/MLX-AI/<short-name>). Never invent absolute "
-    "paths for directories you haven't confirmed exist — check with list_dir or pwd first if unsure.\n"
+    "if not, write under the shared workspace ~/MLX-AI/<project-name>/ (always in the project subfolder). "
+    "DOCUMENT FORMAT: for formal documents (reports, proposals, specs, briefs, release notes) use "
+    "write_docx to produce a .docx file — not a .md file. Use write_file for code, scripts, configs, "
+    "READMEs, and data files.\n"
+    "PROJECT ISOLATION: every project MUST have its own dedicated folder under ~/MLX-AI/<project-name>/. "
+    "NEVER place project files in ~/MLX-AI/ directly. Create the folder first (mkdir via run_shell), "
+    "then write all project files (code, docs, tests, assets) inside that folder. "
+    "Different projects must NEVER share a folder. Example: ~/MLX-AI/invoice-parser/ for one project, "
+    "~/MLX-AI/market-research/ for another.\n"
     "SEARCH DISCIPLINE: web_search is for finding a URL or a quick fact. Do NOT search repeatedly for the "
     "same thing. Once a search returns a promising link, use web_fetch to READ it. To learn a library's "
     "API, the fastest route is usually propose_capability to install it, then introspect (python -c "
@@ -353,7 +360,11 @@ DEFAULT_PERSONAS = {
         "allowed_tools": "all",
         "system_prompt": ("You are a technical writer and documentation specialist. Produce clear, well-structured "
                           "documentation, READMEs, reports, and written content. Read relevant source files first "
-                          "with read_file so your content is accurate. Write output to disk with write_file. "
+                          "with read_file so your content is accurate. "
+                          "FORMAT RULES: use write_docx for formal deliverables (reports, specs, proposals, briefs, "
+                          "release notes, user guides) — these must be .docx files. Use write_file for READMEs "
+                          "(README.md), code comments, config docs, and changelogs. "
+                          "PROJECT ISOLATION: save all files under the project's own subfolder in ~/MLX-AI/<project-name>/. "
                           "Use precise language; avoid filler phrases and padding."),
     },
     "designer": {
@@ -619,6 +630,48 @@ def t_write_file(path: str, content: str, mode: str = "w") -> str:
         return f"[{'appended' if append else 'wrote'} {len(content)} chars to {p} (file now {total} bytes)]"
     except Exception as e: return f"[error writing {path}: {e}]"
 
+def t_write_docx(path: str, content: str, title: str = "") -> str:
+    """Write a .docx document. content is markdown-like text; headings (# ## ###) become Word headings."""
+    p = Path(path).expanduser()
+    if not p.suffix:
+        p = p.with_suffix(".docx")
+    if not _within_allowed(p):
+        return f"[refused: {path} is outside allowed paths]"
+    preview = content[:200] + ("…" if len(content) > 200 else "")
+    if not confirm(f"write docx {len(content)} chars to {c(str(p),'bold')}?\n{c(preview,'dim')}\n", kind="write"):
+        return "[write denied by user]"
+    try:
+        from docx import Document
+        from docx.shared import Pt
+        doc = Document()
+        if title:
+            doc.add_heading(title, 0)
+        for line in content.splitlines():
+            stripped = line.rstrip()
+            if stripped.startswith("### "):
+                doc.add_heading(stripped[4:], level=3)
+            elif stripped.startswith("## "):
+                doc.add_heading(stripped[3:], level=2)
+            elif stripped.startswith("# "):
+                doc.add_heading(stripped[2:], level=1)
+            elif stripped.startswith("---") and len(stripped) >= 3 and set(stripped) == {"-"}:
+                doc.add_paragraph("─" * 40)
+            elif stripped.startswith("- ") or stripped.startswith("* "):
+                doc.add_paragraph(stripped[2:], style="List Bullet")
+            elif stripped and stripped[0].isdigit() and ". " in stripped[:4]:
+                doc.add_paragraph(stripped.split(". ", 1)[1], style="List Number")
+            else:
+                para = doc.add_paragraph(stripped)
+                if not stripped:
+                    para.paragraph_format.space_after = Pt(0)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        doc.save(str(p))
+        return f"[wrote docx to {p} ({p.stat().st_size} bytes)]"
+    except ImportError:
+        return "[error: python-docx not installed — run propose_capability to install it]"
+    except Exception as e:
+        return f"[error writing docx {path}: {e}]"
+
 def t_web_search(query: str) -> str:
     try:
         r = requests.get(f"{SEARXNG}/search", params={"q": query, "format": "json"}, timeout=20)
@@ -784,6 +837,13 @@ TOOLS = {
                    "or update a file (README, script, config, doc). Pass the COMPLETE final content — "
                    "do not just print it in chat. For a file too large for one call, write the first "
                    "part then call again with mode='a' to append more. Asks the user to confirm first."),
+    "write_docx": (t_write_docx, "Write a Microsoft Word (.docx) document. "
+                   "Use this for formal documents, reports, proposals, specs, briefs, and any "
+                   "deliverable meant to be read or shared as a document (NOT for README, code, "
+                   "config, or scripts — use write_file for those). Args: path (include .docx "
+                   "extension or it will be added), content (full text; use # ## ### for headings, "
+                   "- for bullets, 1. for numbered lists), title (optional document title heading). "
+                   "Supports headings up to H3, bullet lists, numbered lists, and plain paragraphs."),
     "scaffold_swift": (t_scaffold_swift, "Start a buildable Swift/Xcode project the RELIABLE way, using "
                    "SwiftPM (swift package init). Produces a Package.swift that `swift build` compiles and "
                    "that opens in Xcode. Use this to begin ANY Swift/macOS/iOS app — NEVER hand-write "
@@ -833,6 +893,9 @@ ALL_SCHEMAS = {
     "list_dir":   schema("list_dir", {"path":{"type":"string"}}, []),
     "write_file": schema("write_file", {"path":{"type":"string"},"content":{"type":"string"},
                                          "mode":{"type":"string","enum":["w","a"],"description":"w=overwrite (default), a=append"}}, ["path","content"]),
+    "write_docx": schema("write_docx", {"path":{"type":"string","description":"destination path, e.g. ~/MLX-AI/my-project/report.docx"},
+                                         "content":{"type":"string","description":"full document text; # for H1, ## H2, ### H3, - for bullets, 1. for numbered, plain lines for paragraphs"},
+                                         "title":{"type":"string","description":"optional title heading at top of document"}}, ["path","content"]),
     "scaffold_swift": schema("scaffold_swift", {"directory":{"type":"string","description":"folder to create the package in"},
                                                 "name":{"type":"string","description":"package/app name"},
                                                 "kind":{"type":"string","enum":["executable","library","empty"]}}, ["directory"]),

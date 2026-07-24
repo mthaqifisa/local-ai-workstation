@@ -210,7 +210,7 @@ setup_python() {
         "transformers>=5.0.0" \
         "mlx-vlm>=0.5.0" \
         "huggingface_hub" \
-        "flask" "psutil" "requests" "python-dotenv" \
+        "flask" "psutil" "requests" "python-dotenv" "python-docx" \
         || { err "pip install failed"; exit 1; }
     # mlx-vlm>=0.5 carries the 'gemma4_unified' module (added after 0.4.4) plus the
     # qwen3_vl / gemma3 archs, so the vision models in VISION_MODELS can at least LOAD.
