@@ -51,6 +51,14 @@ Search HuggingFace, download new models, probe-load to test, and register into t
 
 Hamburger menu collapses the nav on small screens. Chat and all sub-pages are fully usable on mobile.
 
+![Mobile Nav Open](screenshots/dashboard-mobile-nav.png)
+
+Floating nav overlay — drops over content without pushing the layout, with a blurred backdrop to dismiss.
+
+![Personas on Mobile](screenshots/dashboard-personas-mobile.png)
+
+Personas edit dialog on mobile — internally scrollable with sticky Save/Cancel buttons, single-column layout, and `font-size:16px` inputs to prevent iOS auto-zoom.
+
 ---
 
 ## Hardware target
