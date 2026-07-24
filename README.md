@@ -1,8 +1,8 @@
-# NEXUS — Local AI Workstation
+# LAW — Local AI Workstation
 
 > 100% local AI stack on Apple Silicon. No API keys, no billing, no data leaving your machine.
 
-A production-grade local AI setup for Apple M-series Macs. One command brings up a multi-agent orchestrator backed by 9 models, a futuristic web dashboard, a Telegram bot, image generation, vision analysis, and full autonomous SDLC capability.
+A production-grade local AI setup for Apple M-series Macs. One command brings up a multi-agent orchestrator backed by 9 models, a futuristic web dashboard (**LAW**), a Telegram bot, image generation, vision analysis, and full autonomous SDLC capability.
 
 ---
 
@@ -19,17 +19,17 @@ Full stack: user interfaces → LiteLLM role-alias gateway → mlx-openai-server
 ### Main Dashboard
 ![Main Dashboard](screenshots/dashboard-main.png)
 
-Three-column layout: **System Core** (service health, model roster) · **Neural Activity** (live SSE event feed + active agent tracker) · **Command** (quick dispatch + 6-metric sparklines: CPU, Memory with GB, Battery with time remaining, Storage with GB, Disk I/O, Network I/O).
+Three-column layout: **System Core** (service health, model roster) · **Neural Activity** (live SSE event feed + active agent tracker) · **Command** (quick dispatch + 6-metric sparklines: CPU, Memory with GB, Battery, Storage with GB, Disk I/O, Network I/O).
 
 ### Chat
 ![Chat](screenshots/dashboard-chat.png)
 
-Full-screen chat in **Agent** mode (tool-calling with thinking panel + step trace) or **Direct** mode (raw model, faster). Supports image attachments for vision-capable models. Sticky nav stays accessible from all pages.
+Full-screen chat in **Agent** mode (tool-calling with thinking panel + step trace) or **Direct** mode (raw model, faster). Supports image attachments for vision-capable models.
 
 ### Vision Analysis
 ![Vision Page](screenshots/dashboard-vision.png)
 
-Drop an image, pick a vision model from the dropdown (no free-typing = no typos), ask a question. Runs Qwen3-VL-8B or Gemma-4 locally. No data leaves the machine.
+Drop an image, pick a vision model from the dropdown, ask a question. Runs Qwen3-VL-8B or Gemma-4 locally. No data leaves the machine.
 
 ### Image Generation
 ![Create Page](screenshots/dashboard-create.png)
@@ -39,25 +39,42 @@ Text-to-image with Z-Image Turbo. Configure steps, resolution, seed. ~15 seconds
 ### Personas
 ![Personas](screenshots/dashboard-personas.png)
 
-Create and edit agent personas — each is a name + model alias + system prompt + allowed tools. The same tool loop runs any persona; switching just changes what model and instructions are used.
+Create and edit agent personas — each is a name + model alias + system prompt + allowed tools.
 
 ### Models
 ![Models](screenshots/dashboard-models.png)
 
 Search HuggingFace, download new models, probe-load to test, and register into the serving config — all from the browser.
 
-### Mobile View
+### Mobile — Dashboard
 ![Mobile Dashboard](screenshots/dashboard-mobile.png)
 
-Hamburger menu collapses the nav on small screens. Chat and all sub-pages are fully usable on mobile.
+On mobile the cards reorder: **Command** first (quick dispatch + metrics), then Neural Activity, then System Core. Hamburger nav in the top-right.
 
+### Mobile — Nav Open
 ![Mobile Nav Open](screenshots/dashboard-mobile-nav.png)
 
-Floating nav overlay — drops over content without pushing the layout, with a blurred backdrop to dismiss.
+Floating nav overlay — drops over content without pushing the layout, blurred backdrop to dismiss.
 
-![Personas on Mobile](screenshots/dashboard-personas-mobile.png)
+### Mobile — Sub-page Nav
+![Sub-page Nav](screenshots/dashboard-subnav-mobile.png)
 
-Personas edit dialog on mobile — internally scrollable with sticky Save/Cancel buttons, single-column layout, and `font-size:16px` inputs to prevent iOS auto-zoom.
+Every sub-page (Chat, Vision, Create, Personas, Models) has the same floating LAW nav, fixed to the top of the viewport.
+
+### Mobile — Chat
+![Chat Mobile](screenshots/dashboard-chat-mobile.png)
+
+Chat on mobile — compact header (mode toggle + model select only), internal scroll thread, full-height viewport with iOS `100dvh` fix.
+
+### Mobile — Personas List
+![Personas Mobile](screenshots/dashboard-personas-mobile.png)
+
+Personas list on mobile — single-column card grid.
+
+### Mobile — Personas Dialog
+![Personas Dialog Mobile](screenshots/dashboard-personas-dialog-mobile.png)
+
+Personas edit dialog on mobile — internally scrollable with sticky Save/Cancel footer, single-column layout, `font-size:16px` inputs to prevent iOS auto-zoom.
 
 ---
 
@@ -151,7 +168,7 @@ Per-model temperature overrides are applied where needed (e.g. embeddings → 0.
 |---|---|---|
 | mlx-openai-server | 8000 | Apple Metal inference, OpenAI API |
 | LiteLLM Gateway | 4000 | Role-alias routing, drop-in OpenAI proxy |
-| NEXUS Dashboard | 8800 | Full web UI |
+| LAW Dashboard | 8800 | Full web UI |
 | Open WebUI | 3001 | Alternative chat frontend |
 | SearXNG | 8888 | Private web search for agent RAG |
 | Langfuse | 3000 | Optional tracing / observability |
@@ -198,7 +215,7 @@ Prompts for `DASHBOARD_PASSWORD`, `TELEGRAM_BOT_TOKEN`, and `TELEGRAM_USER_ID`. 
 
 ## Usage
 
-### Web Dashboard — `http://localhost:8800`
+### LAW Dashboard — `http://localhost:8800`
 
 | Page | What it does |
 |---|---|
