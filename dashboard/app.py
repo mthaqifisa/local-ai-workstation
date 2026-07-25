@@ -10,7 +10,7 @@ from pathlib import Path
 from flask import Flask, jsonify, Response, request, session, redirect
 
 P_MLX="8000"; P_GATEWAY="4000"; P_DASH="8800"
-P_OWUI="3001"; P_SEARX="8888"; P_LF="3000"
+P_OWUI="3001"; P_SEARX="8888"; P_LF="3000"; P_PORTAINER="9000"
 
 WORKDIR = Path(os.environ.get("MLX_WORKDIR", str(Path.home() / ".mlx-ai-workstation")))
 ENV_FILE = WORKDIR / ".env"
@@ -62,6 +62,7 @@ SERVICES = [
     ("Web chat (Open WebUI)",    f"http://127.0.0.1:{P_OWUI}/",                   P_OWUI,    "Pick a model & chat"),
     ("Private search (SearXNG)", f"http://127.0.0.1:{P_SEARX}/",                  P_SEARX,   "Web results for RAG"),
     ("Tracing (Langfuse)",       f"http://127.0.0.1:{P_LF}/api/public/health",    P_LF,      "Optional observability"),
+    ("Docker (Portainer)",       f"http://127.0.0.1:{P_PORTAINER}/api/status",    P_PORTAINER, "Docker image & container manager"),
     ("Dashboard",                f"http://127.0.0.1:{P_DASH}/",                   P_DASH,    "This page"),
 ]
 

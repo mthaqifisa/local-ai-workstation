@@ -809,12 +809,58 @@ setup_langfuse() {
         || warn "Langfuse compose failed"
 }
 
+setup_portainer() {
+    log "Portainer (Docker UI)"
+    docker_up || { warn "Docker not active; skipping"; return; }
+
+    # Colima's socket lives on the macOS host side, not inside the VM.
+    # Bridge it to TCP 2375 via socat so Portainer (inside the VM) can reach it.
+    local SOCK="$HOME/.colima/default/docker.sock"
+    [ -S "$SOCK" ] || SOCK="/var/run/docker.sock"
+
+    have socat || { warn "socat not found — brew install socat"; return; }
+
+    # Persist the bridge via launchd
+    local BRIDGE_PLIST="$HOME/Library/LaunchAgents/com.mlxstack.docker-bridge.plist"
+    cat > "$BRIDGE_PLIST" << PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.mlxstack.docker-bridge</string>
+  <key>ProgramArguments</key><array>
+    <string>$(which socat)</string>
+    <string>TCP-LISTEN:2375,fork,reuseaddr</string>
+    <string>UNIX-CONNECT:${SOCK}</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>$WORKDIR/logs/docker-bridge.log</string>
+  <key>StandardErrorPath</key><string>$WORKDIR/logs/docker-bridge.log</string>
+</dict></plist>
+PLIST
+    launchctl bootout "gui/$(id -u)/com.mlxstack.docker-bridge" >/dev/null 2>&1 || true
+    launchctl bootstrap "gui/$(id -u)" "$BRIDGE_PLIST" >/dev/null 2>&1 || \
+        launchctl load "$BRIDGE_PLIST" >/dev/null 2>&1 || true
+    sleep 1
+
+    docker rm -f portainer >/dev/null 2>&1 || true
+    opt docker volume create portainer_data
+    docker run -d --name portainer --restart unless-stopped \
+        -p 9000:9000 -p 9443:9443 \
+        -v portainer_data:/data \
+        --add-host=host.docker.internal:host-gateway \
+        portainer/portainer-ce:latest \
+        --host tcp://host.docker.internal:2375 \
+      && ok "Portainer → http://localhost:9000" || warn "Portainer failed to start"
+}
+
 setup_docker_services() {
     setup_colima
     docker_up || { warn "Docker did not start; UIs skipped"; return; }
     setup_openwebui
     setup_searxng
     setup_langfuse
+    setup_portainer
 }
 
 # =============================================================================
@@ -4153,7 +4199,7 @@ svc_status() {
 svc_start() {
     log "Starting services"
     setup_colima
-    if docker_up; then for c in open-webui searxng; do docker start "$c" >/dev/null 2>&1 || true; done; fi
+    if docker_up; then for c in open-webui searxng portainer; do docker start "$c" >/dev/null 2>&1 || true; done; fi
     for l in "${LABELS[@]}"; do
         launchctl bootstrap "gui/$(id -u)" "$LAUNCH_DIR/$l.plist" >/dev/null 2>&1 || \
         launchctl load "$LAUNCH_DIR/$l.plist" >/dev/null 2>&1 || true
@@ -4165,7 +4211,7 @@ svc_stop() {
     for l in "${LABELS[@]}"; do
         launchctl bootout "gui/$(id -u)/$l" >/dev/null 2>&1 || launchctl unload "$LAUNCH_DIR/$l.plist" >/dev/null 2>&1 || true
     done
-    for c in open-webui searxng; do docker stop "$c" >/dev/null 2>&1 || true; done
+    for c in open-webui searxng portainer; do docker stop "$c" >/dev/null 2>&1 || true; done
     ok "stopped (Colima left running; 'colima stop' to halt the VM)"
 }
 
