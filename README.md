@@ -172,8 +172,11 @@ Per-model temperature overrides are applied where needed (e.g. embeddings → 0.
 | Open WebUI | 3001 | Alternative chat frontend |
 | SearXNG | 8888 | Private web search for agent RAG |
 | Langfuse | 3000 | Optional tracing / observability |
+| Portainer CE | 9000 / 9443 | Docker image & container manager |
 
 All services managed by **launchd** — start at login, auto-restart on failure.
+
+> **Portainer + Colima:** Colima's Unix socket (`~/.colima/default/docker.sock`) is bridged to TCP 2375 via a `socat` launchd service (`com.mlxstack.docker-bridge`). Portainer connects via `host.docker.internal:2375` instead of a direct socket mount.
 
 ---
 
