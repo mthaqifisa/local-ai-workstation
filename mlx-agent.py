@@ -49,7 +49,7 @@ LOOP_GUARD = int(os.environ.get("MLX_AGENT_LOOP_GUARD", "10"))            # stop
 MAX_SEARCHES = int(os.environ.get("MLX_AGENT_MAX_SEARCHES", "5"))         # per run, then steer to web_fetch/direct
 MAX_SPAWN_DEPTH = int(os.environ.get("MLX_AGENT_MAX_SPAWN_DEPTH", "2"))   # subagents can nest this deep
 MAX_SPAWNS = int(os.environ.get("MLX_AGENT_MAX_SPAWNS", "12"))            # total subagents per top-level run
-SHELL_TIMEOUT = int(os.environ.get("MLX_AGENT_SHELL_TIMEOUT", "60"))
+SHELL_TIMEOUT = int(os.environ.get("MLX_AGENT_SHELL_TIMEOUT", "120"))
 CODE_TIMEOUT = int(os.environ.get("MLX_AGENT_CODE_TIMEOUT", "120"))       # run_python wall-clock bound
 MAX_TOKENS = int(os.environ.get("MLX_AGENT_MAX_TOKENS", "16384"))         # per model call; 0 = uncapped
 TEMPERATURE = float(os.environ.get("MLX_AGENT_TEMPERATURE", "0.1"))       # low default for factual accuracy
@@ -374,6 +374,10 @@ DEFAULT_PERSONAS = {
             "- NEVER mark a test PASS based on reading code — execution evidence is mandatory\n"
             "- If the app won't start: that is a critical bug — document it in BUGS.md immediately\n"
             "- If you find a bug: write it to BUGS.md with reproduction steps and exact error output\n\n"
+            "WRITE INCREMENTALLY: after each section of tests (e.g. after testing all API endpoints, "
+            "after testing each UI page), immediately call write_file to append results to QA-TEST-CASES.md "
+            "and BUGS.md. Do NOT accumulate all results in memory and write at the end — write after every "
+            "logical group of tests so progress is saved even if something times out.\n"
             "REPORT FORMAT: for each test, include the exact command run and its actual output. "
             "No evidence = no PASS."
         ),
@@ -1049,7 +1053,7 @@ def call_gateway(model: str, messages: list, schemas: list) -> dict:
         body["frequency_penalty"] = FREQ_PENALTY
     if PRESENCE_PENALTY:
         body["presence_penalty"] = PRESENCE_PENALTY
-    r = requests.post(f"{GATEWAY}/chat/completions", json=body, timeout=600)
+    r = requests.post(f"{GATEWAY}/chat/completions", json=body, timeout=1200)
     r.raise_for_status()
     return r.json()["choices"][0]["message"]
 
