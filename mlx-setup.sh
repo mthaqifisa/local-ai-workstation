@@ -2539,16 +2539,27 @@ WORKSPACE = Path(os.environ.get("MLX_WORKSPACE", str(Path.home() / "MLX-AI")))
 PERSONAS_FILE = WORKDIR / "personas.json"
 DEFAULT_MODEL = os.environ.get("MLX_AGENT_MODEL", "coder:qwen3.6-27b")
 MAX_STEPS = int(os.environ.get("MLX_AGENT_MAX_STEPS", "0"))               # 0 = unlimited tool steps
-LOOP_GUARD = int(os.environ.get("MLX_AGENT_LOOP_GUARD", "10"))            # stop if the SAME tool call repeats N× in a row (0 = off); not a step cap, just anti-hang
+LOOP_GUARD = int(os.environ.get("MLX_AGENT_LOOP_GUARD", "10"))            # stop if the SAME tool call repeats N× in a row (0 = off)
 MAX_SEARCHES = int(os.environ.get("MLX_AGENT_MAX_SEARCHES", "5"))         # per run, then steer to web_fetch/direct
 MAX_SPAWN_DEPTH = int(os.environ.get("MLX_AGENT_MAX_SPAWN_DEPTH", "2"))   # subagents can nest this deep
-MAX_SPAWNS = int(os.environ.get("MLX_AGENT_MAX_SPAWNS", "8"))             # total subagents per top-level run
-SHELL_TIMEOUT = int(os.environ.get("MLX_AGENT_SHELL_TIMEOUT", "60"))
+MAX_SPAWNS = int(os.environ.get("MLX_AGENT_MAX_SPAWNS", "12"))            # total subagents per top-level run
+SHELL_TIMEOUT = int(os.environ.get("MLX_AGENT_SHELL_TIMEOUT", "120"))
 CODE_TIMEOUT = int(os.environ.get("MLX_AGENT_CODE_TIMEOUT", "120"))       # run_python wall-clock bound
-MAX_TOKENS = int(os.environ.get("MLX_AGENT_MAX_TOKENS", "16384"))       # per model call; 0 = uncapped. A finite value stops a degenerate loop from running to the whole context.
-TEMPERATURE = float(os.environ.get("MLX_AGENT_TEMPERATURE", "0.3"))
-FREQ_PENALTY = float(os.environ.get("MLX_AGENT_FREQ_PENALTY", "0.4"))    # >0 discourages the "same phrase over and over" loops; 0 = don't send
+MAX_TOKENS = int(os.environ.get("MLX_AGENT_MAX_TOKENS", "16384"))         # per model call; 0 = uncapped
+TEMPERATURE = float(os.environ.get("MLX_AGENT_TEMPERATURE", "0.1"))       # low default for factual accuracy
+FREQ_PENALTY = float(os.environ.get("MLX_AGENT_FREQ_PENALTY", "0.6"))     # discourages repetition loops; 0 = don't send
 PRESENCE_PENALTY = float(os.environ.get("MLX_AGENT_PRESENCE_PENALTY", "0.0"))
+
+# Per-model temperature overrides (anti-hallucination: use lower temps for factual/code tasks)
+_MODEL_TEMPS: dict[str, float] = {
+    "deepseek-r1": 0.0,    # reasoning — fully deterministic
+    "qwen3-coder": 0.05,   # coding — high precision
+    "coder":       0.05,   # coding alias
+    "orchestrator": 0.1,   # planning — structured
+    "writer":      0.3,    # creative/docs — more variety allowed
+    "researcher":  0.15,   # research — mostly factual
+    "general":     0.15,   # general — mostly factual
+}
 
 ALLOWED_ROOTS = [Path.home(), Path("/tmp"), WORKDIR, WORKSPACE, Path.cwd()]
 
@@ -2627,6 +2638,9 @@ EMIT_FN = None     # EMIT_FN(line:str) -> None   (a progress/trace line)
 STREAM_FN = None   # STREAM_FN(piece:str) -> None (a token/delta of the streaming answer)
 _ANSI = re.compile(r"\033\[[0-9;]*m")
 
+# Plan context hook — inject external plan data into agent runs (e.g. from orchestrator step 1)
+PLAN_CONTEXT_FN = None  # PLAN_CONTEXT_FN(plan: dict) -> str | None
+
 def emit(line: str):
     print(line)
     if EMIT_FN is not None:
@@ -2662,8 +2676,39 @@ def confirm(prompt: str, force_ask: bool = False, kind: str = "general") -> bool
         RUN_APPROVE_ALL = True; return True
     return False
 
+# ─────────────────────────── SSE / event broadcasting ─────────────────────
+SSE_EVENTS_FILE = WORKDIR / "activity" / "events.jsonl"
+MAX_EVENTS_FILE_SIZE = 500_000  # 500KB then rotate
+
+def broadcast_event(event_type: str, agent: str = "", data: str = ""):
+    """Append a structured event to the activity log for dashboard consumption."""
+    try:
+        SSE_EVENTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        entry = json.dumps({"ts": time.time(), "type": event_type, "agent": agent,
+                            "data": (data or "")[:500]})
+        # Rotate if too large
+        if SSE_EVENTS_FILE.exists() and SSE_EVENTS_FILE.stat().st_size > MAX_EVENTS_FILE_SIZE:
+            SSE_EVENTS_FILE.rename(str(SSE_EVENTS_FILE) + ".old")
+        with SSE_EVENTS_FILE.open("a") as f:
+            f.write(entry + "\n")
+    except Exception:
+        pass
+
 # ─────────────────────────── persona registry ─────────────────────────────
 BASE_SYSTEM = (
+    # ── Anti-hallucination ground rules (checked first) ──────────────────
+    "PRECISION: Only state facts you are certain about. When uncertain, use tools to verify. "
+    "NEVER fabricate file contents, system states, or tool results.\n"
+    "NO FABRICATION: Your answers must come from actual tool results. Never invent what a "
+    "command returned. If a tool fails, say it failed.\n"
+    "NO LOOPS: If you repeat the same tool call 2+ times without progress, stop and answer "
+    "with what you have.\n"
+    "VERIFICATION: For any task that involves writing or building software, you MUST verify it "
+    "actually works before reporting completion. Run the code. Check it compiles. Start the server. "
+    "Make at least one real HTTP request or execution and show the actual output. A claim of success "
+    "without shell/execution evidence is fabrication. If verification fails, that is a bug you must "
+    "fix — not a reason to claim success anyway.\n\n"
+    # ── General operating rules ───────────────────────────────────────────
     "You are a local AI assistant running on the user's Mac with REAL tools. When a task "
     "needs live system data, files, code execution, or current web info, CALL A TOOL rather "
     "than guessing or claiming you lack access. Use the fewest tool calls that answer the task. "
@@ -2690,16 +2735,24 @@ BASE_SYSTEM = (
     "After it installs and verifies, retry the original task. Prefer package installs (pip/brew/uv/npm); "
     "only propose fetching a web script when no package exists.\n"
     "DELEGATION: when a task spans specialties, you may call spawn_subagent(persona, task) to hand a "
-    "sub-task to a specialist (personas include researcher, dev, qa, ba, reasoner, general). Do simple "
-    "steps yourself; delegate the ones a specialist fits, then synthesize the results.\n"
+    "sub-task to a specialist (personas include researcher, dev, qa, ba, reasoner, deep_reasoner, "
+    "writer, designer, general). Do simple steps yourself; delegate the ones a specialist fits, "
+    "then synthesize the results.\n"
     "FILES: when the user asks you to CREATE, WRITE, SAVE, PRODUCE, GENERATE, or UPDATE a file "
-    "(a README, script, config, document, etc.), you MUST call write_file with the COMPLETE final "
-    "content and the target path — do NOT print the file's contents as your chat answer and stop. "
+    "(a README, script, config, document, etc.), you MUST call the appropriate write tool with the "
+    "COMPLETE final content and the target path — do NOT print the file's contents as your chat answer and stop. "
     "Writing the file IS the deliverable. To study or summarize an existing file first, call read_file "
     "to get its real content (never guess it). After writing, your answer is just a short confirmation "
     "of what you wrote and the path — not the whole file again. If the user gives a path, use it exactly; "
-    "if not, write under the shared workspace ~/MLX-AI (e.g. ~/MLX-AI/<short-name>). Never invent absolute "
-    "paths for directories you haven't confirmed exist — check with list_dir or pwd first if unsure.\n"
+    "if not, write under the shared workspace ~/MLX-AI/<project-name>/ (always in the project subfolder). "
+    "DOCUMENT FORMAT: for formal documents (reports, proposals, specs, briefs, release notes) use "
+    "write_docx to produce a .docx file — not a .md file. Use write_file for code, scripts, configs, "
+    "READMEs, and data files.\n"
+    "PROJECT ISOLATION: every project MUST have its own dedicated folder under ~/MLX-AI/<project-name>/. "
+    "NEVER place project files in ~/MLX-AI/ directly. Create the folder first (mkdir via run_shell), "
+    "then write all project files (code, docs, tests, assets) inside that folder. "
+    "Different projects must NEVER share a folder. Example: ~/MLX-AI/invoice-parser/ for one project, "
+    "~/MLX-AI/market-research/ for another.\n"
     "SEARCH DISCIPLINE: web_search is for finding a URL or a quick fact. Do NOT search repeatedly for the "
     "same thing. Once a search returns a promising link, use web_fetch to READ it. To learn a library's "
     "API, the fastest route is usually propose_capability to install it, then introspect (python -c "
@@ -2710,20 +2763,43 @@ DEFAULT_PERSONAS = {
         "description": "Main agent — plans a goal, delegates to specialist subagents, synthesizes.",
         "model": "orchestrator:qwen3.6-35b",
         "allowed_tools": "all",
-        "system_prompt": ("You are the orchestrator, the user's main agent. Plan the goal as concrete steps. "
-                          "Delegate specialist steps with spawn_subagent(persona, task) — and put the CONCRETE "
-                          "context the specialist needs directly in the task string (e.g. don't tell dev to 'write "
-                          "hello-world for the popular framework' — tell it exactly which framework and any facts you "
-                          "already found, so it doesn't re-research). Personas: researcher (web/trends), dev "
-                          "(build/run code), qa (test), ba (specs), reasoner (hard analysis). Do trivial steps "
-                          "yourself. ALWAYS finish with a short synthesized answer to the user that states the key "
-                          "findings and what each subagent produced — never end on a raw tool result. Do NOT spawn "
-                          "the same task twice: if a subagent already attempted a step, use its result or refine it "
-                          "yourself rather than re-delegating the identical task. "
-                          "If the goal is to PRODUCE A FILE (a README, script, doc, etc.), the deliverable is "
-                          "the file WRITTEN TO DISK: call write_file yourself with the complete content (or have "
-                          "a subagent do it), then finish with a one-line confirmation of the path — do NOT paste "
-                          "the file's full contents as your answer and stop, and do NOT end on a raw tool result."),
+        "system_prompt": (
+            "You are the orchestrator, the user's main agent. Your job is to:\n"
+            "1. THINK about what specialists are needed and in what order\n"
+            "2. Use spawn_subagent sequentially (one at a time) to delegate specialist work\n"
+            "3. Pass CONCRETE context to each subagent — not just 'do X' but include all relevant facts, "
+            "file paths, prior results, and what the next subagent will need\n"
+            "4. After all subagents report back, synthesize into a clear final answer\n\n"
+            "Available specialists:\n"
+            "- researcher: web research, fact-finding (uses orchestrator model)\n"
+            "- coder: coding, implementation, debugging (uses Qwen3-Coder-Next 80B MoE)\n"
+            "- dev: same as coder (alias)\n"
+            "- deep_reasoner: deep analysis, math, complex reasoning (uses DeepSeek-R1 70B)\n"
+            "- reasoner: fast analysis (uses DeepSeek-R1 32B)\n"
+            "- qa: QA engineer — ACTUALLY RUNS the app and tests it with curl/Playwright\n"
+            "- writer: documentation, reports, content (uses Qwen3.6 27B)\n"
+            "- designer: UI/UX analysis, image analysis (uses vision model)\n"
+            "- ba: business analysis, requirements\n"
+            "- general: general purpose\n\n"
+            "RULES:\n"
+            "- Spawn subagents ONE AT A TIME. Wait for each to complete before spawning the next.\n"
+            "- Pass CONCRETE context to each subagent (include specific facts, code, results from previous steps)\n"
+            "- For software build tasks use this pipeline: researcher (if needed) → coder → qa → writer\n"
+            "- Do NOT spawn more than 8 subagents for a single task\n"
+            "- Simple tasks (single question, quick lookup): answer yourself without spawning\n"
+            "- After final subagent reports: synthesize everything into one clear response for the user\n"
+            "- Never end your response on a raw tool result\n"
+            "- Do NOT spawn the same task twice: if a subagent already attempted a step, use its result or refine it yourself\n"
+            "- If the goal is to PRODUCE A FILE, the deliverable is the file WRITTEN TO DISK: call write_file "
+            "yourself with the complete content (or have a subagent do it), then finish with a one-line confirmation\n\n"
+            "VERIFICATION GATE (mandatory for build tasks):\n"
+            "After coder finishes: run_shell to confirm key files exist (ls -la the project dir) and "
+            "that the app actually starts (cd into dir, run the start command, curl the health endpoint).\n"
+            "After qa finishes: check that qa's report contains actual curl/shell output as evidence — "
+            "if it only contains a test plan with checkmarks but no real command output, spawn qa again "
+            "with the instruction: 'Your previous report had no execution evidence. Start the server, "
+            "curl every endpoint, and include the ACTUAL shell output for each test.'"
+        ),
     },
     "general": {
         "description": "General-purpose daily assistant.",
@@ -2739,19 +2815,66 @@ DEFAULT_PERSONAS = {
                           "requirements and acceptance criteria, and write a concise spec. Ask a blocking "
                           "question only when genuinely necessary."),
     },
+    "coder": {
+        "description": "Expert coder (Qwen3-Coder-Next 80B MoE) — implementation, refactoring, debugging.",
+        "model": "coder:qwen3-coder-next",
+        "allowed_tools": "all",
+        "system_prompt": (
+            "You are an expert software engineer. Your job is to write code AND verify it runs.\n\n"
+            "MANDATORY WORKFLOW for every build task:\n"
+            "1. Read existing code first (read_file) before writing anything new\n"
+            "2. Write all files with write_file (complete content, never truncated)\n"
+            "3. Install dependencies: run npm install / pip install / etc. via run_shell\n"
+            "4. Compile/type-check: run `npm run build` or `tsc --noEmit` or equivalent\n"
+            "5. Start the server/app in background: `command &` then sleep 3\n"
+            "6. Verify it responds: curl the health endpoint or main route, check HTTP 200\n"
+            "7. Fix any errors found in steps 4-6 before reporting done\n\n"
+            "RULES:\n"
+            "- NEVER report 'done' without showing actual shell output from steps 4-6\n"
+            "- If compilation fails, fix errors iteratively until it passes\n"
+            "- If the server doesn't start, diagnose from logs and fix it\n"
+            "- For frontend apps: run `npm run build` and check for TypeScript/lint errors\n"
+            "- Show only the key output — errors, success confirmations, HTTP responses"
+        ),
+    },
     "dev": {
         "description": "Software Developer — implements and runs code.",
-        "model": "coder:qwen3.6-27b",
+        "model": "coder:qwen3-coder-next",
         "allowed_tools": "all",
-        "system_prompt": ("You are a Software Developer. Implement the requested code, write it to files, "
-                          "then run and debug it with the shell. Keep changes minimal and working; show what you ran."),
+        "system_prompt": (
+            "You are a Software Developer. Implement the requested code, write it to files, "
+            "then run and debug it with run_shell. Keep changes minimal and working.\n\n"
+            "MANDATORY: after writing code, always run it to verify it works. "
+            "Show compile output and a real execution result. Never claim success without evidence."
+        ),
     },
     "qa": {
-        "description": "QA Engineer — reviews and tests.",
+        "description": "QA Engineer — actually runs and tests the app.",
         "model": "qa:qwen3.6-27b",
         "allowed_tools": "all",
-        "system_prompt": ("You are a QA Engineer. Review code for correctness and edge cases, write and RUN "
-                          "tests, and report pass/fail with specifics and reproduction steps."),
+        "system_prompt": (
+            "You are a QA Engineer. Your job is to ACTUALLY RUN the app and verify it works — "
+            "not to read code and guess, not to write a test plan and mark everything PASS.\n\n"
+            "MANDATORY WORKFLOW:\n"
+            "1. Start the backend server with run_shell (background it: `node dist/index.js &`)\n"
+            "2. Start the frontend if needed (`npm run dev &`), then sleep 3-5s\n"
+            "3. For EVERY feature/endpoint: use run_shell to curl it and capture the real HTTP response\n"
+            "   Example: `curl -s -o /dev/null -w '%{http_code}' http://localhost:3001/health`\n"
+            "4. For UI pages: use run_python with Playwright to navigate and screenshot each page\n"
+            "5. Record ONLY what actually happened — the real curl output, real HTTP codes, real errors\n\n"
+            "PASS/FAIL RULES:\n"
+            "- A test is PASS only if you have shell output proving it (HTTP 200, correct JSON, screenshot)\n"
+            "- A test is FAIL if the command errored, returned non-200, or the response was wrong\n"
+            "- NEVER mark a test PASS based on reading code — execution evidence is mandatory\n"
+            "- If the app won't start: that is a critical bug — document it in BUGS.md immediately\n"
+            "- If you find a bug: write it to BUGS.md with reproduction steps and exact error output\n\n"
+            "WRITE INCREMENTALLY: after each section of tests (e.g. after testing all API endpoints, "
+            "after testing each UI page), immediately call write_file to append results to QA-TEST-CASES.md "
+            "and BUGS.md. Do NOT accumulate all results in memory and write at the end — write after every "
+            "logical group of tests so progress is saved even if something times out.\n"
+            "REPORT FORMAT: for each test, include the exact command run and its actual output. "
+            "No evidence = no PASS."
+        ),
     },
     "researcher": {
         "description": "Research Analyst — trend/market research from the web.",
@@ -2762,12 +2885,43 @@ DEFAULT_PERSONAS = {
                           "recommendation. Distinguish facts from your inference."),
     },
     "reasoner": {
-        "description": "Deep reasoning / math specialist (DeepSeek-R1-32B). Best for hard analysis, not tool-heavy work.",
+        "description": "Fast reasoning specialist (DeepSeek-R1-32B) — analysis, logic, debugging.",
         "model": "reasoner:deepseek-r1-32b",
         "allowed_tools": "all",
         "system_prompt": ("You are a careful reasoning specialist. Think step by step through hard problems in "
                           "math, logic, analysis, and debugging. Show the key steps of your reasoning, then give a "
                           "clear final answer. Use tools when a fact must be checked rather than assumed."),
+    },
+    "deep_reasoner": {
+        "description": "Deep reasoning specialist (DeepSeek-R1-70B) — hard analysis, math, complex multi-step problems.",
+        "model": "reasoner:deepseek-r1-70b",
+        "allowed_tools": "all",
+        "system_prompt": ("You are a deep reasoning specialist powered by a large model. Tackle hard problems — "
+                          "complex math, multi-step proofs, system design trade-offs, deep code analysis. Think "
+                          "through every assumption carefully before concluding. Use tools to verify facts. "
+                          "Show your chain-of-thought, then give a definitive, well-structured final answer."),
+    },
+    "writer": {
+        "description": "Writer/Documenter (Qwen3.6-27B) — documentation, reports, READMEs, technical writing.",
+        "model": "writer:qwen3.6-27b",
+        "allowed_tools": "all",
+        "system_prompt": ("You are a technical writer and documentation specialist. Produce clear, well-structured "
+                          "documentation, READMEs, reports, and written content. Read relevant source files first "
+                          "with read_file so your content is accurate. "
+                          "FORMAT RULES: use write_docx for formal deliverables (reports, specs, proposals, briefs, "
+                          "release notes, user guides) — these must be .docx files. Use write_file for READMEs "
+                          "(README.md), code comments, config docs, and changelogs. "
+                          "PROJECT ISOLATION: save all files under the project's own subfolder in ~/MLX-AI/<project-name>/. "
+                          "Use precise language; avoid filler phrases and padding."),
+    },
+    "designer": {
+        "description": "Designer/Vision analyst (Qwen3-VL-8B) — UI/UX analysis, screenshots, image understanding.",
+        "model": "vision:qwen3-vl-8b",
+        "allowed_tools": "all",
+        "system_prompt": ("You are a UI/UX designer and visual analyst. Use see_image to analyse screenshots, "
+                          "wireframes, or design assets. Provide concrete, actionable feedback on layout, "
+                          "hierarchy, accessibility, and aesthetics. When asked to design, describe the layout "
+                          "in precise terms or produce HTML/CSS mockups with write_file."),
     },
 }
 
@@ -2777,6 +2931,8 @@ DEFAULT_PERSONAS = {
 RETIRED_MODELS = {
     "coder", "orchestrator", "reasoner", "qa", "vision", "embed",   # pre-colon short names
     "reasoner:qwen3.6-27b", "vision:qwen3.6-27b",                    # renamed colon aliases
+    "coder:qwen3.6-27b",                                              # renamed to writer
+    "qwen3-coder-next",                                               # bare name (missing prefix)
 }
 
 def load_personas() -> dict:
@@ -3021,6 +3177,48 @@ def t_write_file(path: str, content: str, mode: str = "w") -> str:
         return f"[{'appended' if append else 'wrote'} {len(content)} chars to {p} (file now {total} bytes)]"
     except Exception as e: return f"[error writing {path}: {e}]"
 
+def t_write_docx(path: str, content: str, title: str = "") -> str:
+    """Write a .docx document. content is markdown-like text; headings (# ## ###) become Word headings."""
+    p = Path(path).expanduser()
+    if not p.suffix:
+        p = p.with_suffix(".docx")
+    if not _within_allowed(p):
+        return f"[refused: {path} is outside allowed paths]"
+    preview = content[:200] + ("…" if len(content) > 200 else "")
+    if not confirm(f"write docx {len(content)} chars to {c(str(p),'bold')}?\n{c(preview,'dim')}\n", kind="write"):
+        return "[write denied by user]"
+    try:
+        from docx import Document
+        from docx.shared import Pt
+        doc = Document()
+        if title:
+            doc.add_heading(title, 0)
+        for line in content.splitlines():
+            stripped = line.rstrip()
+            if stripped.startswith("### "):
+                doc.add_heading(stripped[4:], level=3)
+            elif stripped.startswith("## "):
+                doc.add_heading(stripped[3:], level=2)
+            elif stripped.startswith("# "):
+                doc.add_heading(stripped[2:], level=1)
+            elif stripped.startswith("---") and len(stripped) >= 3 and set(stripped) == {"-"}:
+                doc.add_paragraph("─" * 40)
+            elif stripped.startswith("- ") or stripped.startswith("* "):
+                doc.add_paragraph(stripped[2:], style="List Bullet")
+            elif stripped and stripped[0].isdigit() and ". " in stripped[:4]:
+                doc.add_paragraph(stripped.split(". ", 1)[1], style="List Number")
+            else:
+                para = doc.add_paragraph(stripped)
+                if not stripped:
+                    para.paragraph_format.space_after = Pt(0)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        doc.save(str(p))
+        return f"[wrote docx to {p} ({p.stat().st_size} bytes)]"
+    except ImportError:
+        return "[error: python-docx not installed — run propose_capability to install it]"
+    except Exception as e:
+        return f"[error writing docx {path}: {e}]"
+
 def t_web_search(query: str) -> str:
     try:
         r = requests.get(f"{SEARXNG}/search", params={"q": query, "format": "json"}, timeout=20)
@@ -3061,6 +3259,35 @@ def t_ask_choice(question: str, options=None) -> str:
     except (EOFError, KeyboardInterrupt): return options[0]
     if raw.isdigit() and 1 <= int(raw) <= len(options): return options[int(raw)-1]
     return raw or options[0]
+
+def t_download_model(repo_id: str, reason: str = "") -> str:
+    """Download a Hugging Face model to local cache via the hf CLI."""
+    repo_id = (repo_id or "").strip()
+    if not repo_id or "/" not in repo_id:
+        return "[error: repo_id must be in 'org/model-name' format, e.g. 'mlx-community/Qwen3-8B-4bit']"
+    # Check if already cached
+    cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
+    safe_name = "models--" + repo_id.replace("/", "--")
+    if cache_dir.exists():
+        cached = list(cache_dir.glob(safe_name))
+        if cached:
+            return f"[model {repo_id} already in HF cache at {cached[0]}]"
+    reason_note = f" ({reason})" if reason else ""
+    if not confirm(f"download model {c(repo_id, 'bold')} from HuggingFace{reason_note}?", kind="install"):
+        return "[download denied by user]"
+    emit(c(f"  ⬇  download_model({repo_id})", "cyan"))
+    try:
+        r = subprocess.run(["hf", "download", repo_id],
+                           capture_output=True, text=True, timeout=3600)
+        out = (r.stdout or "") + (("\n[stderr] " + r.stderr) if r.stderr else "")
+        status = "downloaded" if r.returncode == 0 else f"download failed rc={r.returncode}"
+        return f"[{status}]\n{out[:2000]}"
+    except subprocess.TimeoutExpired:
+        return "[download timed out after 3600s]"
+    except FileNotFoundError:
+        return "[error: 'hf' CLI not found — install with: pip install huggingface_hub[cli]]"
+    except Exception as e:
+        return f"[download error: {e}]"
 
 # ── self-healing: acquire missing capabilities (with approval + audit) ──
 CAP_LOG = WORKSPACE / "capability-log.jsonl"
@@ -3157,6 +3384,13 @@ TOOLS = {
                    "or update a file (README, script, config, doc). Pass the COMPLETE final content — "
                    "do not just print it in chat. For a file too large for one call, write the first "
                    "part then call again with mode='a' to append more. Asks the user to confirm first."),
+    "write_docx": (t_write_docx, "Write a Microsoft Word (.docx) document. "
+                   "Use this for formal documents, reports, proposals, specs, briefs, and any "
+                   "deliverable meant to be read or shared as a document (NOT for README, code, "
+                   "config, or scripts — use write_file for those). Args: path (include .docx "
+                   "extension or it will be added), content (full text; use # ## ### for headings, "
+                   "- for bullets, 1. for numbered lists), title (optional document title heading). "
+                   "Supports headings up to H3, bullet lists, numbered lists, and plain paragraphs."),
     "scaffold_swift": (t_scaffold_swift, "Start a buildable Swift/Xcode project the RELIABLE way, using "
                    "SwiftPM (swift package init). Produces a Package.swift that `swift build` compiles and "
                    "that opens in Xcode. Use this to begin ANY Swift/macOS/iOS app — NEVER hand-write "
@@ -3178,14 +3412,25 @@ TOOLS = {
         "'script'), and for packages a 'commands' list (e.g. ['uv pip install pytesseract','brew install "
         "tesseract']) plus an optional 'verify' command; for scripts a 'script_url' and 'run_command'. "
         "The user reviews and approves before anything runs. After it succeeds, retry the original task."),
+    "download_model": (t_download_model,
+        "Download a Hugging Face model to local cache using the hf CLI. Checks the cache first — "
+        "skips download if already present. Args: repo_id (e.g. 'mlx-community/Qwen3-8B-4bit'), "
+        "reason (optional, why it's needed). Requires user confirmation before downloading."),
     "spawn_subagent": (None,
-        "Delegate a sub-task to a specialist persona. Args: persona (registry name like researcher, dev, qa, "
-        "ba, reasoner, general) and task (what that specialist should do). Returns the subagent's final answer "
-        "plus a short trace of the tools it used. Use this to break a big goal into specialist steps."),
+        "Delegate a sub-task to a specialist persona. Args: persona (registry name) and task "
+        "(what that specialist should do — include CONCRETE context). Available personas: "
+        "researcher (web/trends), coder (Qwen3-Coder-Next 80B MoE, best for code), "
+        "dev (alias for coder), deep_reasoner (DeepSeek-R1-70B, hard analysis/math), "
+        "reasoner (DeepSeek-R1-32B, fast analysis), qa (testing), writer (docs/reports), "
+        "designer (vision/UI analysis), ba (business analysis/requirements), general (general purpose). "
+        "Returns the subagent's final answer plus a short trace of the tools it used. "
+        "Spawn ONE AT A TIME — wait for each to finish before spawning the next."),
 }
+
 def schema(name, props, req):
     return {"type":"function","function":{"name":name,"description":TOOLS[name][1],
             "parameters":{"type":"object","properties":props,"required":req}}}
+
 ALL_SCHEMAS = {
     "run_shell":  schema("run_shell", {"command":{"type":"string"}}, ["command"]),
     "disk_usage": schema("disk_usage", {}, []),
@@ -3195,6 +3440,9 @@ ALL_SCHEMAS = {
     "list_dir":   schema("list_dir", {"path":{"type":"string"}}, []),
     "write_file": schema("write_file", {"path":{"type":"string"},"content":{"type":"string"},
                                          "mode":{"type":"string","enum":["w","a"],"description":"w=overwrite (default), a=append"}}, ["path","content"]),
+    "write_docx": schema("write_docx", {"path":{"type":"string","description":"destination path, e.g. ~/MLX-AI/my-project/report.docx"},
+                                         "content":{"type":"string","description":"full document text; # for H1, ## H2, ### H3, - for bullets, 1. for numbered, plain lines for paragraphs"},
+                                         "title":{"type":"string","description":"optional title heading at top of document"}}, ["path","content"]),
     "scaffold_swift": schema("scaffold_swift", {"directory":{"type":"string","description":"folder to create the package in"},
                                                 "name":{"type":"string","description":"package/app name"},
                                                 "kind":{"type":"string","enum":["executable","library","empty"]}}, ["directory"]),
@@ -3215,11 +3463,16 @@ ALL_SCHEMAS = {
         "verify":{"type":"string","description":"command to confirm the capability now works"},
         "reason":{"type":"string","description":"why it's needed for the task"},
     }, ["need","kind"]),
+    "download_model": schema("download_model", {
+        "repo_id":{"type":"string","description":"HuggingFace repo id, e.g. 'mlx-community/Qwen3-8B-4bit'"},
+        "reason":{"type":"string","description":"why this model is needed"},
+    }, ["repo_id"]),
     "spawn_subagent": schema("spawn_subagent", {
-        "persona":{"type":"string","description":"registry persona to delegate to (researcher, dev, qa, ba, reasoner, general)"},
-        "task":{"type":"string","description":"the sub-task for that specialist to perform"},
+        "persona":{"type":"string","description":"registry persona to delegate to (researcher, coder, dev, deep_reasoner, reasoner, qa, writer, designer, ba, general)"},
+        "task":{"type":"string","description":"the sub-task for that specialist; include ALL concrete context (facts, code, prior results) needed — do not make the specialist re-research what you already know"},
     }, ["persona","task"]),
 }
+
 def tools_for(persona: dict) -> tuple:
     allowed = persona.get("allowed_tools", "all")
     if allowed == "all" or not allowed:
@@ -3269,21 +3522,32 @@ def _resolve_model(m: str) -> str:
             return s
     return cand
 
+def _model_temperature(model: str) -> float:
+    """Return the appropriate temperature for the given model alias.
+    Lower temps for coding/reasoning; slightly higher for creative/writing tasks."""
+    ml = (model or "").lower()
+    for key, temp in _MODEL_TEMPS.items():
+        if key in ml:
+            return temp
+    return TEMPERATURE
+
 def call_gateway(model: str, messages: list, schemas: list) -> dict:
     # Always non-streaming. Reliable tool-call detection is the whole point of the
     # agent, and streaming tool-calls through the local MLX backend is unreliable —
     # the model's tool call can arrive as plain text and get mistaken for the answer.
     # The final answer is streamed to live front-ends separately (see run_agent), by
     # replaying it once generation is safely complete.
+    temp = _model_temperature(model)
     body = {"model": _resolve_model(model), "messages": messages, "tools": schemas,
-            "tool_choice": "auto", "temperature": TEMPERATURE, "stream": False}
+            "tool_choice": "auto", "temperature": temp, "stream": False,
+            "min_p": 0.05}   # avoid low-probability tail tokens (anti-hallucination)
     if MAX_TOKENS > 0:                       # 0 → uncapped; a finite value bounds a runaway loop
         body["max_tokens"] = MAX_TOKENS
     if FREQ_PENALTY:                         # curbs degenerate "I will run the script" repetition loops
         body["frequency_penalty"] = FREQ_PENALTY
     if PRESENCE_PENALTY:
         body["presence_penalty"] = PRESENCE_PENALTY
-    r = requests.post(f"{GATEWAY}/chat/completions", json=body, timeout=600)
+    r = requests.post(f"{GATEWAY}/chat/completions", json=body, timeout=1200)
     r.raise_for_status()
     return r.json()["choices"][0]["message"]
 
@@ -3296,6 +3560,7 @@ def execute_tool_call(tc: dict, allowed_names: set) -> str:
     fn = TOOLS.get(name, (None,))[0]
     if fn is None: return f"[unknown tool: {name}]"
     emit(c(f"  → {name}({', '.join(f'{k}={v!r}' for k,v in args.items())})", "green"))
+    broadcast_event("tool_call", data=name)
     try: return fn(**args)
     except TypeError as e: return f"[bad arguments for {name}: {e}]"
     except Exception as e: return f"[tool error in {name}: {e}]"
@@ -3338,7 +3603,9 @@ def run_agent(query: str, persona: dict, depth: int = 0, spawn_ctx: dict = None,
         RUN_APPROVE_ALL = False                       # each new top-level task starts fresh
     prev_strict = STRICT_RUN
     STRICT_RUN = prev_strict or (persona.get("approval") == "strict")   # stricter only, never looser
+    persona_name = persona.get("description", "agent")[:48]
     act = _Activity(query, persona, depth)
+    broadcast_event("agent_start", agent=persona_name, data=(query or "")[:200])
     try:
         allowed_names, schemas = tools_for(persona)
         model = persona.get("model", DEFAULT_MODEL)
@@ -3379,6 +3646,7 @@ def run_agent(query: str, persona: dict, depth: int = 0, spawn_ctx: dict = None,
                             STREAM_FN(ans[i:i + piece])
                     except Exception:
                         pass
+                broadcast_event("agent_done", agent=persona_name, data=ans[:200])
                 return ans
             # Anti-hang guard (NOT a step cap): if the model emits the exact same tool
             # call over and over, it's stuck in a loop — break instead of spinning forever.
@@ -3433,10 +3701,12 @@ def t_spawn_subagent(depth: int, spawn_ctx: dict, persona: str = "", task: str =
     spawn_ctx["count"] = spawn_ctx.get("count", 0) + 1
     emit(c(f"\n  ╭─ spawn: {persona}  (depth {depth+1}, subagent #{spawn_ctx['count']})", "magenta"))
     emit(c(f"  │  task: {task[:140]}", "magenta"))
+    broadcast_event("subagent_start", agent=persona, data=task[:200])
     subtrace = []
     answer = run_agent(task, sub, depth + 1, spawn_ctx, trace_out=subtrace)
     tools_used = ", ".join(subtrace) if subtrace else "none"
     emit(c(f"  ╰─ {persona} done · tools: {tools_used}", "magenta"))
+    broadcast_event("subagent_done", agent=persona, data=answer[:200])
     return f"[subagent '{persona}' finished — tools used: {tools_used}]\n{answer}"
 
 # ─────────────────────────── persona CRUD ─────────────────────────────────
