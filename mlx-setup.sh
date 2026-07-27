@@ -250,6 +250,78 @@ setup_cli_tools() {
 }
 
 # =============================================================================
+#  PHASE 2b — OPENCODE (Xcode 27 ACP coding agent + local model provider)
+# =============================================================================
+setup_opencode() {
+    log "opencode (Xcode 27 ACP agent + local model config)"
+
+    # Install via the official tap — it tracks releases faster than homebrew-core.
+    if have opencode && opencode --version >/dev/null 2>&1; then
+        ok "opencode $(opencode --version 2>/dev/null) already installed"
+    else
+        if brew tap anomalyco/tap >/dev/null 2>&1; then
+            brew install anomalyco/tap/opencode >/dev/null 2>&1 \
+                && ok "opencode installed (anomalyco/tap)" \
+                || { warn "brew install anomalyco/tap/opencode failed — falling back to npm"
+                     npm install -g opencode-ai >/dev/null 2>&1 \
+                         && ok "opencode installed (npm)" \
+                         || { err "opencode install failed — skipping"; return; }; }
+        else
+            npm install -g opencode-ai >/dev/null 2>&1 \
+                && ok "opencode installed (npm)" \
+                || { err "opencode install failed — skipping"; return; }
+        fi
+    fi
+
+    # Global config: point opencode at the local MLX inference server.
+    # Uses @ai-sdk/openai-compatible so any OpenAI-compatible endpoint works.
+    local CFG_DIR="$HOME/.config/opencode"
+    mkdir -p "$CFG_DIR"
+    cat > "$CFG_DIR/config.json" <<OCEOF
+{
+  "\$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "mlx-local": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Local MLX",
+      "options": {
+        "baseURL": "http://127.0.0.1:${PORT_MLX}/v1",
+        "apiKey": "not-needed"
+      },
+      "models": {
+        "qwen3-coder-next": {
+          "name": "Qwen3-Coder-Next 80B (SWE-Bench #1)",
+          "limit": {
+            "context": 32768,
+            "output": 4096
+          }
+        }
+      }
+    }
+  },
+  "model": "mlx-local/qwen3-coder-next"
+}
+OCEOF
+    ok "opencode config → $CFG_DIR/config.json  (model: mlx-local/qwen3-coder-next)"
+
+    # Print Xcode 27 registration steps (can't automate the GUI).
+    local oc_bin; oc_bin="$(command -v opencode || echo '/opt/homebrew/bin/opencode')"
+    cat <<XCODE
+
+  ${c_cyn}Xcode 27 — register opencode as an ACP Agent (one-time, manual):${c_reset}
+    1. Xcode → Settings → Intelligence → "Add an Agent…"
+    2. Set executable path: ${oc_bin}
+    3. Xcode launches opencode and connects via ACP for full agentic coding.
+
+  ${c_cyn}Xcode 27 — add local model as Model Provider (for inline completions):${c_reset}
+    1. Xcode → Settings → Intelligence → "Add Model Provider"
+    2. Toggle: Locally Hosted
+    3. Base URL:  http://127.0.0.1:${PORT_MLX}/v1
+    4. Model:     qwen3-coder-next
+XCODE
+}
+
+# =============================================================================
 #  PHASE 3 — HUGGING FACE AUTH + MODEL DOWNLOADS  (uses new `hf` CLI)
 # =============================================================================
 #  SECRETS — prompt once, store in .env (chmod 600), re-use silently. Re-run any
@@ -4438,6 +4510,26 @@ SUM
         printf "        run with %sLOCAL_ONLY=1%s to keep everything on 127.0.0.1.\n" "$c_cyn" "$c_reset"
     fi
     hr
+    # ── Xcode 27 manual steps ─────────────────────────────────────────────────
+    cat <<XNOTE
+
+${c_yel}  ┌─ XCODE 27 SETUP (2 manual steps — do these once in Xcode) ──────────────┐${c_reset}
+${c_yel}  │${c_reset}                                                                          ${c_yel}│${c_reset}
+${c_yel}  │${c_reset}  opencode ${c_grn}$(opencode --version 2>/dev/null || echo "installed")${c_reset} is wired to your local MLX server.         ${c_yel}│${c_reset}
+${c_yel}  │${c_reset}  Both steps are in: Xcode → Settings → Intelligence               ${c_yel}│${c_reset}
+${c_yel}  │${c_reset}                                                                          ${c_yel}│${c_reset}
+${c_yel}  │${c_reset}  ${c_cyn}Step 1 — ACP Agent${c_reset} (full agentic: write, build, test any iOS app) ${c_yel}│${c_reset}
+${c_yel}  │${c_reset}    Click "Add an Agent…"                                            ${c_yel}│${c_reset}
+${c_yel}  │${c_reset}    Executable: ${c_grn}/opt/homebrew/bin/opencode${c_reset}                       ${c_yel}│${c_reset}
+${c_yel}  │${c_reset}                                                                          ${c_yel}│${c_reset}
+${c_yel}  │${c_reset}  ${c_cyn}Step 2 — Model Provider${c_reset} (inline code completions)               ${c_yel}│${c_reset}
+${c_yel}  │${c_reset}    Click "Add Model Provider" → toggle Locally Hosted               ${c_yel}│${c_reset}
+${c_yel}  │${c_reset}    Base URL: ${c_grn}http://127.0.0.1:${PORT_MLX}/v1${c_reset}                           ${c_yel}│${c_reset}
+${c_yel}  │${c_reset}    Model:    ${c_grn}qwen3-coder-next${c_reset}                                     ${c_yel}│${c_reset}
+${c_yel}  │${c_reset}                                                                          ${c_yel}│${c_reset}
+${c_yel}  └──────────────────────────────────────────────────────────────────────────┘${c_reset}
+XNOTE
+    hr
 }
 
 # =============================================================================
@@ -4656,6 +4748,7 @@ Usage: $0 [OPTION]
   --pull-models   Download optional models (Devstral, …) — interactive picker
   --pull-heavy    Download heavy best-in-class models (Qwen3-Coder-Next 80B, DeepSeek-R1 70B)
   --pull-vision   Download vision models to probe (Qwen3-VL, Gemma 3, Gemma 4)
+  --setup-opencode  Install opencode + write Xcode 27 ACP config (local MLX backend)
   --list-models   List built-in roles and any custom models you've added
   --add-model     Add a model:  --add-model <hf_repo> <role> [type] [tool_parser] [reasoning_parser]
                   (no args = interactive prompts). Downloads, registers, and reloads.
@@ -4680,6 +4773,7 @@ case "${1:---help}" in
         mkdir -p "$WORKDIR" "$DOCS_WORKSPACE" "$CODE_WORKSPACE"
         setup_python
         setup_cli_tools
+        setup_opencode
         configure_secrets
         ensure_env_file; set_env MLX_SETUP_PATH "$SCRIPT_PATH"   # let the dashboard call back into this installer
         download_core_models
@@ -4708,6 +4802,7 @@ case "${1:---help}" in
     --configure)   configure_secrets ;;
     --pull-heavy)  pull_heavy_models ;;
     --pull-vision) pull_vision_models ;;
+    --setup-opencode) setup_opencode ;;
     --list-models) cmd_list_models ;;
     --add-model)    shift; cmd_add_model "$@" ;;
     --download-model) shift; cmd_download_model "$@" ;;
