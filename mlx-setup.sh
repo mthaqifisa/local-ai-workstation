@@ -2621,7 +2621,7 @@ WORKSPACE = Path(os.environ.get("MLX_WORKSPACE", str(Path.home() / "MLX-AI")))
 PERSONAS_FILE = WORKDIR / "personas.json"
 DEFAULT_MODEL = os.environ.get("MLX_AGENT_MODEL", "qwen36-27b")
 MAX_STEPS = int(os.environ.get("MLX_AGENT_MAX_STEPS", "0"))               # 0 = unlimited tool steps
-LOOP_GUARD = int(os.environ.get("MLX_AGENT_LOOP_GUARD", "12"))            # stop if the SAME tool call repeats N× in a row (0 = off)
+LOOP_GUARD = int(os.environ.get("MLX_AGENT_LOOP_GUARD", "6"))             # stop if the SAME tool call repeats N× in a row (0 = off)
 MAX_SEARCHES = int(os.environ.get("MLX_AGENT_MAX_SEARCHES", "8"))         # per run, then steer to web_fetch/direct
 MAX_SPAWN_DEPTH = int(os.environ.get("MLX_AGENT_MAX_SPAWN_DEPTH", "2"))   # subagents can nest this deep
 MAX_SPAWNS = int(os.environ.get("MLX_AGENT_MAX_SPAWNS", "15"))            # total subagents per top-level run
@@ -2837,7 +2837,13 @@ BASE_SYSTEM = (
     "install the library and introspect it, or ask the user.\n"
     "QUALITY BAR: produce work at the level of a senior engineer or specialist, not a first draft. "
     "Review your output before finishing. Fix obvious errors. Check edge cases. The user expects "
-    "production-quality work, not a proof of concept."
+    "production-quality work, not a proof of concept.\n"
+    "RESERVED PORT: Port 8000 is the MLX inference server — NEVER start any service on :8000. "
+    "Use :8080, :8090, :9080, or any port ≥9100 for servers you start. Killing port 8000 destroys "
+    "your own LLM connection and will immediately break all further tool calls.\n"
+    "FILE READ DISCIPLINE: read_file on a path once per conversation is enough. If tests fail after "
+    "reading, fix the code — do not re-read the same file. If a tool call repeats identically, "
+    "you are looping: STOP, summarise what you have, and output your best result."
 )
 
 DEFAULT_PERSONAS = {
