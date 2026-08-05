@@ -1,0 +1,280 @@
+{
+  "session_start": "2026-08-05T02:00:00Z",
+  "objective": "Upgrade all local MLX agents to Fable-5/Devin/Kimi-K3 quality \u2014 full SDLC autonomy, deep research, elite reasoning",
+  "phases": [
+    {
+      "id": "phase-1",
+      "name": "Service Recovery & Baseline Audit",
+      "status": "in_progress",
+      "started": "2026-08-05",
+      "tasks": [
+        {
+          "id": "t1",
+          "name": "Fix LiteLLM YAML config (gateway crash)",
+          "status": "done",
+          "result": "FIXED \u2014 gemma4-31b entry was inside litellm_settings block. Moved to model_list. YAML valid."
+        },
+        {
+          "id": "t2",
+          "name": "Verify all services UP",
+          "status": "done",
+          "result": "PASS \u2014 MLX :8000 (9 models), LiteLLM :4000, Dashboard :8800, Telegram, Vision all UP"
+        },
+        {
+          "id": "t3",
+          "name": "Baseline: general agent \u2014 hard task",
+          "status": "done",
+          "result": "TIMEOUT after 300s \u2014 agent still running beyond limit"
+        },
+        {
+          "id": "t4",
+          "name": "Baseline: researcher \u2014 multi-source research report",
+          "status": "done",
+          "result": "FAIL exit=127 \u2014 /private/tmp/claude-501/-Users-thaqifisa-SourceCode-local-ai-workstation/64364d24-2f35-4a09-bf8d-906b9a0ac5d9/scratchpad/run_baseline_tests.sh: line 39: timeout: command not found "
+        },
+        {
+          "id": "t5",
+          "name": "Baseline: coder \u2014 build runnable full-stack app",
+          "status": "done",
+          "result": "FAIL exit=127 \u2014 /private/tmp/claude-501/-Users-thaqifisa-SourceCode-local-ai-workstation/64364d24-2f35-4a09-bf8d-906b9a0ac5d9/scratchpad/run_baseline_tests.sh: line 39: timeout: command not found "
+        },
+        {
+          "id": "t6",
+          "name": "Baseline: reasoner \u2014 complex multi-step problem",
+          "status": "in_progress",
+          "result": "Running..."
+        },
+        {
+          "id": "t7",
+          "name": "Baseline: QA \u2014 real endpoint testing with curl evidence",
+          "status": "pending"
+        },
+        {
+          "id": "t8",
+          "name": "Baseline: writer \u2014 formal .docx report with citations",
+          "status": "done",
+          "result": "FAIL exit=127 \u2014 /private/tmp/claude-501/-Users-thaqifisa-SourceCode-local-ai-workstation/64364d24-2f35-4a09-bf8d-906b9a0ac5d9/scratchpad/run_baseline_tests.sh: line 39: timeout: command not found "
+        },
+        {
+          "id": "t9",
+          "name": "Baseline: vision \u2014 screenshot analysis + code suggestion",
+          "status": "done",
+          "result": "FAIL exit=127 \u2014 /private/tmp/claude-501/-Users-thaqifisa-SourceCode-local-ai-workstation/64364d24-2f35-4a09-bf8d-906b9a0ac5d9/scratchpad/run_baseline_tests.sh: line 39: timeout: command not found "
+        },
+        {
+          "id": "t10",
+          "name": "Baseline: ba \u2014 full requirements spec with user stories",
+          "status": "done",
+          "result": "FAIL exit=127 \u2014 /private/tmp/claude-501/-Users-thaqifisa-SourceCode-local-ai-workstation/64364d24-2f35-4a09-bf8d-906b9a0ac5d9/scratchpad/run_baseline_tests.sh: line 39: timeout: command not found "
+        },
+        {
+          "id": "t11",
+          "name": "Baseline: orchestrator \u2014 full SDLC pipeline (spec \u2192 code \u2192 test \u2192 docs)",
+          "status": "pending"
+        },
+        {
+          "id": "t12",
+          "name": "Baseline: image gen \u2014 complex scene generation",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "phase-2",
+      "name": "Elite Persona Engineering",
+      "status": "in_progress",
+      "tasks": [
+        {
+          "id": "t13",
+          "name": "Overhaul orchestrator \u2192 Devin-style full SDLC autonomy",
+          "status": "done",
+          "result": "COMPLETE \u2014 plan-file creation, full delegation chain, mandatory verification gates, progress tracking"
+        },
+        {
+          "id": "t14",
+          "name": "Overhaul coder \u2192 Devin read-spec-code-test-fix cycle",
+          "status": "done",
+          "result": "COMPLETE \u2014 full TDD workflow, mandatory lint/typecheck/build/run/curl cycle"
+        },
+        {
+          "id": "t15",
+          "name": "Overhaul researcher \u2192 Kimi K3 deep multi-source search",
+          "status": "done",
+          "result": "COMPLETE \u2014 3-phase search protocol, citation tracking, confidence scoring"
+        },
+        {
+          "id": "t16",
+          "name": "Overhaul QA \u2192 comprehensive real execution testing",
+          "status": "done",
+          "result": "COMPLETE \u2014 full happy path + edge cases + security basics, mandatory shell evidence"
+        },
+        {
+          "id": "t17",
+          "name": "Overhaul writer \u2192 professional long-form document generation",
+          "status": "done",
+          "result": "COMPLETE \u2014 exec summary first, structured outline, write_docx for formal docs"
+        },
+        {
+          "id": "t18",
+          "name": "Overhaul reasoner/deep_reasoner \u2192 Fable-5 chain-of-thought",
+          "status": "done",
+          "result": "COMPLETE \u2014 explicit CoT, assumption challenging, self-critique loop"
+        },
+        {
+          "id": "t19",
+          "name": "Overhaul ba \u2192 formal requirements engineering (user stories, AC, NFR)",
+          "status": "done",
+          "result": "COMPLETE \u2014 INVEST criteria, Gherkin AC, non-functional requirements register"
+        },
+        {
+          "id": "t20",
+          "name": "Overhaul designer \u2192 WCAG-aware UI/UX expert",
+          "status": "done",
+          "result": "COMPLETE \u2014 design principles enforced, accessibility scoring, CSS/HTML specs"
+        },
+        {
+          "id": "t21",
+          "name": "Add security persona (pentester/code auditor)",
+          "status": "done",
+          "result": "COMPLETE \u2014 OWASP Top 10, STRIDE modeling, responsible disclosure"
+        },
+        {
+          "id": "t22",
+          "name": "Add data persona (data scientist / ML engineer)",
+          "status": "done",
+          "result": "COMPLETE \u2014 EDA \u2192 visualize \u2192 model \u2192 evaluate \u2192 interpret pipeline"
+        },
+        {
+          "id": "t23",
+          "name": "Add devops persona (infra, CI/CD, containers)",
+          "status": "done",
+          "result": "COMPLETE \u2014 IaC mindset, GitOps, observability, hardening checklist"
+        },
+        {
+          "id": "t24",
+          "name": "Add architect persona (system design, ADRs, trade-offs)",
+          "status": "done",
+          "result": "COMPLETE \u2014 CAP theorem, 12-factor, C4 diagrams, ADR format"
+        },
+        {
+          "id": "t25",
+          "name": "Upgrade BASE_SYSTEM with elite operating rules",
+          "status": "done",
+          "result": "COMPLETE \u2014 enhanced anti-hallucination, stronger verification gates, Devin-style discipline"
+        },
+        {
+          "id": "t26",
+          "name": "Sync enhanced DEFAULT_PERSONAS \u2192 personas.json",
+          "status": "done",
+          "result": "COMPLETE \u2014 16 personas in personas.json + deployed to ~/.mlx-ai-workstation/agent/mlx-agent.py + mlx-setup.sh heredoc synced"
+        }
+      ]
+    },
+    {
+      "id": "phase-3",
+      "name": "Hard Validation Tests",
+      "status": "pending",
+      "tasks": [
+        {
+          "id": "t27",
+          "name": "Hard test: orchestrator \u2014 full-stack SaaS (React + FastAPI + DB)",
+          "status": "pending"
+        },
+        {
+          "id": "t28",
+          "name": "Hard test: researcher \u2014 deep competitive analysis report (.docx)",
+          "status": "pending"
+        },
+        {
+          "id": "t29",
+          "name": "Hard test: coder \u2014 build, debug, optimize real algorithm",
+          "status": "pending"
+        },
+        {
+          "id": "t30",
+          "name": "Hard test: reasoner \u2014 graduate-level problem (math/logic)",
+          "status": "pending"
+        },
+        {
+          "id": "t31",
+          "name": "Hard test: security \u2014 audit codebase for OWASP Top 10 vulns",
+          "status": "done",
+          "result": "FAIL exit=127 \u2014 /private/tmp/claude-501/-Users-thaqifisa-SourceCode-local-ai-workstation/64364d24-2f35-4a09-bf8d-906b9a0ac5d9/scratchpad/run_baseline_tests.sh: line 39: timeout: command not found "
+        },
+        {
+          "id": "t32",
+          "name": "Hard test: devops \u2014 design full CI/CD pipeline with Docker",
+          "status": "done",
+          "result": "FAIL exit=127 \u2014 /private/tmp/claude-501/-Users-thaqifisa-SourceCode-local-ai-workstation/64364d24-2f35-4a09-bf8d-906b9a0ac5d9/scratchpad/run_baseline_tests.sh: line 39: timeout: command not found "
+        },
+        {
+          "id": "t33",
+          "name": "Hard test: orchestrator \u2014 SDLC pipeline with 5+ subagents",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "phase-4",
+      "name": "Iterate & Ship",
+      "status": "pending",
+      "tasks": [
+        {
+          "id": "t34",
+          "name": "Fix issues from Phase 3 testing",
+          "status": "pending"
+        },
+        {
+          "id": "t35",
+          "name": "Sync final personas into mlx-setup.sh",
+          "status": "pending"
+        },
+        {
+          "id": "t36",
+          "name": "Run mlx-setup.sh --start for full stack restart",
+          "status": "pending"
+        },
+        {
+          "id": "t37",
+          "name": "Final validation \u2014 all agents re-tested",
+          "status": "pending"
+        },
+        {
+          "id": "t38",
+          "name": "Commit and tag release v4.1-elite",
+          "status": "pending"
+        }
+      ]
+    }
+  ],
+  "test_results": [
+    {
+      "agent": "system",
+      "task": "LiteLLM YAML fix",
+      "status": "pass",
+      "evidence": "python3 yaml.safe_load() validated, gateway responding on :4000"
+    },
+    {
+      "agent": "system",
+      "task": "Service health check",
+      "status": "pass",
+      "evidence": "MLX :8000 (9 models), :4000 healthy, :8800 dashboard live"
+    }
+  ],
+  "model_changes": [],
+  "prompt_changes": [
+    "orchestrator: Devin-style plan-file + delegation chain + mandatory verification gates",
+    "coder: TDD + lint + typecheck + build + run + curl cycle, no truncation",
+    "researcher: 3-phase Kimi K3 search protocol (breadth \u2192 depth \u2192 synthesize)",
+    "qa: mandatory shell evidence for every PASS, full edge case coverage",
+    "writer: exec summary first, write_docx for formal docs, citation required",
+    "reasoner: explicit CoT, assumption challenge, self-critique",
+    "deep_reasoner: extended reasoning with backtracking, multiple approaches",
+    "ba: INVEST user stories, Gherkin AC, NFR register",
+    "designer: WCAG 2.1 scoring, design principles, CSS/HTML specs",
+    "security: NEW \u2014 OWASP Top 10, STRIDE, responsible disclosure",
+    "data: NEW \u2014 EDA \u2192 viz \u2192 model \u2192 evaluate \u2192 interpret",
+    "devops: NEW \u2014 IaC, GitOps, hardening, observability",
+    "architect: NEW \u2014 C4, ADR, CAP theorem, 12-factor"
+  ]
+}
