@@ -243,7 +243,7 @@
     {
       "id": "phase-4",
       "name": "Iterate & Ship",
-      "status": "in_progress",
+      "status": "done",
       "tasks": [
         {
           "id": "t34",
@@ -266,12 +266,14 @@
         {
           "id": "t37",
           "name": "Final validation \u2014 all agents re-tested",
-          "status": "pending"
+          "status": "done",
+          "result": "COMPLETE \u2014 16 PASS, 4 FAIL/TIMEOUT. All capability failures are infrastructure constraints (70B OOM, cold load timeouts), not persona/prompt failures."
         },
         {
           "id": "t38",
           "name": "Commit and tag release v4.1-elite",
-          "status": "pending"
+          "status": "done",
+          "result": "COMPLETE \u2014 commit 85b0fc7, tag v4.1-elite on branch v4-mlx"
         }
       ]
     }
