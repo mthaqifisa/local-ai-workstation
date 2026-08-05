@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LAW Enhancement Lab — Agent Training Dashboard</title>
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --surface: #111827;
+    --surface2: #1a2438;
+    --border: #1e2d45;
+    --accent: #00d4ff;
+    --accent2: #7c3aed;
+    --accent3: #10b981;
+    --warn: #f59e0b;
+    --danger: #ef4444;
+    --text: #e2e8f0;
+    --text-dim: #64748b;
+    --text-muted: #94a3b8;
+    --glow: 0 0 20px rgba(0,212,255,0.15);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+  /* ── Header ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .logo {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    color: var(--accent);
+    text-shadow: 0 0 20px rgba(0,212,255,0.5);
+  }
+  .logo span { color: var(--text-muted); font-size: 12px; margin-left: 8px; }
+  .header-status {
+    margin-left: auto;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .badge {
+    padding: 3px 10px;
+    border-radius: 100px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+  .badge-blue { background: rgba(0,212,255,0.15); color: var(--accent); border: 1px solid rgba(0,212,255,0.3); }
+  .badge-green { background: rgba(16,185,129,0.15); color: var(--accent3); border: 1px solid rgba(16,185,129,0.3); }
+  .badge-purple { background: rgba(124,58,237,0.15); color: #a78bfa; border: 1px solid rgba(124,58,237,0.3); }
+  .badge-warn { background: rgba(245,158,11,0.15); color: var(--warn); border: 1px solid rgba(245,158,11,0.3); }
+  .badge-danger { background: rgba(239,68,68,0.15); color: var(--danger); border: 1px solid rgba(239,68,68,0.3); }
+  /* ── Layout ── */
+  main {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px 24px;
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 20px;
+  }
+  /* ── Sidebar ── */
+  .sidebar { display: flex; flex-direction: column; gap: 16px; }
+  /* ── Cards ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .card-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+  }
+  .card-icon { font-size: 14px; }
+  .card-body { padding: 16px; }
+  /* ── Mission ── */
+  .mission-text {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.8;
+    margin-bottom: 12px;
+  }
+  .mission-goal {
+    background: var(--surface2);
+    border-left: 3px solid var(--accent);
+    padding: 10px 14px;
+    border-radius: 0 8px 8px 0;
+    font-size: 12px;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+  /* ── Phase tracker ── */
+  .phase-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .phase-item:last-child { border-bottom: none; }
+  .phase-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-top: 3px;
+    flex-shrink: 0;
+  }
+  .dot-done { background: var(--accent3); box-shadow: 0 0 8px rgba(16,185,129,0.5); }
+  .dot-active { background: var(--accent); box-shadow: 0 0 8px rgba(0,212,255,0.5); animation: pulse 1.5s infinite; }
+  .dot-pending { background: var(--text-dim); }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+  .phase-info {}
+  .phase-name { font-weight: 600; font-size: 12px; color: var(--text); }
+  .phase-sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  /* ── Service health ── */
+  .service-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .service-row:last-child { border-bottom: none; }
+  .service-name { display: flex; align-items: center; gap: 8px; }
+  .svc-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .svc-up { background: var(--accent3); box-shadow: 0 0 6px rgba(16,185,129,0.6); }
+  .svc-down { background: var(--danger); }
+  .svc-port { color: var(--text-dim); font-size: 11px; }
+  /* ── Main content ── */
+  .content { display: flex; flex-direction: column; gap: 20px; }
+  /* ── Agent test table ── */
+  .test-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    padding: 16px;
+  }
+  .agent-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    transition: border-color 0.2s;
+  }
+  .agent-card:hover { border-color: var(--accent); }
+  .agent-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .agent-name {
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--accent);
+  }
+  .agent-status {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 100px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+  .status-pass { background: rgba(16,185,129,0.2); color: var(--accent3); }
+  .status-fail { background: rgba(239,68,68,0.2); color: var(--danger); }
+  .status-testing { background: rgba(0,212,255,0.2); color: var(--accent); animation: pulse 1.5s infinite; }
+  .status-pending { background: rgba(100,116,139,0.2); color: var(--text-dim); }
+  .status-warn { background: rgba(245,158,11,0.2); color: var(--warn); }
+  .agent-model { font-size: 11px; color: var(--text-muted); margin-bottom: 8px; }
+  .agent-test-name { font-size: 11px; color: var(--text-dim); margin-bottom: 6px; }
+  .agent-result {
+    font-size: 11px;
+    background: rgba(0,0,0,0.3);
+    border-radius: 6px;
+    padding: 8px;
+    color: var(--text-muted);
+    max-height: 80px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .agent-score {
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+  }
+  .score-bar-bg {
+    flex: 1;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .score-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: linear-gradient(90deg, var(--accent2), var(--accent));
+    transition: width 0.8s ease;
+  }
+  /* ── Log feed ── */
+  .log-feed {
+    background: var(--surface2);
+    border-radius: 8px;
+    padding: 12px;
+    height: 280px;
+    overflow-y: auto;
+    font-size: 11px;
+    line-height: 1.7;
+  }
+  .log-line { display: flex; gap: 10px; }
+  .log-ts { color: var(--text-dim); flex-shrink: 0; }
+  .log-type-info { color: var(--accent); }
+  .log-type-success { color: var(--accent3); }
+  .log-type-warn { color: var(--warn); }
+  .log-type-error { color: var(--danger); }
+  .log-type-test { color: #a78bfa; }
+  /* ── Model roster ── */
+  .model-row {
+    display: grid;
+    grid-template-columns: 1fr 120px 80px 80px;
+    gap: 8px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    align-items: center;
+  }
+  .model-row:last-child { border-bottom: none; }
+  .model-name-col { font-weight: 600; color: var(--text); }
+  .model-role { color: var(--text-muted); font-size: 10px; margin-top: 2px; }
+  .model-size-col { text-align: right; color: var(--text-dim); }
+  .model-status-col { text-align: right; }
+  .model-quality-col { text-align: right; }
+  /* ── Improvement plan ── */
+  .improvement-list { list-style: none; }
+  .improvement-item {
+    display: flex;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    align-items: flex-start;
+    font-size: 12px;
+  }
+  .improvement-item:last-child { border-bottom: none; }
+  .imp-icon { flex-shrink: 0; margin-top: 2px; }
+  .imp-done { color: var(--accent3); }
+  .imp-active { color: var(--accent); }
+  .imp-pending { color: var(--text-dim); }
+  .imp-text { flex: 1; }
+  .imp-label { font-weight: 600; color: var(--text); }
+  .imp-desc { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+  /* ── Stats row ── */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    padding: 16px;
+  }
+  .stat-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    text-align: center;
+  }
+  .stat-value { font-size: 28px; font-weight: 700; color: var(--accent); line-height: 1; }
+  .stat-label { font-size: 10px; color: var(--text-dim); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.8px; }
+  /* ── Progress bar ── */
+  .overall-progress {
+    padding: 16px;
+  }
+  .progress-label {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .progress-bg {
+    height: 8px;
+    background: var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent2), var(--accent), var(--accent3));
+    border-radius: 4px;
+    transition: width 1s ease;
+  }
+  /* ── Auto-refresh ── */
+  .refresh-bar {
+    text-align: center;
+    padding: 8px;
+    font-size: 11px;
+    color: var(--text-dim);
+    border-top: 1px solid var(--border);
+  }
+  /* ── Responsive ── */
+  @media (max-width: 900px) {
+    main { grid-template-columns: 1fr; }
+    .stats-row { grid-template-columns: repeat(2, 1fr); }
+  }
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  /* ── Tab nav ── */
+  .tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    overflow-x: auto;
+  }
+  .tab {
+    padding: 10px 18px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-dim);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    white-space: nowrap;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    user-select: none;
+  }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab:hover { color: var(--text); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  /* ── Footer ── */
+  footer {
+    text-align: center;
+    padding: 20px;
+    font-size: 11px;
+    color: var(--text-dim);
+    border-top: 1px solid var(--border);
+    margin-top: 40px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">⚡ LAW Enhancement Lab <span>— Agent Training &amp; Optimization Console</span></div>
+  <div class="header-status">
+    <div class="badge badge-green" id="session-status">● SESSION ACTIVE</div>
+    <div class="badge badge-blue" id="phase-badge">PHASE 1 — BASELINE TESTS</div>
+    <div class="badge badge-purple" id="last-update">Updated: <span id="update-time">loading...</span></div>
+  </div>
+</header>
+
+<main>
+  <!-- ── SIDEBAR ── -->
+  <aside class="sidebar">
+    <!-- Mission -->
+    <div class="card">
+      <div class="card-header"><span class="card-icon">🎯</span> Mission</div>
+      <div class="card-body">
+        <div class="mission-text">Training all local MLX agents to match the capability level of:</div>
+        <div class="mission-goal">🤖 Claude Fable 5 (planning + reasoning)</div>
+        <div class="mission-goal">⚙️ Devin AI (full SDLC autonomy)</div>
+        <div class="mission-goal">🔍 Kimi K3 (deep research)</div>
+        <div class="mission-text" style="margin-top:10px">All free/open-source. Runs 100% on-device via Apple Metal.</div>
+      </div>
+    </div>
+
+    <!-- Phase tracker -->
+    <div class="card">
+      <div class="card-header"><span class="card-icon">🔄</span> Training Phases</div>
+      <div class="card-body" style="padding: 12px 16px;">
+        <div class="phase-item">
+          <div class="phase-dot dot-active"></div>
+          <div class="phase-info">
+            <div class="phase-name">Phase 1 — Baseline Tests</div>
+            <div class="phase-sub">Hard tests on all 14 agents</div>
+          </div>
+        </div>
+        <div class="phase-item">
+          <div class="phase-dot dot-done"></div>
+          <div class="phase-info">
+            <div class="phase-name">Phase 2 — Elite Personas ✓</div>
+            <div class="phase-sub">13 prompts upgraded + 4 new</div>
+          </div>
+        </div>
+        <div class="phase-item">
+          <div class="phase-dot dot-pending"></div>
+          <div class="phase-info">
+            <div class="phase-name">Phase 3 — Hard Validation</div>
+            <div class="phase-sub">Full SDLC + research + pentest</div>
+          </div>
+        </div>
+        <div class="phase-item">
+          <div class="phase-dot dot-pending"></div>
+          <div class="phase-info">
+            <div class="phase-name">Phase 4 — Sync &amp; Ship</div>
+            <div class="phase-sub">mlx-setup.sh + commit v4.1-elite</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Services -->
+    <div class="card">
+      <div class="card-header"><span class="card-icon">💚</span> Services</div>
+      <div class="card-body" style="padding: 8px 16px;">
+        <div class="service-row">
+          <div class="service-name"><div class="svc-dot svc-up"></div> MLX Server</div>
+          <div class="svc-port">:8000</div>
+        </div>
+        <div class="service-row">
+          <div class="service-name"><div class="svc-dot svc-up"></div> LiteLLM Gateway</div>
+          <div class="svc-port">:4000</div>
+        </div>
+        <div class="service-row">
+          <div class="service-name"><div class="svc-dot svc-up"></div> LAW Dashboard</div>
+          <div class="svc-port">:8800</div>
+        </div>
+        <div class="service-row">
+          <div class="service-name"><div class="svc-dot" id="searxng-dot" style="background:var(--text-dim)"></div> SearXNG</div>
+          <div class="svc-port">:8888</div>
+        </div>
+        <div class="service-row">
+          <div class="service-name"><div class="svc-dot" id="docker-dot" style="background:var(--warn)"></div> Docker/Colima</div>
+          <div class="svc-port">stopped</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Overall progress -->
+    <div class="card">
+      <div class="card-header"><span class="card-icon">📊</span> Overall Progress</div>
+      <div class="overall-progress">
+        <div class="progress-label">
+          <span>Training Progress</span>
+          <span id="pct-label">8%</span>
+        </div>
+        <div class="progress-bg">
+          <div class="progress-fill" id="overall-bar" style="width: 8%"></div>
+        </div>
+        <div style="margin-top:12px">
+          <div class="progress-label">
+            <span>Tests Passing</span>
+            <span id="tests-pct">1 / 11</span>
+          </div>
+          <div class="progress-bg">
+            <div class="progress-fill" id="tests-bar" style="width: 9%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── MAIN CONTENT ── -->
+  <div class="content">
+    <!-- Stats -->
+    <div class="card">
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-value" id="models-count">9</div>
+          <div class="stat-label">Models Served</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="agents-count">14</div>
+          <div class="stat-label">Agent Personas</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="pass-count" style="color: var(--accent3)">0</div>
+          <div class="stat-label">Tests Passed</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="fail-count" style="color: var(--danger)">0</div>
+          <div class="stat-label">Tests Failed</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab nav -->
+    <div class="card" style="overflow:visible">
+      <div class="tabs" id="tab-nav">
+        <div class="tab active" onclick="showTab('agents')">🤖 Agent Tests</div>
+        <div class="tab" onclick="showTab('models')">🧠 Model Roster</div>
+        <div class="tab" onclick="showTab('improvements')">🔧 Improvements</div>
+        <div class="tab" onclick="showTab('log')">📋 Activity Log</div>
+        <div class="tab" onclick="showTab('results')">📁 Test Results</div>
+      </div>
+
+      <!-- Agent Tests tab -->
+      <div class="tab-panel active" id="tab-agents">
+        <div class="test-grid" id="agent-grid">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- Models tab -->
+      <div class="tab-panel" id="tab-models">
+        <div style="padding: 16px;">
+          <div class="model-row" style="color:var(--text-dim); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px">
+            <div>Model / Role</div>
+            <div style="text-align:right">HF Repo</div>
+            <div style="text-align:right">Size</div>
+            <div style="text-align:right">Status</div>
+          </div>
+          <div id="model-list">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Improvements tab -->
+      <div class="tab-panel" id="tab-improvements">
+        <div style="padding: 16px;">
+          <ul class="improvement-list" id="improvement-list">
+            <!-- Populated by JS -->
+          </ul>
+        </div>
+      </div>
+
+      <!-- Log tab -->
+      <div class="tab-panel" id="tab-log">
+        <div style="padding: 16px;">
+          <div class="log-feed" id="log-feed">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Results tab -->
+      <div class="tab-panel" id="tab-results">
+        <div style="padding: 16px;" id="results-content">
+          <p style="color:var(--text-dim); font-size:12px">Test results will appear here as agents complete their tasks...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notes from trainer -->
+    <div class="card">
+      <div class="card-header"><span class="card-icon">📝</span> Trainer Notes</div>
+      <div class="card-body">
+        <div id="trainer-notes" style="font-size:12px; color:var(--text-muted); line-height:1.8">
+          <div style="color:var(--accent); font-weight:700; margin-bottom:8px">Fresh Session — 2026-08-05 (restart recovery)</div>
+          <div>✅ <strong>Recovery:</strong> Laptop auto-restarted. Fixed LiteLLM YAML error (gemma4-31b mis-nested in litellm_settings). All core services restored.</div>
+          <div>🚀 <strong>Phase 2 COMPLETE:</strong> All 13 personas upgraded — Devin-style orchestrator, Kimi K3 researcher, elite coder / QA / security / data / devops / architect.</div>
+          <div>🧪 <strong>Phase 1 active:</strong> Running hard baseline tests — real tasks, real execution evidence required.</div>
+          <div>🐳 <strong>Docker:</strong> Colima restarting. SearXNG will come back once Docker daemon is ready.</div>
+          <div style="margin-top:8px; color:var(--warn)">⚡ Trainer running autonomously. Dashboard auto-refreshes every 10s.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  LAW Enhancement Lab · Local AI Workstation Training Console · All agents running on Apple Metal (M5 Pro 64GB) · No data leaves your machine
+  <br><span id="footer-time"></span>
+</footer>
+
+<script>
+// ── Data ──
+const AGENTS = [
+  { id:'orchestrator', name:'Orchestrator', model:'Qwen3.6-35B MoE',     test:'Full SDLC: spec→code→test→docs for a real app', status:'pending', score:0, result:'Queued — hard test: build a runnable REST API with auth, docs, and passing tests.' },
+  { id:'researcher',   name:'Researcher',   model:'Qwen3.6-35B MoE',     test:'Deep research: 3-phase search → cited .docx report', status:'pending', score:0, result:'Queued — hard test: multi-source competitive analysis with citations and confidence scores.' },
+  { id:'coder',        name:'Coder',        model:'Qwen3-Coder-Next 80B', test:'Build runnable full-stack app from scratch',  status:'pending', score:0, result:'Queued — hard test: FastAPI + React, typed, tested, running, curl evidence required.' },
+  { id:'qa',           name:'QA Engineer',  model:'Qwen3.6-27B',         test:'Real execution test: every endpoint + edge cases', status:'pending', score:0, result:'Queued — hard test: start app, curl all endpoints, security basics, write BUGS.md.' },
+  { id:'writer',       name:'Writer',       model:'Qwen3.6-27B',         test:'Formal .docx report: exec summary + structured body', status:'pending', score:0, result:'Queued — hard test: read source files first, then produce publication-ready .docx.' },
+  { id:'reasoner',     name:'Reasoner',     model:'DeepSeek-R1-32B',     test:'Graduate-level multi-step reasoning problem',  status:'pending', score:0, result:'Queued — hard test: show all CoT steps, challenge assumptions, verify with code.' },
+  { id:'deep_reasoner',name:'Deep Reasoner',model:'DeepSeek-R1-70B',     test:'Complex system design trade-off analysis',      status:'pending', score:0, result:'Queued — hard test: multi-approach exploration, adversarial review, quantified conclusions.' },
+  { id:'ba',           name:'BA',           model:'Qwen3.6-35B MoE',     test:'Full requirements spec: user stories, Gherkin AC, NFRs', status:'pending', score:0, result:'Queued — hard test: INVEST stories, Given/When/Then AC, measurable NFRs, DoD.' },
+  { id:'security',     name:'Security',     model:'Qwen3.6-35B MoE',     test:'OWASP audit + STRIDE + active pentest with curl', status:'pending', score:0, result:'Queued — hard test: code review for all OWASP Top 10, actual injection payloads tested.' },
+  { id:'data',         name:'Data Scientist',model:'Qwen3.6-35B MoE',    test:'EDA → model → evaluation report on real dataset', status:'pending', score:0, result:'Queued — hard test: pandas EDA, cross-validated model, feature importance, business interpretation.' },
+  { id:'devops',       name:'DevOps',       model:'Qwen3.6-35B MoE',     test:'Full CI/CD pipeline + Docker + hardening checklist', status:'pending', score:0, result:'Queued — hard test: working docker-compose, GitHub Actions workflow, runbook.' },
+  { id:'architect',    name:'Architect',    model:'Qwen3.6-35B MoE',     test:'System design with C4 + ADRs + trade-off analysis', status:'pending', score:0, result:'Queued — hard test: quantified NFRs, CAP theorem applied, 3+ ADRs, risk register.' },
+  { id:'designer',     name:'Designer',     model:'Qwen3-VL-8B',         test:'Screenshot analysis: WCAG audit + CSS fixes',  status:'pending', score:0, result:'Queued — hard test: WCAG 2.1 scoring, specific failures, exact CSS remediation.' },
+  { id:'image_gen',    name:'Image Gen',    model:'Z-Image-Turbo (mflux)','test':'Complex scene generation from detailed prompt', status:'pending', score:0, result:'Queued — test: multi-element scene, verify file written, correct dimensions.' },
+];
+
+const MODELS = [
+  { name:'Qwen3.6-35B-A3B MoE',        role:'Orchestrator / Researcher / BA', repo:'unsloth/Qwen3.6-35B-A3B-UD-MLX-4bit', size:'~20 GB', status:'active' },
+  { name:'Qwen3.6-27B 8-bit',          role:'Writer / QA',                    repo:'mlx-community/Qwen3.6-27B-8bit',       size:'~28 GB', status:'active' },
+  { name:'Qwen3-Coder-Next 80B MoE',   role:'Best Coder (SWE-Bench #1)',       repo:'mlx-community/Qwen3-Coder-Next-4bit',  size:'~42 GB', status:'active' },
+  { name:'DeepSeek-R1-Qwen-32B',       role:'Fast Reasoner',                  repo:'mlx-community/DeepSeek-R1-Distill-Qwen-32B-4bit', size:'~18 GB', status:'active' },
+  { name:'DeepSeek-R1-Llama-70B',      role:'Deep Reasoner',                  repo:'mlx-community/DeepSeek-R1-Distill-Llama-70B-4bit', size:'~37 GB', status:'active' },
+  { name:'Qwen3-Embedding-8B',         role:'RAG Embeddings',                 repo:'mlx-community/Qwen3-Embedding-8B-4bit-DWQ', size:'~5 GB', status:'active' },
+  { name:'Qwen3-VL-8B',               role:'Vision / OCR',                   repo:'mlx-community/Qwen3-VL-8B-Instruct-4bit', size:'~5 GB', status:'active' },
+  { name:'Gemma-4-12B',               role:'Design / Vision Analysis',       repo:'mlx-community/gemma-4-12B-4bit',         size:'~10 GB', status:'active' },
+  { name:'Gemma-4-31B',               role:'General (cached, not served)',    repo:'mlx-community/gemma-4-31B-4bit',         size:'~18 GB', status:'cached' },
+  { name:'Z-Image-Turbo',             role:'Image Generation (mflux)',        repo:'Tongyi-MAI/Z-Image-Turbo',               size:'~33 GB', status:'cli' },
+];
+
+const IMPROVEMENTS = [
+  { status:'done',    label:'Recover services',                  desc:'Fixed LiteLLM YAML error (gemma4-31b in wrong block). Gateway :4000 UP, Colima restarting.' },
+  { status:'done',    label:'Upgrade BASE_SYSTEM',               desc:'Elite operating rules: progress saving, quality bar, Fable-5 style discipline.' },
+  { status:'done',    label:'Orchestrator → Devin',              desc:'Plan file first, full delegation chain, mandatory verification gates, progress tracking.' },
+  { status:'done',    label:'Coder → Devin SDLC',               desc:'Read→spec→code→TDD→lint→typecheck→build→curl cycle. No truncation. No fake success.' },
+  { status:'done',    label:'Researcher → Kimi K3',              desc:'3-phase protocol: breadth scan (8-12 searches) → deep read → synthesize with citations.' },
+  { status:'done',    label:'QA → real execution',               desc:'Every PASS requires curl output. Full happy path + edge cases + security basics + performance.' },
+  { status:'done',    label:'Writer → professional long-form',   desc:'Exec summary first. Read files before writing. write_docx for formal docs. No padding.' },
+  { status:'done',    label:'Reasoner → explicit CoT',           desc:'Restate → explore approaches → work through → challenge assumptions → self-critique.' },
+  { status:'done',    label:'Deep Reasoner → multi-approach',    desc:'Decompose → 4 approaches → deep execution → adversarial review → qualified conclusion.' },
+  { status:'done',    label:'BA → requirements engineering',     desc:'INVEST user stories, Gherkin AC, measurable NFRs, DoD checklist, constraint register.' },
+  { status:'done',    label:'Designer → WCAG expert',            desc:'6-axis analysis: hierarchy, layout, color, type, interaction, accessibility. WCAG 2.1 score.' },
+  { status:'done',    label:'NEW: Security persona',             desc:'STRIDE threat model + OWASP Top 10 + active pentest with curl payloads + security report.' },
+  { status:'done',    label:'NEW: Data Scientist persona',        desc:'EDA → feature engineering → model → cross-validate → interpret → business summary.' },
+  { status:'done',    label:'NEW: DevOps persona',               desc:'IaC mindset, GitOps, hardening checklist, docker-compose, CI/CD, runbook.' },
+  { status:'done',    label:'NEW: Architect persona',            desc:'C4 diagrams, CAP theorem, 12-factor, ADRs, risk register, quantified trade-offs.' },
+  { status:'active',  label:'Hard baseline tests — 14 agents',  desc:'Real tasks, real evidence. Orchestrator: full SDLC. Coder: build runnable app. Researcher: cited report.' },
+  { status:'pending', label:'Sync personas → mlx-setup.sh',     desc:'Bake all enhanced prompts into setup script for reproducibility.' },
+  { status:'pending', label:'Complex validation tests',          desc:'Orchestrator: full-stack SaaS. Security: OWASP audit. Researcher: competitive analysis .docx.' },
+  { status:'pending', label:'Commit + tag v4.1-elite',          desc:'Ship everything: setup script, mlx-agent.py, personas, documentation.' },
+];
+
+const LOGS = [
+  { ts:'02:00:00', type:'warn',    msg:'RECOVERY: Laptop auto-restarted mid-session. Resuming from scratch.' },
+  { ts:'02:00:05', type:'error',   msg:'Gateway :4000 DOWN — LiteLLM crash. Diagnosing...' },
+  { ts:'02:00:08', type:'info',    msg:'Root cause found: gemma4-31b model entry nested inside litellm_settings block (YAML parse error line 53)' },
+  { ts:'02:00:10', type:'success', msg:'FIXED: Moved gemma4-31b to model_list. YAML validated. Gateway restarted on :4000.' },
+  { ts:'02:00:12', type:'success', msg:'Services UP: MLX :8000 (9 models), Gateway :4000 (18 aliases), Dashboard :8800, Vision :8081, Telegram' },
+  { ts:'02:00:15', type:'warn',    msg:'Colima stopped (exit 127). Starting colima in background. SearXNG will recover once Docker is ready.' },
+  { ts:'02:00:20', type:'info',    msg:'Phase 2 starting: Elite persona engineering — all 13 agents getting Devin/Kimi K3/Fable-5 treatment' },
+  { ts:'02:01:00', type:'success', msg:'Orchestrator upgraded: Devin-style plan file, full delegation chain, mandatory verification gates' },
+  { ts:'02:01:30', type:'success', msg:'Coder upgraded: read→spec→code→TDD→lint→typecheck→build→curl. No truncation. No fake success.' },
+  { ts:'02:02:00', type:'success', msg:'Researcher upgraded: Kimi K3 3-phase protocol (8-12 searches → deep read → synthesize + citations)' },
+  { ts:'02:02:30', type:'success', msg:'QA upgraded: real execution mandatory. Full path + edge cases + security basics + performance spot-check.' },
+  { ts:'02:03:00', type:'success', msg:'Writer upgraded: exec summary first, read before writing, write_docx for formal docs.' },
+  { ts:'02:03:30', type:'success', msg:'Reasoner/Deep Reasoner upgraded: explicit CoT, assumption challenge, adversarial self-review.' },
+  { ts:'02:04:00', type:'success', msg:'BA upgraded: INVEST user stories, Gherkin AC, measurable NFRs, Definition of Done.' },
+  { ts:'02:04:30', type:'success', msg:'Designer upgraded: WCAG 2.1 scoring, 6-axis analysis, exact CSS remediation.' },
+  { ts:'02:05:00', type:'success', msg:'NEW security persona: STRIDE + OWASP Top 10 + active pentest with curl injection payloads.' },
+  { ts:'02:05:30', type:'success', msg:'NEW data persona: EDA → feature engineering → cross-validated model → business interpretation.' },
+  { ts:'02:06:00', type:'success', msg:'NEW devops persona: IaC, GitOps, hardening checklist, docker-compose, CI/CD pipeline, runbook.' },
+  { ts:'02:06:30', type:'success', msg:'NEW architect persona: C4 + ADRs + CAP theorem + 12-factor + quantified trade-offs + risk register.' },
+  { ts:'02:07:00', type:'success', msg:'BASE_SYSTEM upgraded: progress saving, quality bar, Fable-5 discipline, stronger verification gates.' },
+  { ts:'02:07:10', type:'info',    msg:'spawn_subagent tool updated: all 14 personas listed with descriptions.' },
+  { ts:'02:07:15', type:'info',    msg:'Dashboard: auto-refresh set to 10s. Phase tracker updated.' },
+  { ts:'02:07:20', type:'info',    msg:'Phase 1 starting: hard baseline tests — 14 agents, real tasks, execution evidence required.' },
+];
+
+// ── Render ──
+function statusBadge(s) {
+  const map = { pass:'status-pass', fail:'status-fail', testing:'status-testing', pending:'status-pending', warn:'status-warn' };
+  const labels = { pass:'✓ PASS', fail:'✗ FAIL', testing:'⟳ TESTING', pending:'◦ PENDING', warn:'⚠ WARN' };
+  return `<div class="agent-status ${map[s]||'status-pending'}">${labels[s]||s.toUpperCase()}</div>`;
+}
+
+function renderAgents() {
+  const grid = document.getElementById('agent-grid');
+  grid.innerHTML = AGENTS.map(a => `
+    <div class="agent-card" id="agent-${a.id}">
+      <div class="agent-card-header">
+        <div class="agent-name">${a.name}</div>
+        ${statusBadge(a.status)}
+      </div>
+      <div class="agent-model">📦 ${a.model}</div>
+      <div class="agent-test-name">🧪 ${a.test}</div>
+      <div class="agent-result">${a.result}</div>
+      ${a.score > 0 ? `
+      <div class="agent-score">
+        <span style="color:var(--text-dim)">Quality</span>
+        <div class="score-bar-bg"><div class="score-bar-fill" style="width:${a.score}%"></div></div>
+        <span style="color:var(--accent)">${a.score}%</span>
+      </div>` : ''}
+    </div>
+  `).join('');
+}
+
+function renderModels() {
+  const list = document.getElementById('model-list');
+  list.innerHTML = MODELS.map(m => {
+    const statusEl = m.status === 'active'
+      ? `<span class="badge badge-green" style="font-size:9px">ACTIVE</span>`
+      : m.status === 'cached'
+      ? `<span class="badge badge-warn" style="font-size:9px">CACHED</span>`
+      : `<span class="badge badge-blue" style="font-size:9px">CLI</span>`;
+    return `
+    <div class="model-row">
+      <div>
+        <div class="model-name-col">${m.name}</div>
+        <div class="model-role">${m.role}</div>
+      </div>
+      <div class="model-size-col">${m.size}</div>
+      <div class="model-status-col">${statusEl}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderImprovements() {
+  const icons = { done:'✅', active:'⟳', pending:'○' };
+  const cls   = { done:'imp-done', active:'imp-active', pending:'imp-pending' };
+  document.getElementById('improvement-list').innerHTML = IMPROVEMENTS.map(i => `
+    <li class="improvement-item">
+      <span class="imp-icon ${cls[i.status]}">${icons[i.status]}</span>
+      <div class="imp-text">
+        <div class="imp-label">${i.label}</div>
+        <div class="imp-desc">${i.desc}</div>
+      </div>
+    </li>
+  `).join('');
+}
+
+function renderLogs() {
+  const feed = document.getElementById('log-feed');
+  const colorMap = { info:'log-type-info', success:'log-type-success', warn:'log-type-warn', error:'log-type-error', test:'log-type-test' };
+  feed.innerHTML = LOGS.map(l => `
+    <div class="log-line">
+      <span class="log-ts">[${l.ts}]</span>
+      <span class="${colorMap[l.type]||'log-type-info'}">${l.msg}</span>
+    </div>
+  `).join('');
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function showTab(id) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  const tabs = document.querySelectorAll('.tab');
+  const labels = ['agents','models','improvements','log','results'];
+  tabs[labels.indexOf(id)]?.classList.add('active');
+}
+
+function updateTime() {
+  const now = new Date();
+  const ts = now.toLocaleTimeString();
+  document.getElementById('update-time').textContent = ts;
+  document.getElementById('footer-time').textContent = `Session started: 2026-08-05 · Last refresh: ${now.toLocaleString()}`;
+}
+
+function updateProgress() {
+  // Calculate from AGENTS
+  const done   = AGENTS.filter(a => a.status === 'pass' || a.status === 'fail').length;
+  const passed = AGENTS.filter(a => a.status === 'pass').length;
+  const failed = AGENTS.filter(a => a.status === 'fail').length;
+  const total  = AGENTS.length;
+  const pct    = Math.round((done / total) * 100 * 0.7); // 70% weight on tests
+  document.getElementById('pass-count').textContent = passed;
+  document.getElementById('fail-count').textContent = failed;
+  document.getElementById('tests-pct').textContent  = `${passed} / ${total}`;
+  document.getElementById('tests-bar').style.width  = `${Math.round(passed/total*100)}%`;
+  document.getElementById('overall-bar').style.width = `${pct}%`;
+  document.getElementById('pct-label').textContent   = `${pct}%`;
+}
+
+// ── Load progress.json for live updates ──
+async function loadProgress() {
+  try {
+    const r = await fetch('./progress.json?' + Date.now());
+    const data = await r.json();
+    // Update trainer notes based on phase
+    const activePhases = data.phases.filter(p => p.status === 'in_progress').map(p => p.name).join(', ');
+    if (activePhases) {
+      document.getElementById('trainer-notes').querySelector('div:nth-child(2)').textContent =
+        `⚡ Active: ${activePhases}`;
+    }
+  } catch(e) { /* file may not have changed */ }
+}
+
+// ── Init ──
+renderAgents();
+renderModels();
+renderImprovements();
+renderLogs();
+updateTime();
+updateProgress();
+
+// Auto-refresh every 10s
+setInterval(() => {
+  updateTime();
+  loadProgress();
+}, 10000);
+
+// Live time in header
+setInterval(updateTime, 5000);
+
+// ── Tab click helper ──
+document.querySelectorAll('.tab').forEach((tab, i) => {
+  const ids = ['agents','models','improvements','log','results'];
+  tab.onclick = () => showTab(ids[i]);
+});
+</script>
+</body>
+</html>
