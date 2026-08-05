@@ -803,21 +803,31 @@ setup_colima() {
 setup_colima_autostart() {
     log "Colima login autostart"
     local label="com.mlxstack.colima" plist="$HOME/Library/LaunchAgents/com.mlxstack.colima.plist"
-    local runner="$WORKDIR/run_colima.sh" cbin; cbin="$(command -v colima || echo colima)"
+    local runner="$WORKDIR/run_colima.sh" cbin; cbin="$(command -v colima || echo /opt/homebrew/bin/colima)"
     mkdir -p "$HOME/Library/LaunchAgents" "$WORKDIR/logs"
+    # Write run_colima.sh with absolute binary path — also restarts Docker containers
+    # (belt-and-suspenders alongside --restart unless-stopped on the containers)
     cat > "$runner" <<SHEOF
 #!/usr/bin/env bash
-# bring the Docker engine up if it isn't already (idempotent)
 export PATH="/opt/homebrew/bin:/usr/local/bin:\$PATH"
-"$cbin" status >/dev/null 2>&1 || "$cbin" start --cpu "$COLIMA_CPU" --memory "$COLIMA_MEM" --disk "$COLIMA_DISK"
+CBIN="${cbin}"
+\$CBIN status >/dev/null 2>&1 || \$CBIN start --cpu ${COLIMA_CPU} --memory ${COLIMA_MEM} --disk ${COLIMA_DISK}
+# Wait for Docker daemon then restart UI containers
+for i in \$(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 1; done
+for c in open-webui searxng portainer; do docker start "\$c" >/dev/null 2>&1 || true; done
 SHEOF
     chmod +x "$runner"
+    # Plist uses /bin/bash -c with inlined command so it works even if runner is regenerated
     cat > "$plist" <<PLISTEOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>Label</key><string>$label</string>
-  <key>ProgramArguments</key><array><string>/bin/bash</string><string>$runner</string></array>
+  <key>ProgramArguments</key><array>
+    <string>/bin/bash</string>
+    <string>-c</string>
+    <string>export PATH=/opt/homebrew/bin:/usr/local/bin:\$PATH; ${cbin} status &gt;/dev/null 2&gt;&amp;1 || ${cbin} start --cpu ${COLIMA_CPU} --memory ${COLIMA_MEM} --disk ${COLIMA_DISK}; for i in \$(seq 1 30); do docker info &gt;/dev/null 2&gt;&amp;1 &amp;&amp; break; sleep 1; done; for c in open-webui searxng portainer; do docker start \"\$c\" &gt;/dev/null 2&gt;&amp;1 || true; done</string>
+  </array>
   <key>RunAtLoad</key><true/>
   <key>StandardOutPath</key><string>$WORKDIR/logs/com.mlxstack.colima.log</string>
   <key>StandardErrorPath</key><string>$WORKDIR/logs/com.mlxstack.colima.err</string>
@@ -825,7 +835,7 @@ SHEOF
 PLISTEOF
     launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
     launchctl bootstrap "gui/$(id -u)" "$plist" 2>/dev/null || launchctl load "$plist" 2>/dev/null || true
-    ok "Colima will start on login → Docker UIs auto-recover after reboot"
+    ok "Colima will start on login → Docker UIs (Open WebUI :3001, SearXNG :8888, Portainer :9000) auto-recover after reboot"
 }
 
 setup_openwebui() {
