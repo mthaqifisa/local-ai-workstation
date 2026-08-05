@@ -1,0 +1,124 @@
+mlx-agent  persona=qa  model=qa:qwen3.6-27b  gateway=http://localhost:8000/v1
+  → run_shell(command='curl -s http://localhost:8000/v1/models 2>&1 | head -200')
+  $ curl -s http://localhost:8000/v1/models 2>&1 | head -200
+  → run_shell(command='curl -s http://localhost:4000/v1/models 2>&1 | head -200')
+  $ curl -s http://localhost:4000/v1/models 2>&1 | head -200
+  → run_shell(command='curl -s http://localhost:8800/health 2>&1 | head -200')
+  $ curl -s http://localhost:8800/health 2>&1 | head -200
+  → run_shell(command='curl -s http://localhost:8800/ 2>&1 | head -50')
+  $ curl -s http://localhost:8800/ 2>&1 | head -50
+  → run_shell(command='curl -s http://localhost:8800/v1/models 2>&1 | head -200')
+  $ curl -s http://localhost:8800/v1/models 2>&1 | head -200
+  → run_shell(command='curl -s http://localhost:8000/v1/models | python3 -c "import sys,json; d=json.load(sys.stdin); print(f\'Model count: {len(d[\\"data\\"])}\'); [print(f\'  - {m[\\"id\\"]}\') for m in d[\'data\']]"')
+  $ curl -s http://localhost:8000/v1/models | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Model count: {len(d[\"data\"])}'); [print(f'  - {m[\"id\"]}') for m in d['data']]"
+  → run_shell(command='curl -s -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen36-35b",\n    "messages": [\n      {"role": "system", "content": "You are a helpful assistant."},\n      {"role": "user", "content": "What is 2+2? Answer in one sentence."}\n    ],\n    "max_tokens": 100,\n    "temperature": 0.1\n  }\' 2>&1')
+  $ curl -s -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen36-35b",
+    "messages": [
+      {"role": "system", "content": "You are a helpful assistant."},
+      {"role": "user", "content": "What is 2+2? Answer in one sentence."}
+    ],
+    "max_tokens": 100,
+    "temperature": 0.1
+  }' 2>&1
+  → run_shell(command='curl -s -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen36-35b",\n    "messages": [\n      {"role": "user", "content": "What is 2+2? Answer in one word."}\n    ],\n    "max_tokens": 50,\n    "temperature": 0.1\n  }\' 2>&1')
+  $ curl -s -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen36-35b",
+    "messages": [
+      {"role": "user", "content": "What is 2+2? Answer in one word."}
+    ],
+    "max_tokens": 50,
+    "temperature": 0.1
+  }' 2>&1
+  → run_shell(command='curl -s -X POST http://localhost:4000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "orchestrator:qwen3.6-35b",\n    "messages": [\n      {"role": "user", "content": "What is 2+2? Answer in one word."}\n    ],\n    "max_tokens": 50,\n    "temperature": 0.1\n  }\' 2>&1')
+  $ curl -s -X POST http://localhost:4000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "orchestrator:qwen3.6-35b",
+    "messages": [
+      {"role": "user", "content": "What is 2+2? Answer in one word."}
+    ],
+    "max_tokens": 50,
+    "temperature": 0.1
+  }' 2>&1
+  → run_shell(command='curl -s -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen36-35b",\n    "messages": [\n      {"role": "user", "content": "What is 2+2? Answer in one word."}\n    ],\n    "max_tokens": 500,\n    "temperature": 0.1\n  }\' 2>&1 | python3 -c "\nimport sys, json\nr = json.load(sys.stdin)\nprint(\'=== RESPONSE ===\')\nprint(f\'Model: {r[\\"model\\"]}\')\nprint(f\'Finish reason: {r[\\"choices\\"][0][\\"finish_reason\\"]}\')\nprint(f\'Content: {r[\\"choices\\"][0][\\"message\\"][\\"content\\"]}\')\nprint(f\'Usage: {json.dumps(r[\\"usage\\"], indent=2)}\')\n"')
+  $ curl -s -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen36-35b",
+    "messages": [
+      {"role": "user", "content": "What is 2+2? Answer in one word."}
+    ],
+    "max_tokens": 500,
+    "temperature": 0.1
+  }' 2>&1 | python3 -c "
+import sys, json
+r = json.load(sys.stdin)
+print('=== RESPONSE ===')
+print(f'Model: {r[\"model\"]}')
+print(f'Finish reason: {r[\"choices\"][0][\"finish_reason\"]}')
+print(f'Content: {r[\"choices\"][0][\"message\"][\"content\"]}')
+print(f'Usage: {json.dumps(r[\"usage\"], indent=2)}')
+"
+  → run_shell(command='# Time a chat completion request\nSTART=$(date +%s%N)\ncurl -s -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen36-35b",\n    "messages": [{"role": "user", "content": "Say hello in one word."}],\n    "max_tokens": 200,\n    "temperature": 0.1\n  }\' > /dev/null 2>&1\nEND=$(date +%s%N)\nELAPSED=$(( (END - START) / 1000000 ))\necho "Total latency: ${ELAPSED}ms"')
+  $ # Time a chat completion request
+START=$(date +%s%N)
+curl -s -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen36-35b",
+    "messages": [{"role": "user", "content": "Say hello in one word."}],
+    "max_tokens": 200,
+    "temperature": 0.1
+  }' > /dev/null 2>&1
+END=$(date +%s%N)
+ELAPSED=$(( (END - START) / 1000000 ))
+echo "Total latency: ${ELAPSED}ms"
+  → run_shell(command='# Time the /v1/models endpoint (should be instant)\nSTART=$(date +%s%N)\ncurl -s http://localhost:8000/v1/models > /dev/null 2>&1\nEND=$(date +%s%N)\nELAPSED=$(( (END - START) / 1000000 ))\necho "Models endpoint latency: ${ELAPSED}ms"')
+  $ # Time the /v1/models endpoint (should be instant)
+START=$(date +%s%N)
+curl -s http://localhost:8000/v1/models > /dev/null 2>&1
+END=$(date +%s%N)
+ELAPSED=$(( (END - START) / 1000000 ))
+echo "Models endpoint latency: ${ELAPSED}ms"
+  → run_shell(command='# Check HTTP status codes for all endpoints\necho "=== Port 8000 /v1/models ==="\ncurl -s -o /dev/null -w "HTTP %{http_code} | Size: %{size_download} bytes | Time: %{time_total}s\\n" http://localhost:8000/v1/models\n\necho "=== Port 4000 /v1/models ==="\ncurl -s -o /dev/null -w "HTTP %{http_code} | Size: %{size_download} bytes | Time: %{time_total}s\\n" http://localhost:4000/v1/models\n\necho "=== Port 8800 / (LAW UI) ==="\ncurl -s -o /dev/null -w "HTTP %{http_code} | Size: %{size_download} bytes | Time: %{time_total}s\\n" http://localhost:8800/\n\necho "=== Port 8800 /health ==="\ncurl -s -o /dev/null -w "HTTP %{http_code} | Size: %{size_download} bytes | Time: %{time_total}s\\n" http://localhost:8800/health')
+  $ # Check HTTP status codes for all endpoints
+echo "=== Port 8000 /v1/models ==="
+curl -s -o /dev/null -w "HTTP %{http_code} | Size: %{size_download} bytes | Time: %{time_total}s\n" http://localhost:8000/v1/models
+
+echo "=== Port 4000 /v1/models ==="
+curl -s -o /dev/null -w "HTTP %{http_code} | Size: %{size_download} bytes | Time: %{time_total}s\n" http://localhost:4000/v1/models
+
+echo "=== Port 8800 / (LAW UI) ==="
+curl -s -o /dev/null -w "HTTP %{http_code} | Size: %{size_download} bytes | Time: %{time_total}s\n" http://localhost:8800/
+
+echo "=== Port 8800 /health ==="
+curl -s -o /dev/null -w "HTTP %{http_code} | Size: %{size_download} bytes | Time: %{time_total}s\n" http://localhost:8800/health
+  → run_shell(command='# Count orchestrator models\ncurl -s http://localhost:4000/v1/models | python3 -c "import sys,json; d=json.load(sys.stdin); print(f\'Orchestrator model count: {len(d[\\"data\\"])}\'); [print(f\'  - {m[\\"id\\"]}\') for m in d[\'data\']]"')
+  $ # Count orchestrator models
+curl -s http://localhost:4000/v1/models | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Orchestrator model count: {len(d[\"data\"])}'); [print(f'  - {m[\"id\"]}') for m in d['data']]"
+  → run_shell(command='# Error handling: invalid model name\ncurl -s -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "nonexistent-model",\n    "messages": [{"role": "user", "content": "hello"}],\n    "max_tokens": 10\n  }\' 2>&1 | python3 -c "import sys,json; r=json.load(sys.stdin); print(json.dumps(r, indent=2))"')
+  $ # Error handling: invalid model name
+curl -s -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "nonexistent-model",
+    "messages": [{"role": "user", "content": "hello"}],
+    "max_tokens": 10
+  }' 2>&1 | python3 -c "import sys,json; r=json.load(sys.stdin); print(json.dumps(r, indent=2))"
+  → run_shell(command='# Error handling: empty messages\ncurl -s -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen36-35b",\n    "messages": [],\n    "max_tokens": 10\n  }\' 2>&1 | python3 -c "import sys,json; r=json.load(sys.stdin); print(json.dumps(r, indent=2))"')
+  $ # Error handling: empty messages
+curl -s -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen36-35b",
+    "messages": [],
+    "max_tokens": 10
+  }' 2>&1 | python3 -c "import sys,json; r=json.load(sys.stdin); print(json.dumps(r, indent=2))"
+  → run_shell(command='mkdir -p ~/MLX-AI/qa-baseline')
+  $ mkdir -p ~/MLX-AI/qa-baseline
+gateway error: 500 Server Error: Internal Server Error for url: http://localhost:8000/v1/chat/completions — is :4000 up?
