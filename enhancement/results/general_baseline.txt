@@ -1,0 +1,130 @@
+mlx-agent  persona=general  model=qwen36-27b  gateway=http://localhost:8000/v1
+  → run_shell(command='du -sh $HOME/* 2>/dev/null | sort -rh | head -8')
+  $ du -sh $HOME/* 2>/dev/null | sort -rh | head -8
+  → run_shell(command="vm_stat | grep -E 'free|active|inactive'")
+  $ vm_stat | grep -E 'free|active|inactive'
+  → run_shell(command='ps aux | sort -k3 -rn | head -6')
+  $ ps aux | sort -k3 -rn | head -6
+  → run_shell(command='launchctl list | awk \'$2 != 0 && $2 != "-" {print}\'')
+  $ launchctl list | awk '$2 != 0 && $2 != "-" {print}'
+  → disk_usage()
+  $ df -h /
+
+# Mac System Health Report
+
+---
+
+## 1. Home Directory — Top 8 Folders by Size
+
+| Folder | Size |
+|---|---|
+| `~/Library` | **50 GB** |
+| `~/Downloads` | **7.5 GB** |
+| `~/go` | **749 MB** |
+| `~/SourceCode` | **252 MB** |
+| `~/Applications` | **2.2 MB** |
+| `~/MLX-AI` | **256 KB** |
+| `~/Music` | **100 KB** |
+| `~/Movies` | **12 KB** |
+
+---
+
+## 2. Virtual Memory (vm_stat)
+
+| Metric | Pages | Approx. Size |
+|---|---|---|
+| **Active** | 2,327,613 | ~9.0 GB |
+| **Inactive** | 1,224,042 | ~4.7 GB |
+| **Free** | 248,604 | ~965 MB |
+| Tag-storage free | 22,616 | ~88 MB |
+
+---
+
+## 3. Top 5 CPU Consumers (ps aux)
+
+| Process | PID | CPU% | MEM% |
+|---|---|---|---|
+| **Google Chrome Helper (GPU)** | 944 | **46.3%** | 0.2% |
+| **WindowServer** | 396 | **38.3%** | 0.1% |
+| **ContinuityCaptureAgent** | 628 | **17.7%** | 0.0% |
+| **claude** (Claude Desktop) | 1407 | **7.0%** | 0.6% |
+| **Chrome Renderer** | 1098 | **3.1%** | 0.2% |
+
+---
+
+## 4. LaunchDaemons/Agents with Non-Zero Exit Codes
+
+| Label | Status | Notes |
+|---|---|---|
+| `com.mlxstack.colima` | -9 | MLX Stack — Colima VM (killed/restarting) |
+| `com.mlxstack.dashboard` | -9 | MLX Stack Dashboard (killed/restarting) |
+| `com.mlxstack.gateway` | 3 | MLX Stack Gateway (exit code 3) |
+| `ai.openclaw.gateway` | 78 | OpenClaw Gateway (exit code 78) |
+| `com.apple.Siri.agent` | 1 | Siri agent (exit code 1) |
+
+> **Note:** Status `-9` means the process was killed by signal 9 (SIGKILL) — typical for daemons that crash-loop or are being managed by launchd. The non-Apple entries (`com.mlxstack.*`, `ai.openclaw.gateway`) are the ones worth investigating.
+
+---
+
+## 5. Disk Space Overview
+
+| Metric | Value |
+|---|---|
+| Total disk | 926 GB |
+| Used | 12 GB |
+| Available | **388 GB** |
+| Capacity used | **3%** |
+
+---
+
+## 3 Specific Optimization Actions
+
+### Action 1 — Clean up `~/Library` (50 GB — your largest folder)
+
+Your Library folder is consuming **50 GB**, which is 87% of your home directory usage. The usual culprits:
+
+```bash
+# Check what's eating space inside Library
+du -sh ~/Library/Caches/* 2>/dev/null | sort -rh | head -10
+du -sh ~/Library/Developer/* 2>/dev/null | sort -rh | head -5
+du -sh ~/Library/Application\ Support/* 2>/dev/null | sort -rh | head -10
+```
+
+**Likely savings:** 10–30 GB from stale caches (Chrome, Xcode derived data, Docker/Colima images, Homebrew caches).
+
+### Action 2 — Tame Chrome's GPU process (46.3% CPU)
+
+The Chrome GPU helper is your single biggest CPU consumer at **46.3%**. This is often caused by:
+- Hardware-accelerated video playback (YouTube, streaming tabs)
+- GPU-intensive web apps or AI demos running in-browser
+- Too many open tabs with canvas/WebGL content
+
+**Fix:** Close unused Chrome tabs, or disable hardware acceleration for non-critical work:
+`Chrome → Settings → System → "Use graphics acceleration when available" → OFF` (then relaunch).
+
+### Action 3 — Investigate the MLX Stack / OpenClaw crash-looping services
+
+Three services are repeatedly crashing:
+
+| Service | Status |
+|---|---|
+| `com.mlxstack.colima` | -9 (killed) |
+| `com.mlxstack.dashboard` | -9 (killed) |
+| `ai.openclaw.gateway` | 78 (error exit) |
+
+These are consuming CPU cycles in a crash-restart loop. If you're not actively using MLX Stack or OpenClaw right now, stop them:
+
+```bash
+launchctl unload ~/Library/LaunchAgents/com.mlxstack.colima.plist 2>/dev/null
+launchctl unload ~/Library/LaunchAgents/com.mlxstack.dashboard.plist 2>/dev/null
+launchctl unload ~/Library/LaunchAgents/ai.openclaw.gateway.plist 2>/dev/null
+```
+
+If you need them, check their logs for the root cause:
+```bash
+log show --predicate 'process == "colima"' --last 1h --info
+```
+
+---
+
+**Summary:** Your disk is in great shape (3% used), but CPU is being wasted by Chrome's GPU process and crash-looping MLX/OpenClaw services. Fix those two and you'll reclaim ~50%+ CPU headroom immediately.
