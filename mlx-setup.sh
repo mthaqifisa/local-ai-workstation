@@ -471,13 +471,13 @@ models:
     enable_auto_tool_choice: true
     tool_call_parser: qwen3_coder
     reasoning_parser: qwen3
-    context_length: 65536
+    context_length: 32768
     kv_bits: 8
     kv_group_size: 64
     batch_completion_size: 2
     batch_prefill_size: 1
     prompt_cache_size: 2
-    prompt_cache_max_bytes: 8589934592
+    prompt_cache_max_bytes: 4294967296
     default_max_tokens: 4096
     queue_timeout: 900
     on_demand: true
@@ -490,13 +490,13 @@ models:
     enable_auto_tool_choice: true
     tool_call_parser: qwen3_coder
     reasoning_parser: qwen3
-    context_length: 49152
+    context_length: 32768
     kv_bits: 8
     kv_group_size: 64
     batch_completion_size: 2
     batch_prefill_size: 1
     prompt_cache_size: 2
-    prompt_cache_max_bytes: 8589934592
+    prompt_cache_max_bytes: 4294967296
     default_max_tokens: 4096
     queue_timeout: 900
     on_demand: true
@@ -506,13 +506,13 @@ models:
   - model_path: mlx-community/DeepSeek-R1-Distill-Qwen-32B-4bit
     served_model_name: deepseek-r1-32b
     model_type: lm
-    context_length: 65536
+    context_length: 32768
     kv_bits: 8
     kv_group_size: 64
     batch_completion_size: 2
     batch_prefill_size: 1
     prompt_cache_size: 2
-    prompt_cache_max_bytes: 8589934592
+    prompt_cache_max_bytes: 4294967296
     default_max_tokens: 8192
     queue_timeout: 900
     on_demand: true
@@ -2572,6 +2572,11 @@ write_agent() {
     if [ -f "$SCRIPT_DIR/mlx-agent.py" ]; then
         cp "$SCRIPT_DIR/mlx-agent.py" "$AD/mlx-agent.py"
         log "agent copied from repo"
+    # Copy enhanced personas if available (improved prompts with examples, recovery, checklists)
+    if [ -f "$SCRIPT_DIR/personas_enhanced.json" ]; then
+        cp "$SCRIPT_DIR/personas_enhanced.json" "$WORKDIR/personas_enhanced.json"
+        log "enhanced personas copied from repo"
+    fi
     else
     cat > "$AD/mlx-agent.py" <<'AGENTEOF'
 #!/usr/bin/env python3
@@ -2619,7 +2624,7 @@ SEARXNG   = os.environ.get("MLX_SEARXNG", "http://localhost:8888")
 WORKDIR   = Path(os.environ.get("MLX_WORKDIR", str(Path.home() / ".mlx-ai-workstation")))
 WORKSPACE = Path(os.environ.get("MLX_WORKSPACE", str(Path.home() / "MLX-AI")))
 PERSONAS_FILE = WORKDIR / "personas.json"
-DEFAULT_MODEL = os.environ.get("MLX_AGENT_MODEL", "qwen36-27b")
+DEFAULT_MODEL = os.environ.get("MLX_AGENT_MODEL", "qwen36-35b")
 MAX_STEPS = int(os.environ.get("MLX_AGENT_MAX_STEPS", "0"))               # 0 = unlimited tool steps
 LOOP_GUARD = int(os.environ.get("MLX_AGENT_LOOP_GUARD", "6"))             # stop if the SAME tool call repeats N× in a row (0 = off)
 MAX_SEARCHES = int(os.environ.get("MLX_AGENT_MAX_SEARCHES", "8"))         # per run, then steer to web_fetch/direct
@@ -2627,7 +2632,8 @@ MAX_SPAWN_DEPTH = int(os.environ.get("MLX_AGENT_MAX_SPAWN_DEPTH", "2"))   # suba
 MAX_SPAWNS = int(os.environ.get("MLX_AGENT_MAX_SPAWNS", "15"))            # total subagents per top-level run
 SHELL_TIMEOUT = int(os.environ.get("MLX_AGENT_SHELL_TIMEOUT", "180"))
 CODE_TIMEOUT = int(os.environ.get("MLX_AGENT_CODE_TIMEOUT", "180"))       # run_python wall-clock bound
-MAX_TOKENS = int(os.environ.get("MLX_AGENT_MAX_TOKENS", "32768"))         # per model call; 0 = uncapped
+MAX_TOKENS = int(os.environ.get("MLX_AGENT_MAX_TOKENS", "16384"))         # per model call; 0 = uncapped
+MAX_TOOL_CALLS_PER_ROUND = int(os.environ.get("MLX_AGENT_MAX_TOOL_CALLS_PER_ROUND", "6"))  # hard cap per model turn (prevents context explosion → OOM crash)
 TEMPERATURE = float(os.environ.get("MLX_AGENT_TEMPERATURE", "0.1"))       # low default for factual accuracy
 FREQ_PENALTY = float(os.environ.get("MLX_AGENT_FREQ_PENALTY", "0.5"))     # discourages repetition loops; 0 = don't send
 PRESENCE_PENALTY = float(os.environ.get("MLX_AGENT_PRESENCE_PENALTY", "0.0"))
@@ -2992,6 +2998,14 @@ DEFAULT_PERSONAS = {
             "  - List every file created/modified with its path\n"
             "  - Show the actual curl output proving the app runs\n"
             "  - List any known limitations or TODOs\n\n"
+            "PORT SAFETY: port 8000 is RESERVED for the MLX inference server — never use it. "
+            "Always use port 9000 for web apps.\n"
+            "SERVER START SEQUENCE (mandatory — never deviate from this order):\n"
+            "  1. Clear port first: kill $(lsof -ti:9000) 2>/dev/null; sleep 1\n"
+            "  2. Start: python3 -m uvicorn app.main:app --host 127.0.0.1 --port 9000 > /tmp/server.log 2>&1 &\n"
+            "  3. Wait: sleep 4\n"
+            "  4. Verify: curl -s http://localhost:9000/health || (cat /tmp/server.log; exit 1)\n"
+            "  CRITICAL: NEVER run lsof right after starting — you will find the server you just launched and kill it.\n\n"
             "HARD RULES:\n"
             "- NEVER report success without curl/execution evidence from Phase 4\n"
             "- NEVER truncate file contents in write_file\n"
@@ -3026,7 +3040,7 @@ DEFAULT_PERSONAS = {
 
     "qa": {
         "description": "QA Engineer — real execution testing, curl evidence, edge cases, bugs to disk.",
-        "model": "qa:qwen3.6-27b",
+        "model": "orchestrator:qwen3.6-35b",
         "allowed_tools": "all",
         "system_prompt": (
             "You are a senior QA Engineer. You ACTUALLY RUN the software and report what happens. "
@@ -3191,7 +3205,7 @@ DEFAULT_PERSONAS = {
 
     "writer": {
         "description": "Technical writer — exec summary first, structured long-form, write_docx for formal docs.",
-        "model": "writer:qwen3.6-27b",
+        "model": "orchestrator:qwen3.6-35b",
         "allowed_tools": "all",
         "system_prompt": (
             "You are a professional technical writer. You produce polished, structured documents "
@@ -3229,8 +3243,8 @@ DEFAULT_PERSONAS = {
     },
 
     "designer": {
-        "description": "UI/UX designer (vision model) — WCAG 2.1, design principles, actionable HTML/CSS specs.",
-        "model": "vision:qwen3-vl-8b",
+        "description": "UI/UX designer — WCAG 2.1, design principles, actionable HTML/CSS specs, mockups.",
+        "model": "orchestrator:qwen3.6-35b",
         "allowed_tools": "all",
         "system_prompt": (
             "You are a senior UI/UX designer and design systems expert. You analyse designs "
@@ -3504,6 +3518,22 @@ RETIRED_MODELS = {
 }
 
 def load_personas() -> dict:
+    # Check for enhanced personas first (user-installed improvements)
+    ENHANCED_FILE = WORKDIR / "personas_enhanced.json"
+    if ENHANCED_FILE.exists():
+        try:
+            p = json.loads(ENHANCED_FILE.read_text())
+            # Merge with defaults for any missing personas
+            for name, cfg in DEFAULT_PERSONAS.items():
+                if name not in p:
+                    p[name] = dict(cfg)
+            # Save merged result to personas.json for consistency
+            WORKDIR.mkdir(parents=True, exist_ok=True)
+            PERSONAS_FILE.write_text(json.dumps(p, indent=2))
+            return p
+        except Exception as e:
+            print(c(f"warning: personas_enhanced.json unreadable ({e}); falling back", "yellow"))
+    
     if not PERSONAS_FILE.exists():
         WORKDIR.mkdir(parents=True, exist_ok=True)
         PERSONAS_FILE.write_text(json.dumps(DEFAULT_PERSONAS, indent=2))
@@ -4209,6 +4239,10 @@ def run_agent(query: str, persona: dict, depth: int = 0, spawn_ctx: dict = None,
             act.update("thinking…")
             msg = call_gateway(model, messages, schemas)
             tool_calls = msg.get("tool_calls") or []
+            # Hard cap per turn: prevents context explosion → OOM crashes
+            if MAX_TOOL_CALLS_PER_ROUND > 0 and len(tool_calls) > MAX_TOOL_CALLS_PER_ROUND:
+                emit(c(f"  [cap: {len(tool_calls)} tool calls → executing first {MAX_TOOL_CALLS_PER_ROUND} only]", "yellow"))
+                tool_calls = tool_calls[:MAX_TOOL_CALLS_PER_ROUND]
             if not tool_calls:
                 ans = strip_thinking(msg.get("content") or "") or "[no answer]"
                 if _looks_degenerate(ans):

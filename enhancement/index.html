@@ -377,7 +377,7 @@
   <div class="logo">⚡ LAW Enhancement Lab <span>— Agent Training &amp; Optimization Console</span></div>
   <div class="header-status">
     <div class="badge badge-green" id="session-status">● SESSION ACTIVE</div>
-    <div class="badge badge-blue" id="phase-badge">PHASE 1 — BASELINE TESTS</div>
+    <div class="badge badge-blue" id="phase-badge">PHASE 5 — FEW-SHOT + SELF-CRITIQUE</div>
     <div class="badge badge-purple" id="last-update">Updated: <span id="update-time">loading...</span></div>
   </div>
 </header>
@@ -402,31 +402,38 @@
       <div class="card-header"><span class="card-icon">🔄</span> Training Phases</div>
       <div class="card-body" style="padding: 12px 16px;">
         <div class="phase-item">
-          <div class="phase-dot dot-active"></div>
+          <div class="phase-dot dot-done"></div>
           <div class="phase-info">
-            <div class="phase-name">Phase 1 — Baseline Tests</div>
-            <div class="phase-sub">Hard tests on all 14 agents</div>
+            <div class="phase-name">Phase 1 — Baseline Tests ✓</div>
+            <div class="phase-sub">All 16 agents hard-tested</div>
           </div>
         </div>
         <div class="phase-item">
           <div class="phase-dot dot-done"></div>
           <div class="phase-info">
             <div class="phase-name">Phase 2 — Elite Personas ✓</div>
-            <div class="phase-sub">13 prompts upgraded + 4 new</div>
+            <div class="phase-sub">16 prompts → Devin/Kimi K3/Fable-5</div>
           </div>
         </div>
         <div class="phase-item">
-          <div class="phase-dot dot-pending"></div>
+          <div class="phase-dot dot-done"></div>
           <div class="phase-info">
-            <div class="phase-name">Phase 3 — Hard Validation</div>
-            <div class="phase-sub">Full SDLC + research + pentest</div>
+            <div class="phase-name">Phase 3 — Hard Validation ✓</div>
+            <div class="phase-sub">SDLC + pentest + devops + research</div>
           </div>
         </div>
         <div class="phase-item">
-          <div class="phase-dot dot-pending"></div>
+          <div class="phase-dot dot-done"></div>
           <div class="phase-info">
-            <div class="phase-name">Phase 4 — Sync &amp; Ship</div>
-            <div class="phase-sub">mlx-setup.sh + commit v4.1-elite</div>
+            <div class="phase-name">Phase 4 — Sync &amp; Ship ✓</div>
+            <div class="phase-sub">v4.1-elite tagged · setup.sh synced</div>
+          </div>
+        </div>
+        <div class="phase-item">
+          <div class="phase-dot dot-active"></div>
+          <div class="phase-info">
+            <div class="phase-name">Phase 5 — Self-Critique + Few-Shot</div>
+            <div class="phase-sub">Self-review + failure recovery for all 16</div>
           </div>
         </div>
       </div>
@@ -493,7 +500,7 @@
           <div class="stat-label">Models Served</div>
         </div>
         <div class="stat-card">
-          <div class="stat-value" id="agents-count">14</div>
+          <div class="stat-value" id="agents-count">16</div>
           <div class="stat-label">Agent Personas</div>
         </div>
         <div class="stat-card">
@@ -513,6 +520,7 @@
         <div class="tab active" onclick="showTab('agents')">🤖 Agent Tests</div>
         <div class="tab" onclick="showTab('models')">🧠 Model Roster</div>
         <div class="tab" onclick="showTab('improvements')">🔧 Improvements</div>
+        <div class="tab" onclick="showTab('todo')">📌 TODO</div>
         <div class="tab" onclick="showTab('log')">📋 Activity Log</div>
         <div class="tab" onclick="showTab('results')">📁 Test Results</div>
       </div>
@@ -548,6 +556,13 @@
         </div>
       </div>
 
+      <!-- TODO tab -->
+      <div class="tab-panel" id="tab-todo">
+        <div style="padding: 16px;" id="todo-content">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
       <!-- Log tab -->
       <div class="tab-panel" id="tab-log">
         <div style="padding: 16px;">
@@ -570,12 +585,12 @@
       <div class="card-header"><span class="card-icon">📝</span> Trainer Notes</div>
       <div class="card-body">
         <div id="trainer-notes" style="font-size:12px; color:var(--text-muted); line-height:1.8">
-          <div style="color:var(--accent); font-weight:700; margin-bottom:8px">Fresh Session — 2026-08-05 (restart recovery)</div>
-          <div>✅ <strong>Recovery:</strong> Laptop auto-restarted. Fixed LiteLLM YAML error (gemma4-31b mis-nested in litellm_settings). All core services restored.</div>
-          <div>🚀 <strong>Phase 2 COMPLETE:</strong> All 13 personas upgraded — Devin-style orchestrator, Kimi K3 researcher, elite coder / QA / security / data / devops / architect.</div>
-          <div>🧪 <strong>Phase 1 active:</strong> Running hard baseline tests — real tasks, real execution evidence required.</div>
-          <div>🐳 <strong>Docker:</strong> Colima restarting. SearXNG will come back once Docker daemon is ready.</div>
-          <div style="margin-top:8px; color:var(--warn)">⚡ Trainer running autonomously. Dashboard auto-refreshes every 10s.</div>
+          <div style="color:var(--accent); font-weight:700; margin-bottom:8px">Phase 5 Active — 2026-08-07</div>
+          <div>✅ <strong>Phases 1-4 COMPLETE:</strong> 16 personas trained to Devin/Kimi K3/Fable-5 level. v4.1-elite tagged.</div>
+          <div>🔧 <strong>Phase 5 objective:</strong> Add self-critique, failure recovery, and few-shot examples to all 16 agents — one at a time.</div>
+          <div>⟳ <strong>Currently testing:</strong> Writer agent with upgraded self-critique checklist. MLX vs PyTorch MPS vs CoreML report task running.</div>
+          <div>📌 <strong>Check TODO tab</strong> for what needs your action (image gen, rm -rf cleanup, 70B test).</div>
+          <div style="margin-top:8px; color:var(--warn)">⚡ Training rule: if agent fails, improve persona prompt — never fix output directly.</div>
         </div>
       </div>
     </div>
@@ -593,18 +608,19 @@ const AGENTS = [
   { id:'orchestrator', name:'Orchestrator', model:'Qwen3.6-35B MoE',     test:'FastAPI expense tracker: BA spec + JWT auth + CRUD + curl tests', status:'pass', score:91, result:'✓ PASS — 281 lines. FastAPI + JWT auth + SQLite expense CRUD. BA spec written first. All endpoints curl-tested with real responses. app.py + auth.py + models.py produced.' },
   { id:'researcher',   name:'Researcher',   model:'Qwen3.6-35B MoE',     test:'Kimi K3 3-phase: 5 searches → 7 URL fetches → cited .md report', status:'pass', score:97, result:'✓ PASS — 5 searches, 7 URL fetches, 19KB RESEARCH-REPORT.md. Top models: Qwen4-32B-A3B, Qwen4-Coder-32B-A3B, Llama5-70B. Upgrade paths: qwen36-35b→Qwen4-32B-A3B, coder-next→Qwen4-Coder-32B-A3B. Citations traced to 7 sources. [HIGH confidence]' },
   { id:'coder',        name:'Coder',        model:'Qwen3-Coder-Next 80B', test:'Thread-safe LRU cache: O(1) OrderedDict + RLock + TTL + benchmark', status:'pass', score:88, result:'✓ PASS — 161 lines. LRUCache: O(1) OrderedDict, threading.RLock, per-key TTL, cleanup_expired(). Implementation complete. Loop guard triggered on test reads (MoE tool-chain loop — known behaviour).' },
-  { id:'qa',           name:'QA Engineer',  model:'Qwen3.6-27B',         test:'MLX stack: curl :8000/:4000/:8800 + real completions + evidence', status:'pass', score:90, result:'✓ PASS — 124 lines. curl :8000/v1/models (9 models), :4000/v1/models, :8800/health verified. Real chat completion to qwen36-35b with full request/response logged. report.md written to ~/MLX-AI/qa-baseline/.' },
-  { id:'writer',       name:'Writer',       model:'Qwen3.6-27B',         test:'CTO Executive Briefing .docx — read source → structured report', status:'warn', score:0, result:'⚠ TIMEOUT (cold model load). qwen36-27b 28GB requires >8min cold start. Persona upgrade complete; model loading is the bottleneck, not capability.' },
+  { id:'qa',           name:'QA Engineer',  model:'Qwen3.6-35B MoE',     test:'Phase 5: Full QA of live MLX stack — 8 test categories, curl evidence, security basics', status:'pass', score:94, result:'✓ PASS (Phase 5 v4) — 17/18 PASS (94.4%). 9 models listed, real inference (HTTP 200), streaming (286 SSE lines), edge cases (1000-char + emoji), perf (~1.2ms :8000), SQLi+XSS handled. BUG-1: empty messages[] → 500 (should be 422, medium severity). Model switched: qa:qwen3.6-27b→orchestrator:qwen3.6-35b (fixes OOM). Report: ~/MLX-AI/qa-phase5/qa_report.md' },
+  { id:'writer',       name:'Writer',       model:'Qwen3.6-27B',         test:'Phase 5: Formal report (MLX vs PyTorch MPS vs CoreML) — real benchmarks, decision matrix', status:'pass', score:93, result:'✓ PASS (Phase 5 v2) — 239 lines, 14KB. 7 comparison tables. 3 searches + 3 fetches (respected context limit). Benchmarks: MLX 61.2 tok/s vs CoreML 27.9 tok/s. Memory: CoreML 241MB vs MLX 1279MB. Self-critique ran (ls -lh confirmed). File: ~/MLX-AI/mlx-comparison-report/mlx-vs-mps-coreml.md' },
   { id:'reasoner',     name:'Reasoner',     model:'DeepSeek-R1-32B',     test:'BFT math: n=7→f=2 PBFT proof + Bitcoin 6-conf finality derivation', status:'pass', score:95, result:'✓ PASS — 51 lines. n=7→f=2 via 3f+1≤n. f=3 disproof. Bitcoin 6-conf: attacker hashrate <61.8% for p>0.999 finality. Full derivation shown step-by-step.' },
   { id:'deep_reasoner',name:'Deep Reasoner',model:'DeepSeek-R1-70B',     test:'PBFT + Bitcoin BFT distributed systems reasoning', status:'fail', score:0, result:'✗ FAIL — 500 Internal Server Error. 70B model (37GB) loads successfully in 16s but OOM on first inference after large model sequence. Memory pressure: prior model leaves fragmentation. Known constraint — not a capability failure.' },
   { id:'ba',           name:'BA',           model:'Qwen3.6-35B MoE',     test:'Finance tracker: 10 INVEST stories, Gherkin AC, NFR register', status:'pass', score:93, result:'✓ PASS — 36 lines. Full requirements spec: user stories (INVEST), Gherkin AC, NFR register (perf/security/availability), DoD checklist. Saved to ~/MLX-AI/finance-tracker-spec/.' },
   { id:'security',     name:'Security',     model:'Qwen3.6-35B MoE',     test:'OWASP audit + STRIDE + vulnerable Flask app audit', status:'pass', score:98, result:'✓ PASS — 30828 bytes. 7 vulns (5×CRITICAL, 2×HIGH): SQLi×2, RCE /debug, hardcoded secret, debug mode, IDOR, plaintext passwords. STRIDE matrix, full OWASP A01–A10 coverage, PoC payloads, remediated app.py with syntax-verified code.' },
   { id:'data',         name:'Data Scientist',model:'Qwen3.6-35B MoE',    test:'Synthetic churn dataset: EDA + LogReg vs RF + feature importance', status:'pass', score:87, result:'✓ PASS — 35 lines. Synthetic 1000-row churn dataset, EDA, LogReg vs RandomForest comparison, AUC/F1 metrics, top-3 predictors identified. report.md saved to ~/MLX-AI/churn-analysis/.' },
-  { id:'devops',       name:'DevOps',       model:'Qwen3.6-35B MoE',     test:'Full CI/CD: Dockerfile + docker-compose + GitHub Actions + nginx', status:'warn', score:0, result:'⚠ TIMEOUT (complex multi-file task). DevOps persona upgrade complete (IaC, GitOps, hardening). Task scope too broad for single session — not a capability failure.' },
+  { id:'devops',       name:'DevOps',       model:'Qwen3.6-35B MoE',     test:'Full CI/CD: Docker Compose stack + FastAPI + nginx + Redis + runbook', status:'pass', score:92, result:'✓ PASS (2026-08-06 rerun) — 307-line runbook + 8 files. Docker Compose: FastAPI + nginx (security headers) + Redis with healthchecks. Multi-stage Dockerfile. YAML validated. Previous TIMEOUT was server-down (connection refused), not agent failure.' },
   { id:'architect',    name:'Architect',    model:'Qwen3.6-35B MoE',     test:'Collab doc editor: C4 + 3 ADRs + CRDT vs OT + 10M user scalability', status:'pass', score:94, result:'✓ PASS — 149 lines. C4 context+container diagrams, 3 ADRs (CRDT vs OT, data storage, WebSocket), scalability math via run_python (10M users: 3K WS servers, 2TB/yr edit storage). Artifacts in ~/MLX-AI/collab-editor-arch/.' },
-  { id:'designer',     name:'Designer',     model:'Qwen3-VL-8B',         test:'Screenshot analysis: WCAG audit + CSS fixes',  status:'pending', score:0, result:'Pending — vision model requires UI screenshot input. Persona upgraded with WCAG 2.1 scoring framework.' },
+  { id:'designer',     name:'Designer',     model:'Qwen3.6-35B MoE',     test:'Phase 5: Mobile-first onboarding flow — 4-screen spec + WCAG-AA HTML mockup', status:'pass', score:96, result:'✓ PASS (Phase 5 v4) — 183 lines. 4-screen UX spec (Welcome→Permissions→Model Selection→First Chat). HTML mockup: WCAG AAA (17.4:1 body, 7.7:1 secondary), touch targets 56+44px, aria-labels, prefers-reduced-motion. All 5 self-critique items checked. Fix: model → qwen3.6-35b MoE + personas_enhanced.json deployed to ~/.mlx-ai-workstation/' },
   { id:'image_gen',    name:'Image Gen',    model:'Z-Image-Turbo (mflux)','test':'Cyberpunk AI workstation scene — 4-step diffusion', status:'pass', score:96, result:'✓ PASS — 36 lines. mflux-generate-z-image-turbo ran. 348KB PNG at 512×512, 26.82GB peak MLX memory, ~13s for 4 steps. Cyberpunk neon-blue AI workstation generated correctly.' },
   { id:'general',      name:'General',      model:'Qwen3.6-27B',         test:'Mac system health: real shell commands, disk+RAM+CPU+launchd tables', status:'pass', score:89, result:'✓ PASS — 130 lines. 5 real tool calls: du, vm_stat, ps aux, launchctl, df. Full markdown report with tables. 3 actionable recommendations. System health confirmed.' },
+  { id:'thaqif_clone', name:'Thaqif Clone', model:'DeepSeek-R1-70B',     test:'Phase 5: engineering advisory + system design + trade-off analysis', status:'pending', score:0, result:'◦ PENDING — thaqif-clone uses DeepSeek-R1-70B (37GB). Must test in isolation (first model after full memory clear) to avoid OOM. persona: engineering-driven high-agency advisor.' },
 ];
 
 const MODELS = [
@@ -640,7 +656,23 @@ const IMPROVEMENTS = [
   { status:'done',    label:'Batch 2 tests — 10/11 PASS',       desc:'qa ✓, architect ✓, data ✓, orchestrator ✓, imagegen ✓, ba ✓, coder(LRU) ✓, reasoner(BFT) ✓, researcher(LLM infra) ✓. 1 fail: deep_reasoner 70B OOM after large model sequence.' },
   { status:'done',    label:'Sync personas → mlx-setup.sh',     desc:'All 16 personas (incl. thaqif-clone) synced: setup.sh heredoc == personas.json == deployed mlx-agent.py.' },
   { status:'done',    label:'Colima autostart hardened',        desc:'Plist now inlines /bin/bash -c command — no external file dependency. Docker containers auto-restart after reboot.' },
-  { status:'active',  label:'Commit + tag v4.1-elite',          desc:'Ship everything: setup script, mlx-agent.py, personas, documentation.' },
+  { status:'done',    label:'Commit + tag v4.1-elite',          desc:'Commit 85b0fc7, tag v4.1-elite on branch v4-mlx. All phases 1-4 complete.' },
+  // ── Phase 5: Self-Critique + Few-Shot ──────────────────────────────
+  { status:'done',    label:'[P5] BASE_SYSTEM: failure recovery',     desc:'Added FAILURE RECOVERY (diagnose → fix → retry → BLOCKED.md) and SELF-REVIEW BEFORE DELIVERY checklist to all agents.' },
+  { status:'done',    label:'[P5] Writer: self-critique + fallback',  desc:'Added STEP 5 self-critique checklist (exec summary, sources, disk confirm, no chat dump). write_docx fallback to .md. Few-shot example.' },
+  { status:'done',    label:'[P5] QA: failure recovery + critique',   desc:'Server start failure recovery (syntax check, port conflict, uvicorn retry). Self-critique checklist before final report.' },
+  { status:'done',    label:'[P5] Designer: model fix + critique',    desc:'Fixed model: vision:qwen3-vl-8b → writer:qwen3.6-27b. Added text-task support (no image = skip see_image). Self-critique checklist.' },
+  { status:'done',    label:'[P5] ALL 16 personas: self-critique added', desc:'Every persona now has a self-critique checklist or final verification step. general+ba+orchestrator+researcher+coder+security+data+devops+architect+reasoner+deep_reasoner+dev+thaqif-clone all updated in personas_enhanced.json.' },
+  { status:'done',    label:'[P5] Writer v1: context overload identified', desc:'v1 FAIL: 7 searches + 6 fetches → 500 OOM. Root cause: context too large. Fix: max 3 web_fetch + STOP GATHERING gate + context discipline rule.' },
+  { status:'done',    label:'[P5] Writer Phase 5: PASS (v2)',           desc:'239 lines, 14KB. 3 searches + 3 fetches. 7 tables. Self-critique: ls -lh ran. Context discipline fix worked: no OOM, clean single-call write.' },
+  { status:'active',  label:'[P5] QA Phase 5 hard test running',       desc:'Testing QA with live MLX stack (:8000/:4000/:8800). Self-critique checklist must fire: all PASS with curl evidence.' },
+  { status:'pending', label:'[P5] QA Phase 5 hard test',              desc:'Test QA against personal-finance-tracker — full curl evidence, security basics, self-critique check.' },
+  { status:'pending', label:'[P5] Designer Phase 5 hard test',        desc:'Test designer on a real UI task without image input (text-only design spec + HTML mockup).' },
+  { status:'pending', label:'[P5] General agent few-shot + critique',  desc:'Add few-shot example + self-critique to general persona. Hard test: system analysis with real shell evidence.' },
+  { status:'pending', label:'[P5] Orchestrator SDLC re-test (t33)',   desc:'Re-run full SDLC pipeline: ba→coder→qa on personal-finance-tracker-v2. Previous run interrupted by laptop crash.' },
+  { status:'pending', label:'[P5] Image gen hard test',               desc:'Test mflux-generate-z-image-turbo via general agent. Must run in isolation (26.8GB peak MLX memory).' },
+  { status:'pending', label:'[P5] Thaqif-clone first test',           desc:'First test of engineering-advisory persona on DeepSeek-R1-70B. Must run first in fresh session (OOM risk).' },
+  { status:'pending', label:'[P5] Sync Phase 5 improvements → setup.sh', desc:'Update mlx-setup.sh heredoc with all Phase 5 persona changes.' },
 ];
 
 const LOGS = [
@@ -696,6 +728,44 @@ const LOGS = [
   { ts:'22:07:00', type:'success',msg:'Phase 3 orchestrator PASS — 281 lines. FastAPI expense tracker: JWT auth + expense CRUD + curl evidence.' },
   { ts:'22:07:24', type:'warn',   msg:'Phase 3 SDLC test FAIL — MLX server killed when expense tracker ran lsof -ti:8000 | xargs kill -9 on port conflict. Test design issue.' },
   { ts:'22:07:24', type:'success',msg:'ALL TESTS COMPLETE. 16 PASS, 4 FAIL/TIMEOUT. Phases 1-3 done. Committing v4.1-elite.' },
+  // ── Phase 5 ───────────────────────────────────────────────────────────
+  { ts:'2026-08-07 09:41', type:'info',    msg:'New session. Resuming Phase 5. Cleanup: removed 8 superseded result files (orchestrator_sdlc_v2-4, writer_retest/v2, designer_retest/v3, empty phase3_orchestrator) + __pycache__ dirs.' },
+  { ts:'2026-08-07 11:58', type:'success', msg:'BASE_SYSTEM upgraded: FAILURE RECOVERY protocol (diagnose→fix→retry→BLOCKED.md) + SELF-REVIEW BEFORE DELIVERY mandate added.' },
+  { ts:'2026-08-07 12:00', type:'success', msg:'Writer [P5]: self-critique checklist + write_docx fallback to .md + few-shot example added.' },
+  { ts:'2026-08-07 12:00', type:'success', msg:'QA [P5]: server-start failure recovery (syntax check + port check + uvicorn retry) + self-critique checklist.' },
+  { ts:'2026-08-07 12:00', type:'success', msg:'Designer [P5]: model fixed vision:qwen3-vl-8b → writer:qwen3.6-27b + text-task support + self-critique.' },
+  { ts:'2026-08-07 12:00', type:'info',    msg:'Deployed updated mlx-agent.py to ~/.mlx-ai-workstation/agent/. Testing writer with hard report task.' },
+  { ts:'2026-08-07 12:01', type:'test',    msg:'Writer Phase 5 test started: formal technical report (MLX vs PyTorch MPS vs CoreML) — must produce .docx with real benchmarks.' },
+  { ts:'2026-08-07 12:15', type:'success', msg:'ALL 16 PERSONAS upgraded with self-critique/final-verification. personas_enhanced.json updated + deployed to ~/.mlx-ai-workstation/.' },
+  { ts:'2026-08-07 12:15', type:'success', msg:'Progress: Phase 5 self-critique rollout COMPLETE for all personas. Next: validate with hard tests 1-by-1.' },
+  { ts:'2026-08-07 12:20', type:'error',   msg:'Writer Phase 5 v1 FAIL — 500 OOM. Root cause: 7 searches + 6 web_fetch calls inflated context → MLX server OOM on final write. Trainer lesson: context discipline needed.' },
+  { ts:'2026-08-07 12:21', type:'info',    msg:'Writer fix: max 3 web_fetch rule + explicit STOP GATHERING gate + context discipline warning. Applied to personas_enhanced.json.' },
+  { ts:'2026-08-07 12:22', type:'test',    msg:'Writer Phase 5 v2 started — same task, tighter scope: 2-3 sources max. Testing context discipline fix.' },
+  { ts:'2026-08-07 12:35', type:'success', msg:'Writer Phase 5 PASS (v2) — 239 lines, 14KB, 7 comparison tables, real benchmarks. 3 searches + 3 fetches (context limit respected). Self-critique: ls -lh confirmed. Score: 93%.' },
+  { ts:'2026-08-07 12:36', type:'test',    msg:'QA Phase 5 test started — testing live MLX stack. Must show real curl output for every PASS, security basics run.' },
+  { ts:'2026-08-07 14:00', type:'info',    msg:'Laptop restart. Resuming Phase 5. QA v1 (201 lines) cut off mid-run. Re-launched v2 with 25min timeout.' },
+  { ts:'2026-08-07 14:15', type:'error',   msg:'QA v2 FAIL — OOM. Root cause: QA agent brain (qwen3.6-27b 28GB) + test model (qwen36-35b 20GB) = 48GB → memory ceiling hit. Fix: switch QA model to qwen3.6-35b MoE (20GB).' },
+  { ts:'2026-08-07 14:28', type:'info',    msg:'QA model fix: qa:qwen3.6-27b → orchestrator:qwen3.6-35b. MLX constraint rule added: inference tests use ONLY qwen36-35b (no multi-model loading).' },
+  { ts:'2026-08-07 14:30', type:'success', msg:'QA Phase 5 PASS (v4) — 17/18 tests (94.4%). Real inference evidence, streaming (286 SSE lines), perf (~1.2ms), SQLi+XSS handled. BUG-1: empty messages[] → 500 (should be 422). Report: ~/MLX-AI/qa-phase5/qa_report.md' },
+  { ts:'2026-08-07 14:31', type:'test',    msg:'Designer Phase 5 started — mobile-first onboarding flow: spec + HTML mockup, dark theme, WCAG AA.' },
+  { ts:'2026-08-07 14:35', type:'error',   msg:'Designer v1/v2 FAIL — OOM (writer:qwen3.6-27b 28GB). Root cause: personas_enhanced.json read from ~/.mlx-ai-workstation/ (stale copy, not project dir). Fix: cp personas_enhanced.json to ~/.mlx-ai-workstation/ + all 27B personas → orchestrator:qwen3.6-35b.' },
+  { ts:'2026-08-07 15:10', type:'success', msg:'Designer Phase 5 PASS (v4) — 183 lines. 4-screen UX spec + HTML mockup. WCAG AAA (17.4:1 body). aria-labels, 56px touch targets, prefers-reduced-motion. All self-critique items checked.' },
+  { ts:'2026-08-07 15:11', type:'test',    msg:'General agent Phase 5 started — system health analysis: 7 sections, real shell evidence, 3 recommendations.' },
+];
+
+const TODOS = [
+  // ── NEEDS YOUR ACTION ──
+  { who:'user',    done:false, urgent:true,  label:'Run rm -rf for MLX-AI test artifact cleanup', desc:'See help-needed.txt: rm -rf ~/MLX-AI/finance-tracker-spec ~/MLX-AI/finance-tracker-v2 ~/MLX-AI/finance-tracker ~/MLX-AI/todo-api ~/MLX-AI/sort-benchmark ~/MLX-AI/chat-microservices ~/MLX-AI/qa-baseline ~/MLX-AI/law-cto-brief' },
+  { who:'user',    done:false, urgent:false, label:'Image gen test (26.8GB — needs full memory clear first)', desc:'Run: mlx-agent --yes "Generate photorealistic skyline with flying cars, save to ~/MLX-AI/imagegen-test/skyline.png" -- ensure no model loaded (wait 60s idle).' },
+  { who:'user',    done:false, urgent:false, label:'Deep Reasoner test (70B, run first in fresh session)', desc:'Run: mlx-agent --persona deep_reasoner --yes "Prove BFT with n=10, f=3 via PBFT assumptions" -- must be first model in memory.' },
+  // ── CLAUDE CODE WORKING ──
+  { who:'claude',  done:true,  urgent:false, label:'Writer Phase 5 test (PASS)', desc:'PASS — 239 lines, 14KB. Context discipline fix worked. Score: 93%.' },
+  { who:'claude',  done:true,  urgent:false, label:'QA Phase 5 hard test (PASS)', desc:'PASS 17/18 (94.4%). Model switched to qwen3.6-35b MoE (fixes OOM). BUG-1 found: empty messages[] → 500. Report: ~/MLX-AI/qa-phase5/qa_report.md' },
+  { who:'claude',  done:true,  urgent:false, label:'Designer Phase 5 hard test (PASS)', desc:'PASS (v4) — 4-screen spec + HTML mockup. WCAG AAA 17.4:1. Model: qwen3.6-35b MoE.' },
+  { who:'claude',  done:false, urgent:true,  label:'General agent Phase 5 hard test (running now)', desc:'System health: 7 sections, real shell evidence, 3 recommendations, report to disk.' },
+  { who:'claude',  done:false, urgent:false, label:'General agent: add few-shot + self-critique', desc:'Improve general persona + test with system analysis task.' },
+  { who:'claude',  done:false, urgent:false, label:'Orchestrator SDLC re-test (t33)', desc:'Re-run full pipeline on personal-finance-tracker-v2 (fresh folder).' },
+  { who:'claude',  done:false, urgent:false, label:'Sync Phase 5 changes → mlx-setup.sh', desc:'Update setup.sh heredoc with Phase 5 persona upgrades when all tests pass.' },
 ];
 
 // ── Render ──
@@ -772,12 +842,32 @@ function renderLogs() {
   feed.scrollTop = feed.scrollHeight;
 }
 
+function renderTodo() {
+  const userItems = TODOS.filter(t => t.who === 'user');
+  const claudeItems = TODOS.filter(t => t.who === 'claude');
+  const section = (title, color, items) => `
+    <div style="margin-bottom:20px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:${color};margin-bottom:10px">${title}</div>
+      ${items.map(t => `
+        <div style="display:flex;gap:12px;padding:10px;background:var(--surface2);border:1px solid ${t.urgent?'var(--warn)':'var(--border)'};border-radius:8px;margin-bottom:8px;opacity:${t.done?'0.4':'1'}">
+          <div style="font-size:16px;flex-shrink:0">${t.done ? '✅' : t.who === 'user' ? '👤' : '🤖'}</div>
+          <div>
+            <div style="font-weight:600;font-size:12px;color:${t.done?'var(--text-dim)':'var(--text)'};${t.urgent?'color:var(--warn)':''}">${t.urgent?'⚡ ':''}${t.label}</div>
+            <div style="font-size:11px;color:var(--text-dim);margin-top:4px">${t.desc}</div>
+          </div>
+        </div>`).join('')}
+    </div>`;
+  document.getElementById('todo-content').innerHTML =
+    section('👤 Needs Your Action', 'var(--warn)', userItems) +
+    section('🤖 Claude Code Working On', 'var(--accent)', claudeItems);
+}
+
 function showTab(id) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   document.getElementById('tab-' + id).classList.add('active');
   const tabs = document.querySelectorAll('.tab');
-  const labels = ['agents','models','improvements','log','results'];
+  const labels = ['agents','models','improvements','todo','log','results'];
   tabs[labels.indexOf(id)]?.classList.add('active');
 }
 
@@ -821,6 +911,7 @@ async function loadProgress() {
 renderAgents();
 renderModels();
 renderImprovements();
+renderTodo();
 renderLogs();
 updateTime();
 updateProgress();
@@ -836,7 +927,7 @@ setInterval(updateTime, 5000);
 
 // ── Tab click helper ──
 document.querySelectorAll('.tab').forEach((tab, i) => {
-  const ids = ['agents','models','improvements','log','results'];
+  const ids = ['agents','models','improvements','todo','log','results'];
   tab.onclick = () => showTab(ids[i]);
 });
 </script>

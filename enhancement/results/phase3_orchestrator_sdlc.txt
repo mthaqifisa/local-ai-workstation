@@ -1,2 +1,0 @@
-mlx-agent  persona=orchestrator  model=orchestrator:qwen3.6-35b  gateway=http://localhost:8000/v1
-gateway error: 404 Client Error: Not Found for url: http://localhost:8000/v1/chat/completions — is :4000 up?
