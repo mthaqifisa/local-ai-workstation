@@ -1,0 +1,26 @@
+HELP NEEDED — Commands for you to run
+======================================
+2 tasks remain — both require user-initiated runs due to memory constraints.
+Generated: 2026-08-08
+
+────────────────────────────────────────────────────
+ACTION 1: Image Generation Test [t60 — RUN AFTER FULL MEMORY CLEAR]
+────────────────────────────────────────────────────
+Wait for all models to unload (60s idle after last inference), then:
+
+mlx-agent --yes "Generate a photorealistic image of a futuristic city skyline at sunset with flying cars and holographic billboards. Save to ~/MLX-AI/imagegen-test/skyline.png with 4 steps at 512x512."
+
+Expected: mflux-generate-z-image-turbo runs, skyline.png appears (~348KB), ~13s generation.
+After running: tell Claude Code the result so it can update the dashboard.
+
+────────────────────────────────────────────────────
+ACTION 2: Deep Reasoner Test [t61 — RUN FIRST IN FRESH SESSION]
+────────────────────────────────────────────────────
+Must be the FIRST model loaded in a fresh memory state (70B = 37GB, OOM after other models).
+Best run immediately after a reboot or after waiting 10+ min with no model activity.
+
+mlx-agent --persona deep_reasoner --yes "Prove that in a Byzantine Fault Tolerant system with n=10 nodes, the maximum number of faulty nodes that can be tolerated is f=3. Show the full mathematical proof using PBFT assumptions and the 3f+1<=n theorem. Verify with run_python."
+
+Expected: full mathematical proof with run_python verification, 50+ lines.
+After running: tell Claude Code the result so it can update the dashboard.
+────────────────────────────────────────────────────
