@@ -51,9 +51,9 @@ case "$MODEL" in
     CMD="mflux-generate-z-image"
     ;;
   edit|img2img)
-    CMD="mflux-generate"
-    ARGS+=(--base-model dev --guidance 3.5)
-    [ -n "${8:-}" ] && ARGS+=(--image "$8" --image-strength "${9:-0.65}")
+    CMD="mflux-generate-qwen"
+    ARGS+=(--quantize 4)
+    [ -n "${8:-}" ] && ARGS+=(--image-path "$8" --image-strength "${9:-0.65}")
     ;;
   dev|schnell|krea-dev)
     CMD="mflux-generate"

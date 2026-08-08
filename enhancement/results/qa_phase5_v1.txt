@@ -1,0 +1,202 @@
+mlx-agent  persona=qa  model=qa:qwen3.6-27b  gateway=http://localhost:8000/v1
+  → run_shell(command='mkdir -p ~/MLX-AI/mlx-stack-qa')
+  $ mkdir -p ~/MLX-AI/mlx-stack-qa
+  → run_shell(command='lsof -i :8000 -i :4000 -i :8800 2>/dev/null | head -30')
+  $ lsof -i :8000 -i :4000 -i :8800 2>/dev/null | head -30
+  → run_shell(command="curl -s -w '\\nHTTP_CODE:%{http_code}' http://localhost:8000/v1/models 2>&1")
+  $ curl -s -w '\nHTTP_CODE:%{http_code}' http://localhost:8000/v1/models 2>&1
+  → run_shell(command="curl -s -w '\\nHTTP_CODE:%{http_code}' http://localhost:4000/v1/models 2>&1")
+  $ curl -s -w '\nHTTP_CODE:%{http_code}' http://localhost:4000/v1/models 2>&1
+  → run_shell(command="curl -s -w '\\nHTTP_CODE:%{http_code}' http://localhost:8800/health 2>&1")
+  $ curl -s -w '\nHTTP_CODE:%{http_code}' http://localhost:8800/health 2>&1
+  → run_shell(command="curl -s -w '\\nHTTP_CODE:%{http_code}' http://localhost:8800/ 2>&1 | head -50")
+  $ curl -s -w '\nHTTP_CODE:%{http_code}' http://localhost:8800/ 2>&1 | head -50
+  → run_shell(command="curl -s -w '\\nHTTP_CODE:%{http_code}' http://localhost:8800/api/health 2>&1")
+  $ curl -s -w '\nHTTP_CODE:%{http_code}' http://localhost:8800/api/health 2>&1
+  → run_shell(command="curl -s -w '\\nHTTP_CODE:%{http_code}' http://localhost:8800/status 2>&1")
+  $ curl -s -w '\nHTTP_CODE:%{http_code}' http://localhost:8800/status 2>&1
+  → run_shell(command="curl -s -w '\\nHTTP_CODE:%{http_code}' http://localhost:8800/api/status 2>&1")
+  $ curl -s -w '\nHTTP_CODE:%{http_code}' http://localhost:8800/api/status 2>&1
+  → run_shell(command="curl -s -w '\\nHTTP_CODE:%{http_code}' http://localhost:8800/api/models 2>&1")
+  $ curl -s -w '\nHTTP_CODE:%{http_code}' http://localhost:8800/api/models 2>&1
+  → run_shell(command="curl -s -w '\\nHTTP_CODE:%{http_code}' http://localhost:8800/api/system 2>&1")
+  $ curl -s -w '\nHTTP_CODE:%{http_code}' http://localhost:8800/api/system 2>&1
+  → run_shell(command='curl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen36-35b",\n    "messages": [{"role": "user", "content": "Say exactly: MLX QA TEST PASSED. No other words."}],\n    "max_tokens": 30,\n    "temperature": 0\n  }\' 2>&1')
+  $ curl -s -w '\nHTTP_CODE:%{http_code}' -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen36-35b",
+    "messages": [{"role": "user", "content": "Say exactly: MLX QA TEST PASSED. No other words."}],
+    "max_tokens": 30,
+    "temperature": 0
+  }' 2>&1
+  → run_shell(command='curl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:4000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer dummy" \\\n  -d \'{\n    "model": "orchestrator:qwen3.6-35b",\n    "messages": [{"role": "user", "content": "Say exactly: LITELLM QA TEST PASSED. No other words."}],\n    "max_tokens": 30,\n    "temperature": 0\n  }\' 2>&1')
+  $ curl -s -w '\nHTTP_CODE:%{http_code}' -X POST http://localhost:4000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer dummy" \
+  -d '{
+    "model": "orchestrator:qwen3.6-35b",
+    "messages": [{"role": "user", "content": "Say exactly: LITELLM QA TEST PASSED. No other words."}],
+    "max_tokens": 30,
+    "temperature": 0
+  }' 2>&1
+  → run_shell(command='# MLX: empty messages array\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen36-35b",\n    "messages": [],\n    "max_tokens": 10\n  }\' 2>&1')
+  $ # MLX: empty messages array
+curl -s -w '\nHTTP_CODE:%{http_code}' -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen36-35b",
+    "messages": [],
+    "max_tokens": 10
+  }' 2>&1
+  → run_shell(command='# MLX: nonexistent model\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "nonexistent-model",\n    "messages": [{"role": "user", "content": "hello"}],\n    "max_tokens": 10\n  }\' 2>&1')
+  $ # MLX: nonexistent model
+curl -s -w '\nHTTP_CODE:%{http_code}' -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "nonexistent-model",
+    "messages": [{"role": "user", "content": "hello"}],
+    "max_tokens": 10
+  }' 2>&1
+  → run_shell(command='# MLX: missing model field\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "messages": [{"role": "user", "content": "hello"}],\n    "max_tokens": 10\n  }\' 2>&1')
+  $ # MLX: missing model field
+curl -s -w '\nHTTP_CODE:%{http_code}' -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [{"role": "user", "content": "hello"}],
+    "max_tokens": 10
+  }' 2>&1
+  → run_shell(command='# LiteLLM: wrong auth token (does it reject?)\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:4000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer wrong-token" \\\n  -d \'{\n    "model": "orchestrator:qwen3.6-35b",\n    "messages": [{"role": "user", "content": "hello"}],\n    "max_tokens": 10\n  }\' 2>&1 | head -5')
+  $ # LiteLLM: wrong auth token (does it reject?)
+curl -s -w '\nHTTP_CODE:%{http_code}' -X POST http://localhost:4000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer wrong-token" \
+  -d '{
+    "model": "orchestrator:qwen3.6-35b",
+    "messages": [{"role": "user", "content": "hello"}],
+    "max_tokens": 10
+  }' 2>&1 | head -5
+  → run_shell(command='# Security: SQL injection in prompt via MLX\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen36-35b",\n    "messages": [{"role": "user", "content": "SELECT * FROM users; DROP TABLE users; --"}],\n    "max_tokens": 15,\n    "temperature": 0\n  }\' 2>&1')
+  $ # Security: SQL injection in prompt via MLX
+curl -s -w '\nHTTP_CODE:%{http_code}' -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen36-35b",
+    "messages": [{"role": "user", "content": "SELECT * FROM users; DROP TABLE users; --"}],
+    "max_tokens": 15,
+    "temperature": 0
+  }' 2>&1
+  → run_shell(command='# Security: XSS payload in prompt via MLX\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen36-35b",\n    "messages": [{"role": "user", "content": "<script>alert(\\"XSS\\")</script>"}],\n    "max_tokens": 15,\n    "temperature": 0\n  }\' 2>&1')
+  $ # Security: XSS payload in prompt via MLX
+curl -s -w '\nHTTP_CODE:%{http_code}' -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen36-35b",
+    "messages": [{"role": "user", "content": "<script>alert(\"XSS\")</script>"}],
+    "max_tokens": 15,
+    "temperature": 0
+  }' 2>&1
+  → run_shell(command='# Security: SQL injection via LiteLLM\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:4000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer dummy" \\\n  -d \'{\n    "model": "orchestrator:qwen3.6-35b",\n    "messages": [{"role": "user", "content": "SELECT * FROM users; DROP TABLE users; --"}],\n    "max_tokens": 15,\n    "temperature": 0\n  }\' 2>&1')
+  $ # Security: SQL injection via LiteLLM
+curl -s -w '\nHTTP_CODE:%{http_code}' -X POST http://localhost:4000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer dummy" \
+  -d '{
+    "model": "orchestrator:qwen3.6-35b",
+    "messages": [{"role": "user", "content": "SELECT * FROM users; DROP TABLE users; --"}],
+    "max_tokens": 15,
+    "temperature": 0
+  }' 2>&1
+  → run_shell(command='# Security: XSS via LiteLLM\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:4000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer dummy" \\\n  -d \'{\n    "model": "orchestrator:qwen3.6-35b",\n    "messages": [{"role": "user", "content": "<script>alert(\\"XSS\\")</script>"}],\n    "max_tokens": 15,\n    "temperature": 0\n  }\' 2>&1')
+  $ # Security: XSS via LiteLLM
+curl -s -w '\nHTTP_CODE:%{http_code}' -X POST http://localhost:4000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer dummy" \
+  -d '{
+    "model": "orchestrator:qwen3.6-35b",
+    "messages": [{"role": "user", "content": "<script>alert(\"XSS\")</script>"}],
+    "max_tokens": 15,
+    "temperature": 0
+  }' 2>&1
+  → run_shell(command='# Performance: time 5 sequential requests to MLX /v1/models (lightweight endpoint)\nfor i in 1 2 3 4 5; do\n  start=$(date +%s%N)\n  curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/v1/models\n  end=$(date +%s%N)\n  elapsed=$(( (end - start) / 1000000 ))\n  echo "Request $i: ${elapsed}ms"\ndone')
+  $ # Performance: time 5 sequential requests to MLX /v1/models (lightweight endpoint)
+for i in 1 2 3 4 5; do
+  start=$(date +%s%N)
+  curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/v1/models
+  end=$(date +%s%N)
+  elapsed=$(( (end - start) / 1000000 ))
+  echo "Request $i: ${elapsed}ms"
+done
+  → run_shell(command='# Performance: time 5 sequential requests to LiteLLM /v1/models\nfor i in 1 2 3 4 5; do\n  start=$(date +%s%N)\n  curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/v1/models\n  end=$(date +%s%N)\n  elapsed=$(( (end - start) / 1000000 ))\n  echo "Request $i: ${elapsed}ms"\ndone')
+  $ # Performance: time 5 sequential requests to LiteLLM /v1/models
+for i in 1 2 3 4 5; do
+  start=$(date +%s%N)
+  curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/v1/models
+  end=$(date +%s%N)
+  elapsed=$(( (end - start) / 1000000 ))
+  echo "Request $i: ${elapsed}ms"
+done
+  → run_shell(command='# Performance: time 5 sequential requests to Dashboard /api/status\nfor i in 1 2 3 4 5; do\n  start=$(date +%s%N)\n  curl -s -o /dev/null -w "%{http_code}" http://localhost:8800/api/status\n  end=$(date +%s%N)\n  elapsed=$(( (end - start) / 1000000 ))\n  echo "Request $i: ${elapsed}ms"\ndone')
+  $ # Performance: time 5 sequential requests to Dashboard /api/status
+for i in 1 2 3 4 5; do
+  start=$(date +%s%N)
+  curl -s -o /dev/null -w "%{http_code}" http://localhost:8800/api/status
+  end=$(date +%s%N)
+  elapsed=$(( (end - start) / 1000000 ))
+  echo "Request $i: ${elapsed}ms"
+done
+  → run_shell(command='# MLX: streaming chat completion (check it returns SSE stream)\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen36-35b",\n    "messages": [{"role": "user", "content": "Say: STREAM OK"}],\n    "max_tokens": 10,\n    "stream": true\n  }\' 2>&1 | head -20')
+  $ # MLX: streaming chat completion (check it returns SSE stream)
+curl -s -w '\nHTTP_CODE:%{http_code}' -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen36-35b",
+    "messages": [{"role": "user", "content": "Say: STREAM OK"}],
+    "max_tokens": 10,
+    "stream": true
+  }' 2>&1 | head -20
+  → run_shell(command='# LiteLLM: streaming chat completion\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:4000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer dummy" \\\n  -d \'{\n    "model": "orchestrator:qwen3.6-35b",\n    "messages": [{"role": "user", "content": "Say: STREAM OK"}],\n    "max_tokens": 10,\n    "stream": true\n  }\' 2>&1 | head -20')
+  $ # LiteLLM: streaming chat completion
+curl -s -w '\nHTTP_CODE:%{http_code}' -X POST http://localhost:4000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer dummy" \
+  -d '{
+    "model": "orchestrator:qwen3.6-35b",
+    "messages": [{"role": "user", "content": "Say: STREAM OK"}],
+    "max_tokens": 10,
+    "stream": true
+  }' 2>&1 | head -20
+  → run_shell(command='# Edge case: very long prompt (1000 chars) via MLX\nLONG_PROMPT=$(python3 -c "print(\'A\' * 1000)")\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d "{\n    \\"model\\": \\"qwen36-35b\\",\n    \\"messages\\": [{\\"role\\": \\"user\\", \\"content\\": \\"$LONG_PROMPT\\"}],\n    \\"max_tokens\\": 10,\n    \\"temperature\\": 0\n  }" 2>&1 | python3 -c "import sys,json; d=json.load(sys.stdin); print(f\'HTTP_CODE:200\'); print(f\'prompt_tokens: {d[\\"usage\\"][\\"prompt_tokens\\"]}\'); print(f\'completion: {d[\\"choices\\"][0][\\"message\\"][\\"content\\"][:60]}...\')"')
+  $ # Edge case: very long prompt (1000 chars) via MLX
+LONG_PROMPT=$(python3 -c "print('A' * 1000)")
+curl -s -w '\nHTTP_CODE:%{http_code}' -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"model\": \"qwen36-35b\",
+    \"messages\": [{\"role\": \"user\", \"content\": \"$LONG_PROMPT\"}],
+    \"max_tokens\": 10,
+    \"temperature\": 0
+  }" 2>&1 | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'HTTP_CODE:200'); print(f'prompt_tokens: {d[\"usage\"][\"prompt_tokens\"]}'); print(f'completion: {d[\"choices\"][0][\"message\"][\"content\"][:60]}...')"
+  → run_shell(command='# Edge case: long prompt (1000 chars) via MLX - fixed\nLONG_PROMPT=$(python3 -c "print(\'A\' * 1000)")\nRESP=$(curl -s -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d "{\n    \\"model\\": \\"qwen36-35b\\",\n    \\"messages\\": [{\\"role\\": \\"user\\", \\"content\\": \\"$LONG_PROMPT\\"}],\n    \\"max_tokens\\": 10,\n    \\"temperature\\": 0\n  }")\necho "$RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(f\'prompt_tokens: {d[\\"usage\\"][\\"prompt_tokens\\"]}\'); print(f\'completion_tokens: {d[\\"usage\\"][\\"completion_tokens\\"]}\'); print(f\'finish_reason: {d[\\"choices\\"][0][\\"finish_reason\\"]}\')"')
+  $ # Edge case: long prompt (1000 chars) via MLX - fixed
+LONG_PROMPT=$(python3 -c "print('A' * 1000)")
+RESP=$(curl -s -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"model\": \"qwen36-35b\",
+    \"messages\": [{\"role\": \"user\", \"content\": \"$LONG_PROMPT\"}],
+    \"max_tokens\": 10,
+    \"temperature\": 0
+  }")
+echo "$RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'prompt_tokens: {d[\"usage\"][\"prompt_tokens\"]}'); print(f'completion_tokens: {d[\"usage\"][\"completion_tokens\"]}'); print(f'finish_reason: {d[\"choices\"][0][\"finish_reason\"]}')"
+  → run_shell(command='# Edge case: special characters in prompt (unicode, emoji)\ncurl -s -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen36-35b",\n    "messages": [{"role": "user", "content": "What is this: 🚀 日本語 тест"}],\n    "max_tokens": 10,\n    "temperature": 0\n  }\' | python3 -c "import sys,json; d=json.load(sys.stdin); print(f\'prompt_tokens: {d[\\"usage\\"][\\"prompt_tokens\\"]}\'); print(f\'finish_reason: {d[\\"choices\\"][0][\\"finish_reason\\"]}\'); print(f\'content_preview: {d[\\"choices\\"][0][\\"message\\"][\\"content\\"][:60]}\')"')
+  $ # Edge case: special characters in prompt (unicode, emoji)
+curl -s -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen36-35b",
+    "messages": [{"role": "user", "content": "What is this: 🚀 日本語 тест"}],
+    "max_tokens": 10,
+    "temperature": 0
+  }' | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'prompt_tokens: {d[\"usage\"][\"prompt_tokens\"]}'); print(f'finish_reason: {d[\"choices\"][0][\"finish_reason\"]}'); print(f'content_preview: {d[\"choices\"][0][\"message\"][\"content\"][:60]}')"
+  → run_shell(command='# Edge case: max_tokens=0 (should return empty or error)\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen36-35b",\n    "messages": [{"role": "user", "content": "hello"}],\n    "max_tokens": 0,\n    "temperature": 0\n  }\' 2>&1')

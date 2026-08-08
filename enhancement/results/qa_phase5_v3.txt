@@ -1,0 +1,128 @@
+mlx-agent  persona=qa  model=qa:qwen3.6-27b  gateway=http://localhost:8000/v1
+  → run_shell(command="curl -s -w '\\nHTTP_CODE:%{http_code}' http://localhost:8000/v1/models 2>&1 | head -200")
+  $ curl -s -w '\nHTTP_CODE:%{http_code}' http://localhost:8000/v1/models 2>&1 | head -200
+  → run_shell(command="curl -s -w '\\nHTTP_CODE:%{http_code}' http://localhost:4000/v1/models 2>&1 | head -200")
+  $ curl -s -w '\nHTTP_CODE:%{http_code}' http://localhost:4000/v1/models 2>&1 | head -200
+  → run_shell(command="curl -s -w '\\nHTTP_CODE:%{http_code}' http://localhost:8800/ 2>&1 | head -100")
+  $ curl -s -w '\nHTTP_CODE:%{http_code}' http://localhost:8800/ 2>&1 | head -100
+  → run_shell(command='curl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:8000/v1/chat/completions \\\n  -H \'Content-Type: application/json\' \\\n  -d \'{"model":"qwen36-35b","messages":[{"role":"user","content":"Say hello in exactly 10 words."}],"max_tokens":100}\' 2>&1')
+  $ curl -s -w '\nHTTP_CODE:%{http_code}' -X POST http://localhost:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"qwen36-35b","messages":[{"role":"user","content":"Say hello in exactly 10 words."}],"max_tokens":100}' 2>&1
+  → run_shell(command='curl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:4000/v1/chat/completions \\\n  -H \'Content-Type: application/json\' \\\n  -d \'{"model":"orchestrator:qwen3.6-35b","messages":[{"role":"user","content":"Say hello in exactly 10 words."}],"max_tokens":100}\' 2>&1')
+  $ curl -s -w '\nHTTP_CODE:%{http_code}' -X POST http://localhost:4000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"orchestrator:qwen3.6-35b","messages":[{"role":"user","content":"Say hello in exactly 10 words."}],"max_tokens":100}' 2>&1
+  → run_shell(command='# Error: invalid model name on :8000\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:8000/v1/chat/completions \\\n  -H \'Content-Type: application/json\' \\\n  -d \'{"model":"nonexistent-model","messages":[{"role":"user","content":"hi"}]}\' 2>&1')
+  $ # Error: invalid model name on :8000
+curl -s -w '\nHTTP_CODE:%{http_code}' -X POST http://localhost:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"nonexistent-model","messages":[{"role":"user","content":"hi"}]}' 2>&1
+  → run_shell(command='# Error: empty messages array on :8000\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:8000/v1/chat/completions \\\n  -H \'Content-Type: application/json\' \\\n  -d \'{"model":"qwen36-35b","messages":[]}\' 2>&1')
+  $ # Error: empty messages array on :8000
+curl -s -w '\nHTTP_CODE:%{http_code}' -X POST http://localhost:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"qwen36-35b","messages":[]}' 2>&1
+  → run_shell(command='# Error: missing model field on :8000\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:8000/v1/chat/completions \\\n  -H \'Content-Type: application/json\' \\\n  -d \'{"messages":[{"role":"user","content":"hi"}]}\' 2>&1')
+  $ # Error: missing model field on :8000
+curl -s -w '\nHTTP_CODE:%{http_code}' -X POST http://localhost:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"messages":[{"role":"user","content":"hi"}]}' 2>&1
+  → run_shell(command='# Streaming test on :8000 with qwen36-35b\ncurl -s -X POST http://localhost:8000/v1/chat/completions \\\n  -H \'Content-Type: application/json\' \\\n  -d \'{"model":"qwen36-35b","messages":[{"role":"user","content":"Count from 1 to 3."}],"max_tokens":50,"stream":true}\' 2>&1 | head -30')
+  $ # Streaming test on :8000 with qwen36-35b
+curl -s -X POST http://localhost:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"qwen36-35b","messages":[{"role":"user","content":"Count from 1 to 3."}],"max_tokens":50,"stream":true}' 2>&1 | head -30
+  → run_shell(command='# Edge case: 1000-char prompt on :8000 with qwen36-35b\nLONG_PROMPT=$(python3 -c "print(\'A\' * 1000)")\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:8000/v1/chat/completions \\\n  -H \'Content-Type: application/json\' \\\n  -d "{\\"model\\":\\"qwen36-35b\\",\\"messages\\":[{\\"role\\":\\"user\\",\\"content\\":\\"${LONG_PROMPT}\\"}],\\"max_tokens\\":30}" 2>&1 | tail -5')
+  $ # Edge case: 1000-char prompt on :8000 with qwen36-35b
+LONG_PROMPT=$(python3 -c "print('A' * 1000)")
+curl -s -w '\nHTTP_CODE:%{http_code}' -X POST http://localhost:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d "{\"model\":\"qwen36-35b\",\"messages\":[{\"role\":\"user\",\"content\":\"${LONG_PROMPT}\"}],\"max_tokens\":30}" 2>&1 | tail -5
+  → run_shell(command='# Edge case: unicode/emoji prompt on :8000 with qwen36-35b\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:8000/v1/chat/completions \\\n  -H \'Content-Type: application/json\' \\\n  -d \'{"model":"qwen36-35b","messages":[{"role":"user","content":"🌍🚀 What is 2+2? Answer with emojis too! 日本語で答えてください。"}],"max_tokens":50}\' 2>&1')
+  $ # Edge case: unicode/emoji prompt on :8000 with qwen36-35b
+curl -s -w '\nHTTP_CODE:%{http_code}' -X POST http://localhost:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"qwen36-35b","messages":[{"role":"user","content":"🌍🚀 What is 2+2? Answer with emojis too! 日本語で答えてください。"}],"max_tokens":50}' 2>&1
+  → run_shell(command='# Security: SQL injection as prompt content via qwen36-35b\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:8000/v1/chat/completions \\\n  -H \'Content-Type: application/json\' \\\n  -d \'{"model":"qwen36-35b","messages":[{"role":"user","content":"SELECT * FROM users; DROP TABLE users; -- \\\\\' OR 1=1 --"}],"max_tokens":30}\' 2>&1')
+  $ # Security: SQL injection as prompt content via qwen36-35b
+curl -s -w '\nHTTP_CODE:%{http_code}' -X POST http://localhost:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"qwen36-35b","messages":[{"role":"user","content":"SELECT * FROM users; DROP TABLE users; -- \\' OR 1=1 --"}],"max_tokens":30}' 2>&1
+  → run_shell(command='# Security: XSS payload as prompt content via qwen36-35b\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:8000/v1/chat/completions \\\n  -H \'Content-Type: application/json\' \\\n  -d \'{"model":"qwen36-35b","messages":[{"role":"user","content":"<script>alert(\\"XSS\\")</script><img src=x onerror=alert(1)>"}],"max_tokens":30}\' 2>&1')
+  $ # Security: XSS payload as prompt content via qwen36-35b
+curl -s -w '\nHTTP_CODE:%{http_code}' -X POST http://localhost:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"qwen36-35b","messages":[{"role":"user","content":"<script>alert(\"XSS\")</script><img src=x onerror=alert(1)>"}],"max_tokens":30}' 2>&1
+  → run_shell(command='# Security: SQL injection — fixed escaping\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:8000/v1/chat/completions \\\n  -H \'Content-Type: application/json\' \\\n  -d \'{"model":"qwen36-35b","messages":[{"role":"user","content":"SELECT * FROM users; DROP TABLE users; --"}],"max_tokens":30}\' 2>&1')
+  $ # Security: SQL injection — fixed escaping
+curl -s -w '\nHTTP_CODE:%{http_code}' -X POST http://localhost:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"qwen36-35b","messages":[{"role":"user","content":"SELECT * FROM users; DROP TABLE users; --"}],"max_tokens":30}' 2>&1
+  → run_shell(command='# Performance: 5 sequential GET /v1/models on :8000 — timing\nfor i in 1 2 3 4 5; do\n  start=$(date +%s%N)\n  curl -s -o /dev/null http://localhost:8000/v1/models\n  end=$(date +%s%N)\n  echo "Run $i: $(( (end - start) / 1000000 )) ms"\ndone')
+  $ # Performance: 5 sequential GET /v1/models on :8000 — timing
+for i in 1 2 3 4 5; do
+  start=$(date +%s%N)
+  curl -s -o /dev/null http://localhost:8000/v1/models
+  end=$(date +%s%N)
+  echo "Run $i: $(( (end - start) / 1000000 )) ms"
+done
+  → run_shell(command='# Performance: 5 sequential GET /v1/models on :4000 — timing\nfor i in 1 2 3 4 5; do\n  start=$(date +%s%N)\n  curl -s -o /dev/null http://localhost:4000/v1/models\n  end=$(date +%s%N)\n  echo "Run $i: $(( (end - start) / 1000000 )) ms"\ndone')
+  $ # Performance: 5 sequential GET /v1/models on :4000 — timing
+for i in 1 2 3 4 5; do
+  start=$(date +%s%N)
+  curl -s -o /dev/null http://localhost:4000/v1/models
+  end=$(date +%s%N)
+  echo "Run $i: $(( (end - start) / 1000000 )) ms"
+done
+  → run_shell(command='# Dashboard API routes check\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' http://localhost:8800/api/health 2>&1\necho "---"\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' http://localhost:8800/api/status 2>&1\necho "---"\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' http://localhost:8800/api/models 2>&1')
+  $ # Dashboard API routes check
+curl -s -w '\nHTTP_CODE:%{http_code}' http://localhost:8800/api/health 2>&1
+echo "---"
+curl -s -w '\nHTTP_CODE:%{http_code}' http://localhost:8800/api/status 2>&1
+echo "---"
+curl -s -w '\nHTTP_CODE:%{http_code}' http://localhost:8800/api/models 2>&1
+  → run_shell(command='# Error handling on :4000 — invalid model, empty messages, missing model\necho "=== Invalid model on :4000 ==="\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:4000/v1/chat/completions \\\n  -H \'Content-Type: application/json\' \\\n  -d \'{"model":"nonexistent","messages":[{"role":"user","content":"hi"}]}\' 2>&1\necho ""\necho "=== Empty messages on :4000 ==="\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:4000/v1/chat/completions \\\n  -H \'Content-Type: application/json\' \\\n  -d \'{"model":"orchestrator:qwen3.6-35b","messages":[]}\' 2>&1\necho ""\necho "=== Missing model on :4000 ==="\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:4000/v1/chat/completions \\\n  -H \'Content-Type: application/json\' \\\n  -d \'{"messages":[{"role":"user","content":"hi"}]}\' 2>&1')
+  $ # Error handling on :4000 — invalid model, empty messages, missing model
+echo "=== Invalid model on :4000 ==="
+curl -s -w '\nHTTP_CODE:%{http_code}' -X POST http://localhost:4000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"nonexistent","messages":[{"role":"user","content":"hi"}]}' 2>&1
+echo ""
+echo "=== Empty messages on :4000 ==="
+curl -s -w '\nHTTP_CODE:%{http_code}' -X POST http://localhost:4000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"orchestrator:qwen3.6-35b","messages":[]}' 2>&1
+echo ""
+echo "=== Missing model on :4000 ==="
+curl -s -w '\nHTTP_CODE:%{http_code}' -X POST http://localhost:4000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"messages":[{"role":"user","content":"hi"}]}' 2>&1
+  → run_shell(command='# Count SSE data lines from streaming response\ncurl -s -X POST http://localhost:8000/v1/chat/completions \\\n  -H \'Content-Type: application/json\' \\\n  -d \'{"model":"qwen36-35b","messages":[{"role":"user","content":"Say hi."}],"max_tokens":20,"stream":true}\' 2>&1 | grep -c "^data:"')
+  $ # Count SSE data lines from streaming response
+curl -s -X POST http://localhost:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"qwen36-35b","messages":[{"role":"user","content":"Say hi."}],"max_tokens":20,"stream":true}' 2>&1 | grep -c "^data:"
+  → run_shell(command='# Check streaming on :4000 too\ncurl -s -X POST http://localhost:4000/v1/chat/completions \\\n  -H \'Content-Type: application/json\' \\\n  -d \'{"model":"orchestrator:qwen3.6-35b","messages":[{"role":"user","content":"Say hi."}],"max_tokens":20,"stream":true}\' 2>&1 | grep -c "^data:"')
+  $ # Check streaming on :4000 too
+curl -s -X POST http://localhost:4000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"orchestrator:qwen3.6-35b","messages":[{"role":"user","content":"Say hi."}],"max_tokens":20,"stream":true}' 2>&1 | grep -c "^data:"
+  → run_shell(command='# Dashboard additional routes\necho "=== /api/activity ==="\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' http://localhost:8800/api/activity 2>&1 | head -5\necho ""\necho "=== /api/logs ==="\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' http://localhost:8800/api/logs 2>&1 | head -5\necho ""\necho "=== /api/config ==="\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' http://localhost:8800/api/config 2>&1 | head -5')
+  $ # Dashboard additional routes
+echo "=== /api/activity ==="
+curl -s -w '\nHTTP_CODE:%{http_code}' http://localhost:8800/api/activity 2>&1 | head -5
+echo ""
+echo "=== /api/logs ==="
+curl -s -w '\nHTTP_CODE:%{http_code}' http://localhost:8800/api/logs 2>&1 | head -5
+echo ""
+echo "=== /api/config ==="
+curl -s -w '\nHTTP_CODE:%{http_code}' http://localhost:8800/api/config 2>&1 | head -5
+  → run_shell(command='# Security: XSS on :4000 gateway too\ncurl -s -w \'\\nHTTP_CODE:%{http_code}\' -X POST http://localhost:4000/v1/chat/completions \\\n  -H \'Content-Type: application/json\' \\\n  -d \'{"model":"orchestrator:qwen3.6-35b","messages":[{"role":"user","content":"<script>alert(document.cookie)</script>"}],"max_tokens":20}\' 2>&1')
+  $ # Security: XSS on :4000 gateway too
+curl -s -w '\nHTTP_CODE:%{http_code}' -X POST http://localhost:4000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"orchestrator:qwen3.6-35b","messages":[{"role":"user","content":"<script>alert(document.cookie)</script>"}],"max_tokens":20}' 2>&1
+  → run_shell(command='mkdir -p ~/MLX-AI/qa-phase5')
+  $ mkdir -p ~/MLX-AI/qa-phase5
+gateway error: 500 Server Error: Internal Server Error for url: http://localhost:8000/v1/chat/completions — is :4000 up?

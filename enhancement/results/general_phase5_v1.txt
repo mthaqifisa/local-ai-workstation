@@ -1,0 +1,26 @@
+mlx-agent  persona=general  model=orchestrator:qwen3.6-35b  gateway=http://localhost:8000/v1
+  → run_shell(command='vm_stat 2>&1')
+  $ vm_stat 2>&1
+  → run_shell(command='sysctl hw.memsize machdep.cpu.brand_string hw.physicalcpu hw.logicalcpu loadavg 2>&1')
+  $ sysctl hw.memsize machdep.cpu.brand_string hw.physicalcpu hw.logicalcpu loadavg 2>&1
+  → run_shell(command='df -h 2>&1')
+  $ df -h 2>&1
+  → run_shell(command='df -i 2>&1')
+  $ df -i 2>&1
+  → run_shell(command='uptime 2>&1')
+  $ uptime 2>&1
+  → run_shell(command='ps aux --sort=-%cpu 2>&1 | head -10')
+  $ ps aux --sort=-%cpu 2>&1 | head -10
+  → run_shell(command='ps aux --sort=-%mem 2>&1 | head -10')
+  $ ps aux --sort=-%mem 2>&1 | head -10
+  → run_shell(command='curl -s -o /dev/null -w "mlx-openai-server (:8000): HTTP %{http_code} — %{time_total}s\\n" http://localhost:8000/health 2>&1 || echo "mlx-openai-server (:8000): FAILED"')
+  $ curl -s -o /dev/null -w "mlx-openai-server (:8000): HTTP %{http_code} — %{time_total}s\n" http://localhost:8000/health 2>&1 || echo "mlx-openai-server (:8000): FAILED"
+  → run_shell(command='curl -s -o /dev/null -w "LiteLLM (:4000): HTTP %{http_code} — %{time_total}s\\n" http://localhost:4000/health 2>&1 || echo "LiteLLM (:4000): FAILED"')
+  $ curl -s -o /dev/null -w "LiteLLM (:4000): HTTP %{http_code} — %{time_total}s\n" http://localhost:4000/health 2>&1 || echo "LiteLLM (:4000): FAILED"
+  → run_shell(command='curl -s -o /dev/null -w "Dashboard (:8800): HTTP %{http_code} — %{time_total}s\\n" http://localhost:8800/ 2>&1 || echo "Dashboard (:8800): FAILED"')
+  $ curl -s -o /dev/null -w "Dashboard (:8800): HTTP %{http_code} — %{time_total}s\n" http://localhost:8800/ 2>&1 || echo "Dashboard (:8800): FAILED"
+  → run_shell(command='launchctl list 2>&1 | grep -i mlx || echo "No mlx-related launchd agents found"')
+  $ launchctl list 2>&1 | grep -i mlx || echo "No mlx-related launchd agents found"
+  → run_shell(command='sysctl -n hw.model 2>&1')
+  $ sysctl -n hw.model 2>&1
+gateway error: 500 Server Error: Internal Server Error for url: http://localhost:8000/v1/chat/completions — is :4000 up?
