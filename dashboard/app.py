@@ -255,9 +255,9 @@ def api_status():
 def api_vision_models():
     """Return curated list of available vision models for the dropdown."""
     return jsonify({"models": [
-        {"id": "mlx-community/Qwen3-VL-8B-Instruct-4bit", "label": "Qwen3-VL-8B — SOTA small VLM (~5.4 GB, fast)"},
-        {"id": "mlx-community/gemma-4-12B-4bit",           "label": "Gemma-4-12B — Google Vision (~10 GB)"},
-        {"id": "mlx-community/gemma-4-31B-4bit",           "label": "Gemma-4-31B — Google Vision, best (~18 GB)"},
+        {"id": "mlx-community/Qwen3-VL-8B-Instruct-4bit",  "label": "Qwen3-VL-8B — SOTA small VLM (~5.4 GB, fast)"},
+        {"id": "mlx-community/gemma-4-12B-it-4bit",        "label": "Gemma-4-12B — Google Vision (~6.7 GB)"},
+        {"id": "mlx-community/gemma-4-31B-it-qat-4bit",    "label": "Gemma-4-31B — Google Vision, best (~28.8 GB)"},
     ]})
 
 # ── shared site nav — injected into every sub-page template ──────────────────
@@ -1304,8 +1304,8 @@ a{color:var(--blue);text-decoration:none}
       <div class="sec-lbl">MODEL</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap" id="chips">
         <button class="mc active" data-model="mlx-community/Qwen3-VL-8B-Instruct-4bit" data-note="Qwen3-VL-8B · SOTA · ~5.4 GB · fastest" onclick="setModel(this)">Qwen3-VL-8B</button>
-        <button class="mc" data-model="mlx-community/gemma-4-12B-4bit" data-note="Gemma-4-12B · Google Vision · ~10 GB" onclick="setModel(this)">Gemma-4-12B</button>
-        <button class="mc" data-model="mlx-community/gemma-4-31B-4bit" data-note="Gemma-4-31B · Google Vision · ~18 GB · best" onclick="setModel(this)">Gemma-4-31B</button>
+        <button class="mc" data-model="mlx-community/gemma-4-12B-it-4bit" data-note="Gemma-4-12B · Google Vision · ~6.7 GB" onclick="setModel(this)">Gemma-4-12B</button>
+        <button class="mc" data-model="mlx-community/gemma-4-31B-it-qat-4bit" data-note="Gemma-4-31B · Google Vision · ~28.8 GB · best" onclick="setModel(this)">Gemma-4-31B</button>
       </div>
       <div class="vst" id="modelNote" style="margin-top:6px">Qwen3-VL-8B · SOTA · ~5.4 GB · fastest</div>
     </div>
@@ -2762,6 +2762,14 @@ video{width:100%;border-radius:14px;display:none;max-height:560px;background:#00
       </div>
     </div>
     <div>
+      <div class="sec-lbl">TEXT ENCODER</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap" id="encChips">
+        <button class="mc active" data-enc="mlx-community/gemma-3-12b-it-4bit" onclick="setEnc(this)">Gemma 3 12B</button>
+        <button class="mc" data-enc="mlx-community/gemma-4-12B-it-4bit" onclick="setEnc(this)">Gemma 4 12B</button>
+      </div>
+      <div class="ig-status" id="encNote" style="margin-top:4px;font-size:11px">Gemma 3 12B 4-bit · ~8 GB · default (downloading)</div>
+    </div>
+    <div>
       <div class="sec-lbl">DURATION &nbsp;<span id="durVal" style="color:var(--purple2)">5s</span></div>
       <div class="slider-wrap">
         <input type="range" id="dur" min="3" max="15" value="5" style="--pct:15%"
@@ -2811,7 +2819,9 @@ video{width:100%;border-radius:14px;display:none;max-height:560px;background:#00
 </div>
 <script>
 let vMode='t2v',selModel='ltx',imgFile=null,curVideoFile='',arW=16,arH=9;
+let selEnc='mlx-community/gemma-3-12b-it-4bit';
 const MODEL_NOTES={'ltx':'LTX-2.3 · T2V+I2V+Audio · fast · ~21GB on first run','wan':'Wan2.2 5B · best motion quality · Apache 2.0 · ~10GB on first run'};
+const ENC_NOTES={'mlx-community/gemma-3-12b-it-4bit':'Gemma 3 12B 4-bit · ~8 GB · default (downloading)','mlx-community/gemma-4-12B-it-4bit':'Gemma 4 12B 4-bit · ~6.7 GB · multimodal · downloads on first use'};
 function setMode(m){
   vMode=m;
   document.getElementById('tab-t2v').classList.toggle('active',m==='t2v');
@@ -2820,8 +2830,13 @@ function setMode(m){
 }
 function setModel(btn){
   selModel=btn.dataset.model;
-  document.querySelectorAll('.mc').forEach(b=>b.classList.toggle('active',b===btn));
+  document.querySelectorAll('#chips .mc,button[data-model]').forEach(b=>b.classList.toggle('active',b===btn));
   document.getElementById('modelNote').textContent=MODEL_NOTES[selModel]||'';
+}
+function setEnc(btn){
+  selEnc=btn.dataset.enc;
+  document.querySelectorAll('#encChips .mc').forEach(b=>b.classList.toggle('active',b===btn));
+  document.getElementById('encNote').textContent=ENC_NOTES[selEnc]||selEnc;
 }
 function setAR(btn){
   arW=+btn.dataset.w;arH=+btn.dataset.h;
@@ -2851,7 +2866,7 @@ async function generate(){
   const t0=Date.now();
   const fd=new FormData();
   fd.append('prompt',prompt);fd.append('model',selModel);fd.append('duration',dur);
-  fd.append('aspect',arW+':'+arH);fd.append('mode',vMode);
+  fd.append('aspect',arW+':'+arH);fd.append('mode',vMode);fd.append('encoder',selEnc);
   if(imgFile)fd.append('image',imgFile);
   try{
     const r=await fetch('/api/video',{method:'POST',body:fd});
@@ -2970,6 +2985,13 @@ def api_video():
     try: duration = max(3, min(30, int(request.form.get("duration", 5))))
     except Exception: duration = 5
     mode = request.form.get("mode", "t2v")
+    _ALLOWED_ENCODERS = {
+        "mlx-community/gemma-3-12b-it-4bit",
+        "mlx-community/gemma-4-12B-it-4bit",
+    }
+    encoder = request.form.get("encoder", "mlx-community/gemma-3-12b-it-4bit").strip()
+    if encoder not in _ALLOWED_ENCODERS:
+        encoder = "mlx-community/gemma-3-12b-it-4bit"
     VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
     out = str(VIDEOS_DIR / f"vid_{int(_time.time())}.mp4")
     src_path = None
@@ -2980,7 +3002,7 @@ def api_video():
     cmd = [sys.executable, "-m", "mlx_video.generate_av",
            "--prompt", prompt, "--output-path", out,
            "--model-repo", "notapalindrome/ltx23-mlx-av-q4",
-           "--text-encoder-repo", "mlx-community/gemma-3-12b-it-4bit",
+           "--text-encoder-repo", encoder,
            "--num-frames", str(min(257, duration * 24))]
     if src_path:
         cmd += ["--image", src_path, "--image-strength", "0.85"]
