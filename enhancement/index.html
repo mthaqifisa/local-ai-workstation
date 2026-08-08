@@ -788,7 +788,7 @@ footer {
     <!-- ── BROWSER AUTOMATION TAB ── -->
     <div class="tab-panel" id="tab-browser">
       <div style="padding:18px">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Playwright browser automation tests — 30/30 checks PASS · 13 screenshots captured · <code>tests/test_dashboard.py</code></div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Playwright browser automation — <strong style="color:var(--green)">55/55 checks PASS</strong> · 8/8 pages · 23 screenshots · <code>tests/test_dashboard.py</code></div>
         <div style="overflow-x:auto">
         <table class="results-table">
           <thead>
@@ -799,31 +799,59 @@ footer {
           <tbody id="browser-rows">
             <tr>
               <td class="td-module">/</td>
-              <td class="td-case">Dashboard health: title, nav links (Create/Video/Audio), /api/status 200, hardware stats rendered</td>
+              <td class="td-case">Title, nav links (Create/Video/Audio), /api/status 200, hardware stats rendered, Create link visible</td>
               <td><span class="badge b-pass">PASS 5/5</span></td>
               <td class="td-model">01_home_*.png</td>
-              <td class="td-notes">Title=LAW ✓ · Nav links ✓ · API 200 ✓ · RAM/CPU/battery in DOM ✓ · Create link visible ✓</td>
+              <td class="td-notes">Title=LAW ✓ · Nav ✓ · API 200 ✓ · RAM/CPU/battery ✓ · Create link ✓</td>
             </tr>
             <tr>
               <td class="td-module">/imagine</td>
-              <td class="td-case">Navigate → fill prompt → click Cinematic preset → select Z-Image Turbo → Generate → verify image + gallery</td>
+              <td class="td-case">Fill prompt → Cinematic preset → Z-Image Turbo → Generate → result image → gallery</td>
               <td><span class="badge b-pass">PASS 10/10</span></td>
               <td class="td-model">02_imagine_*.png</td>
-              <td class="td-notes">Prompt ✓ · 8 style presets ✓ · 4 resolutions ✓ · Preset appended ✓ · Model chip ✓ · Generate ✓ · Image appeared ✓ · Gallery 24 items ✓</td>
+              <td class="td-notes">Prompt ✓ · 8 presets ✓ · 4 resolutions ✓ · Preset append ✓ · Model chip ✓ · Generate ✓ · Image ✓ · Gallery 24 ✓</td>
             </tr>
             <tr>
               <td class="td-module">/audio</td>
-              <td class="td-case">Navigate → fill text → click am_adam voice → Generate Speech → verify audio player → open Library tab → verify gallery</td>
+              <td class="td-case">Fill text → am_adam voice → Generate Speech → audio player → Library tab → gallery</td>
               <td><span class="badge b-pass">PASS 8/8</span></td>
               <td class="td-model">03_audio_*.png</td>
-              <td class="td-notes">Textarea ✓ · 6 voice chips ✓ · Voice select ✓ · Generate ✓ · Audio player visible ✓ · src=tts_*.wav ✓ · Library tab ✓ · Gallery 30 items ✓</td>
+              <td class="td-notes">Textarea ✓ · 6 chips ✓ · Voice ✓ · Generate ✓ · Player ✓ · WAV src ✓ · Library tab ✓ · 30 items ✓</td>
             </tr>
             <tr>
               <td class="td-module">/video</td>
-              <td class="td-case">Navigate → fill prompt → Generate → intercept /api/video POST → verify job_id + loading indicator</td>
+              <td class="td-case">Fill prompt → Generate → intercept /api/video POST → job_id + loading indicator</td>
               <td><span class="badge b-pass">PASS 7/7</span></td>
               <td class="td-model">04_video_*.png</td>
-              <td class="td-notes">Prompt ✓ · Gen btn ✓ · Duration ✓ · LTX visible ✓ · Gallery ✓ · Job fired (job_id=954fccb4) ✓ · Loading indicator ✓</td>
+              <td class="td-notes">Prompt ✓ · Gen ✓ · Duration ✓ · LTX ✓ · Gallery ✓ · Job fired ✓ · Loading ✓</td>
+            </tr>
+            <tr>
+              <td class="td-module">/vision</td>
+              <td class="td-case">Drop zone → upload image → model chips (3) → fill question</td>
+              <td><span class="badge b-pass">PASS 6/6</span></td>
+              <td class="td-model">05_vision_*.png</td>
+              <td class="td-notes">Drop zone ✓ · Textarea ✓ · Analyze btn ✓ · 3 model chips ✓ · Upload preview ✓ · Question ✓</td>
+            </tr>
+            <tr>
+              <td class="td-module">/personas</td>
+              <td class="td-case">/api/personas → 17 personas → Add btn → core names (orchestrator, coder, writer)</td>
+              <td><span class="badge b-pass">PASS 4/4</span></td>
+              <td class="td-model">07_personas_*.png</td>
+              <td class="td-notes">API 200 ✓ · 17 personas ✓ · Add btn ✓ · 3/3 core names ✓</td>
+            </tr>
+            <tr>
+              <td class="td-module">/models</td>
+              <td class="td-case">/api/models → 18 models → search "qwen mlx" → HF API → results render</td>
+              <td><span class="badge b-pass">PASS 8/8</span></td>
+              <td class="td-model">08_models_*.png</td>
+              <td class="td-notes">Search input ✓ · Search btn ✓ · #current ✓ · 335 chars ✓ · API 200 ✓ · 18 models ✓ · HF search ✓ · Results 1566 chars ✓</td>
+            </tr>
+            <tr>
+              <td class="td-module">/chat</td>
+              <td class="td-case">Thread + input + send btn → Direct mode → send message → AI reply received</td>
+              <td><span class="badge b-pass">PASS 7/7</span></td>
+              <td class="td-model">06_chat_*.png</td>
+              <td class="td-notes">Thread ✓ · Input ✓ · Send ✓ · Mode toggle ✓ · Model selector ✓ · Direct mode ✓ · Reply received ✓</td>
             </tr>
           </tbody>
         </table>
@@ -961,9 +989,9 @@ footer {
           </div>
           <div class="tl-item">
             <div class="tl-dot done"></div>
-            <div class="tl-ts">2026-08-08 22:45</div>
-            <div class="tl-label">Browser Automation — Playwright 30/30 PASS</div>
-            <div class="tl-desc">tests/test_dashboard.py · headless Chromium · 4 pages · 30 checks · 13 screenshots. /, /imagine, /audio, /video all fully functional under automated browser interaction.</div>
+            <div class="tl-ts">2026-08-08 23:00</div>
+            <div class="tl-label">Browser Automation — Playwright 55/55 PASS (8/8 pages)</div>
+            <div class="tl-desc">tests/test_dashboard.py · headless Chromium · 8 pages · 55 checks · 23 screenshots. All pages verified: /, /imagine, /audio, /video, /vision, /chat, /personas, /models. imagegen persona also confirmed end-to-end via mlx-agent.</div>
           </div>
         </div>
       </div>
@@ -983,7 +1011,7 @@ footer {
           <div class="next-num" style="background:rgba(16,185,129,.2);color:var(--green)">✓</div>
           <div>
             <div class="next-label" style="text-decoration:line-through">Browser automation — Playwright tests</div>
-            <div class="next-desc">DONE — 30/30 PASS · tests/test_dashboard.py · 13 screenshots · /, /imagine, /audio, /video all verified</div>
+            <div class="next-desc">DONE — 55/55 PASS · 8/8 pages · 23 screenshots · imagegen persona end-to-end PASS</div>
           </div>
         </div>
         <div class="next-item">
