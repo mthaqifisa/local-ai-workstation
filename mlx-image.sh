@@ -1,13 +1,20 @@
 #!/usr/bin/env bash
-# Generate an image locally with mflux.
-# Default model: Z-Image Turbo (non-gated, fast, commercial-friendly).
+# Generate an image locally with mflux 0.18+.
+# Best-quality default: Qwen-Image 20.4B @ 4-bit (public, no HF auth).
 # Usage: mlx-image.sh "PROMPT" [OUT] [MODEL] [STEPS] [WIDTH] [HEIGHT] [SEED]
+#
+# MODEL values:
+#   qwen          — Qwen/Qwen-Image 20.4B 4-bit (best quality, ~10GB, default)
+#   ernie         — ERNIE-Image 8B (high quality, ~4GB, fast)
+#   z-image-turbo — Z-Image Turbo (fastest, already cached)
+#   schnell       — FLUX.1-schnell (needs download)
+#   dev           — FLUX.1-dev (needs download)
 set -euo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$PATH"
 
 PROMPT="${1:-a friendly robot reading a book, flat vector illustration}"
 OUT="${2:-$HOME/MLX-AI/documents/images/img_$(date +%s).png}"
-MODEL="${3:-z-image-turbo}"
+MODEL="${3:-qwen}"
 STEPS="${4:-}"
 WIDTH="${5:-1024}"
 HEIGHT="${6:-1024}"
@@ -17,29 +24,43 @@ mkdir -p "$(dirname "$OUT")"
 
 if [ -z "$STEPS" ] || [ "$STEPS" = "0" ]; then
   case "$MODEL" in
-    z-image-turbo|z-image) STEPS=9 ;;
-    dev)                   STEPS=20 ;;
-    *)                     STEPS=4 ;;
+    qwen|qwen-image)         STEPS=20 ;;
+    ernie|ernie-image)       STEPS=20 ;;
+    z-image-turbo|z-image)   STEPS=9  ;;
+    dev)                     STEPS=20 ;;
+    *)                       STEPS=4  ;;
   esac
 fi
 
 ARGS=(--steps "$STEPS" --width "$WIDTH" --height "$HEIGHT" --prompt "$PROMPT" --output "$OUT")
 [ -n "$SEED" ] && ARGS+=(--seed "$SEED")
 
-# Each model family has its own dedicated CLI command in mflux 0.18+
 case "$MODEL" in
+  qwen|qwen-image)
+    CMD="mflux-generate-qwen"
+    ARGS+=(--quantize 4)
+    ;;
+  ernie|ernie-image)
+    CMD="mflux-generate-ernie-image"
+    ARGS+=(--quantize 4 --guidance 3.5)
+    ;;
   z-image-turbo|zimage-turbo)
     CMD="mflux-generate-z-image-turbo"
     ;;
   z-image|zimage)
     CMD="mflux-generate-z-image"
     ;;
+  edit|img2img)
+    CMD="mflux-generate"
+    ARGS+=(--base-model dev --guidance 3.5)
+    [ -n "${8:-}" ] && ARGS+=(--image "$8" --image-strength "${9:-0.65}")
+    ;;
   dev|schnell|krea-dev)
     CMD="mflux-generate"
-    ARGS+=(--model "$MODEL")
+    ARGS+=(--base-model "$MODEL")
     case "$MODEL" in
       dev)     ARGS+=(--guidance 3.5) ;;
-      schnell) ARGS+=(--guidance 0.0) ;;
+      schnell) ;;
     esac
     ;;
   *)
@@ -48,5 +69,5 @@ case "$MODEL" in
     ;;
 esac
 
-uv tool run --from mflux "$CMD" "${ARGS[@]}"
+"$CMD" "${ARGS[@]}"
 echo "saved: $OUT"

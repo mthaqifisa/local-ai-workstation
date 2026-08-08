@@ -305,7 +305,8 @@ NAV_CSS = (
 def _build_nav(active: str = "") -> str:
     """Return header HTML block for sub-pages (CSS is injected via NAV_CSS in <head>)."""
     links = [("/","Dashboard"),("/chat","Chat"),("/vision","Vision"),
-             ("/imagine","Create"),("/personas","Personas"),("/models","Models")]
+             ("/imagine","Create"),("/video","Video"),("/audio","Audio"),
+             ("/personas","Personas"),("/models","Models")]
     items = "".join(
         f'<a href="{h}" class="snav-link{" active" if active==lbl.lower() or (not active and h=="/") else ""}">{lbl}</a>'
         for h, lbl in links)
@@ -513,6 +514,8 @@ canvas.spark{width:100%;height:24px;border-radius:4px;background:rgba(255,255,25
     <a href="/chat">Chat</a>
     <a href="/vision">Vision</a>
     <a href="/imagine">Create</a>
+    <a href="/video">Video</a>
+    <a href="/audio">Audio</a>
     <a href="/personas">Personas</a>
     <a href="/models">Models</a>
   </nav>
@@ -666,7 +669,9 @@ pollActivity();setInterval(pollActivity,3000);
 // SSE event feed
 const MAX_FEED=80;
 const feedEl=document.getElementById('eventFeed');
+const FEED_KEY='law_feed_v1';
 let feedItems=[];
+try{const saved=JSON.parse(localStorage.getItem(FEED_KEY)||'[]');if(Array.isArray(saved)&&saved.length){feedItems=saved.slice(-MAX_FEED);feedEl.innerHTML=feedItems.join('');feedEl.scrollTop=feedEl.scrollHeight;document.getElementById('feedStatus').textContent='● RESTORED';setTimeout(()=>{document.getElementById('feedStatus').textContent='● LIVE';},2000);}}catch(e){}
 function addFeedItem(ev){
   if(ev.type==='heartbeat')return;
   const ts2=ev.ts?new Date(ev.ts*1000).toLocaleTimeString('en-GB',{hour12:false}):ts();
@@ -677,6 +682,7 @@ function addFeedItem(ev){
     '<span>'+esc(ev.data||ev.type)+'</span></div>';
   feedItems.push(html);
   if(feedItems.length>MAX_FEED)feedItems.shift();
+  try{localStorage.setItem(FEED_KEY,JSON.stringify(feedItems));}catch(e){}
   const paused=feedEl.scrollHeight-feedEl.scrollTop-feedEl.clientHeight>60;
   feedEl.innerHTML=feedItems.join('');
   if(!paused)feedEl.scrollTop=feedEl.scrollHeight;
@@ -1222,86 +1228,200 @@ loadCached();
 
 VISION_PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Vision - LAW</title>
+<title>Vision · LAW</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <!--NAV_CSS-->
 <style>
+:root{--bg:#020817;--surf:#0a1628;--card:rgba(13,30,53,.9);--bdr:rgba(14,165,233,.13);--bdrbrt:rgba(14,165,233,.35);
+--blue:#0ea5e9;--purple:#7c3aed;--purple2:#a78bfa;--green:#10b981;--red:#ef4444;
+--text:#e2e8f0;--muted:#94a3b8;--mono:'JetBrains Mono',ui-monospace,monospace;--sans:'Space Grotesk',system-ui,sans-serif;}
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#020817;color:#e2e8f0;font-family:'Space Grotesk',system-ui,sans-serif;font-size:14px;min-height:100vh;
-  background-image:radial-gradient(ellipse 80% 50% at 50% -20%,rgba(14,165,233,.06),transparent);}
-.page{max-width:820px;margin:0 auto;padding:28px 20px}
-h1{font-size:22px;font-weight:700;margin-bottom:4px}
-.sub{color:#94a3b8;font-size:13px;margin-bottom:20px;line-height:1.5}
-.warn{color:#fca5a5;font-size:12px;padding:9px 13px;border-radius:8px;
-  background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);margin-bottom:18px}
-.card{background:rgba(13,30,53,.85);border:1px solid rgba(14,165,233,.13);border-radius:14px;
-  padding:20px;backdrop-filter:blur(12px);margin-bottom:16px}
-.card:hover{border-color:rgba(14,165,233,.3);transition:border-color .3s}
-.lbl{display:block;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;
-  color:#94a3b8;margin-bottom:6px;margin-top:16px}
-.lbl:first-child{margin-top:0}
-input[type=file]{width:100%;padding:10px 12px;border-radius:8px;border:1px solid rgba(14,165,233,.13);
-  background:rgba(10,22,40,.8);color:#e2e8f0;font:14px 'Space Grotesk',system-ui;cursor:pointer}
-select,textarea{width:100%;padding:10px 12px;border-radius:8px;border:1px solid rgba(14,165,233,.13);
-  background:rgba(10,22,40,.8);color:#e2e8f0;font:14px 'Space Grotesk',system-ui;outline:none;transition:.2s}
-select:focus,textarea:focus{border-color:#0ea5e9;box-shadow:0 0 0 2px rgba(14,165,233,.1)}
-select option{background:#0a1628;color:#e2e8f0}
-textarea{min-height:70px;resize:vertical}
-#preview{max-width:100%;max-height:320px;border-radius:10px;margin-top:12px;display:none;
-  border:1px solid rgba(14,165,233,.2)}
-.run-btn{border:none;border-radius:8px;padding:11px 22px;font-weight:600;cursor:pointer;
-  font-size:13px;font-family:'Space Grotesk',system-ui;
-  background:linear-gradient(135deg,#0ea5e9,#7c3aed);color:#fff;transition:.2s;margin-top:16px}
-.run-btn:hover{opacity:.9;transform:translateY(-1px)}
-.run-btn:disabled{opacity:.5;cursor:default;transform:none}
-#out{display:none;white-space:pre-wrap;background:rgba(2,8,23,.95);
-  border:1px solid rgba(14,165,233,.13);border-radius:12px;padding:16px;margin-top:16px;
-  font:13px 'JetBrains Mono',monospace;color:#e2e8f0;line-height:1.65}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;
+  background-image:radial-gradient(ellipse 70% 50% at 30% -10%,rgba(14,165,233,.08),transparent),
+    radial-gradient(ellipse 50% 40% at 80% 0%,rgba(124,58,237,.04),transparent);}
+a{color:var(--blue);text-decoration:none}
+.vw{display:grid;grid-template-columns:360px 1fr;gap:0;min-height:calc(100vh - 56px)}
+@media(max-width:900px){.vw{grid-template-columns:1fr}}
+.vc{padding:20px;display:flex;flex-direction:column;gap:14px;
+  border-right:1px solid var(--bdr);background:rgba(10,22,40,.6);
+  position:sticky;top:56px;max-height:calc(100vh - 56px);overflow-y:auto;
+  scrollbar-width:thin;scrollbar-color:rgba(14,165,233,.2) transparent}
+@media(max-width:900px){.vc{position:static;max-height:none;border-right:none;border-bottom:1px solid var(--bdr)}}
+.sec-lbl{font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--muted);margin-bottom:6px}
+.mc{padding:5px 12px;border-radius:20px;border:1px solid var(--bdr);font-size:12px;font-weight:500;
+  color:var(--muted);cursor:pointer;transition:.15s;background:transparent;font-family:var(--sans)}
+.mc:hover{border-color:var(--blue);color:#7dd3fc}
+.mc.active{border-color:var(--blue);background:rgba(14,165,233,.15);color:#7dd3fc}
+.drop-zone{border:2px dashed rgba(14,165,233,.2);border-radius:14px;padding:36px 20px;
+  text-align:center;cursor:pointer;transition:.25s;position:relative;background:rgba(14,165,233,.02);
+  display:flex;flex-direction:column;align-items:center;gap:6px}
+.drop-zone:hover,.drop-zone.drag{border-color:var(--blue);background:rgba(14,165,233,.06)}
+.drop-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.drop-icon{font-size:38px;opacity:.35}
+.drop-txt{font-size:13px;color:var(--muted)}.drop-hint{font-size:11px;color:rgba(148,163,184,.4)}
+.prev-box{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--bdr)}
+.prev-box img{width:100%;max-height:200px;object-fit:contain;display:block;background:var(--surf)}
+.prev-rm{position:absolute;top:6px;right:6px;background:rgba(2,8,23,.8);border:1px solid rgba(255,255,255,.15);
+  border-radius:6px;color:var(--text);cursor:pointer;font-size:11px;padding:3px 8px;backdrop-filter:blur(4px);font-family:var(--sans)}
+.prev-rm:hover{background:rgba(239,68,68,.3)}
+.vq{width:100%;min-height:90px;padding:12px;border-radius:10px;
+  border:1px solid var(--bdr);background:rgba(13,30,53,.8);color:var(--text);
+  font:14px var(--sans);resize:vertical;outline:none;transition:.2s;line-height:1.5}
+.vq:focus{border-color:var(--blue);box-shadow:0 0 0 2px rgba(14,165,233,.12)}
+.hint-row{display:flex;gap:5px;flex-wrap:wrap}
+.hint{padding:4px 9px;border-radius:12px;font-size:11px;cursor:pointer;border:1px solid var(--bdr);
+  color:var(--muted);transition:.15s;background:transparent;font-family:var(--sans)}
+.hint:hover{border-color:var(--blue);color:var(--blue);background:rgba(14,165,233,.06)}
+.run-btn{width:100%;padding:14px;border:none;border-radius:10px;cursor:pointer;
+  font:600 15px var(--sans);color:#fff;transition:.2s;
+  background:linear-gradient(135deg,var(--blue),var(--purple))}
+.run-btn:not(:disabled):hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(14,165,233,.35)}
+.run-btn:disabled{opacity:.55;cursor:default;transform:none}
+.prog{height:3px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden;display:none;margin-top:-4px}
+.prog.on{display:block}
+.pb{height:100%;background:linear-gradient(90deg,var(--blue),var(--purple),var(--blue));background-size:200% 100%;animation:pb 1.4s linear infinite}
+@keyframes pb{0%{background-position:0 0}100%{background-position:200% 0}}
+.vst{font-size:11px;font-family:var(--mono);color:var(--muted);min-height:14px}
+.vst.err{color:var(--red)}.vst.ok{color:var(--green)}
+.vr{padding:20px;display:flex;flex-direction:column;gap:20px;min-width:0}
+.result-card{background:var(--card);border:1px solid var(--bdr);border-radius:14px;overflow:hidden;backdrop-filter:blur(12px)}
+.rc-img{width:100%;max-height:460px;object-fit:contain;display:none;border-bottom:1px solid var(--bdr);background:var(--surf)}
+.rc-ph{display:flex;flex-direction:column;align-items:center;gap:14px;padding:80px 20px;color:var(--muted);text-align:center}
+.rc-ph .ico{font-size:56px;opacity:.18}
+.rc-ph p{font-size:13px;max-width:280px;line-height:1.6}
+.rc-body{padding:18px}
+.answer-txt{white-space:pre-wrap;font:13px var(--mono);color:var(--text);line-height:1.7;
+  max-height:520px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(14,165,233,.2) transparent}
+.rc-acts{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--bdr)}
+.rc-btn{padding:7px 14px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;
+  border:1px solid var(--bdr);background:transparent;color:var(--muted);transition:.15s;font-family:var(--sans)}
+.rc-btn:hover{border-color:var(--blue);color:var(--blue)}
 </style></head><body>
 <!--NAV-->
-<div class="page">
-<h1>👁 Vision</h1>
-<div class="sub">OCR, image Q&amp;A, chart/screenshot reading — runs locally via mlx_vlm. No data leaves your machine.</div>
-<div class="warn">⏱ First run loads the vision model (~5–18 GB) — allow 30–90 seconds.</div>
-<div class="card">
-  <span class="lbl">IMAGE</span>
-  <input type="file" id="img" accept="image/*" onchange="prev()">
-  <img id="preview">
-  <span class="lbl">QUESTION / PROMPT</span>
-  <textarea id="prompt">Describe this image in detail.</textarea>
-  <span class="lbl">VISION MODEL</span>
-  <select id="model">
-    <option value="mlx-community/Qwen3-VL-8B-Instruct-4bit">Qwen3-VL-8B — SOTA small VLM (~5.4 GB, fastest)</option>
-    <option value="mlx-community/gemma-4-12B-4bit">Gemma-4-12B — Google Gemma 4 Vision (~10 GB)</option>
-    <option value="mlx-community/gemma-4-31B-4bit">Gemma-4-31B — Google Gemma 4, best quality (~18 GB)</option>
-  </select>
-  <button class="run-btn" id="btn" onclick="run()">Analyze Image ›</button>
-</div>
-<div id="out"></div>
+<div class="vw">
+  <aside class="vc">
+    <div>
+      <div class="sec-lbl">MODEL</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap" id="chips">
+        <button class="mc active" data-model="mlx-community/Qwen3-VL-8B-Instruct-4bit" data-note="Qwen3-VL-8B · SOTA · ~5.4 GB · fastest" onclick="setModel(this)">Qwen3-VL-8B</button>
+        <button class="mc" data-model="mlx-community/gemma-4-12B-4bit" data-note="Gemma-4-12B · Google Vision · ~10 GB" onclick="setModel(this)">Gemma-4-12B</button>
+        <button class="mc" data-model="mlx-community/gemma-4-31B-4bit" data-note="Gemma-4-31B · Google Vision · ~18 GB · best" onclick="setModel(this)">Gemma-4-31B</button>
+      </div>
+      <div class="vst" id="modelNote" style="margin-top:6px">Qwen3-VL-8B · SOTA · ~5.4 GB · fastest</div>
+    </div>
+    <div>
+      <div class="sec-lbl">IMAGE</div>
+      <div class="drop-zone" id="dz" ondragover="doDrag(event,true)" ondragleave="doDrag(event,false)" ondrop="doDrop(event)">
+        <input type="file" id="imgFile" accept="image/*" onchange="pickFile(this.files[0])">
+        <div class="drop-icon">📸</div>
+        <div class="drop-txt">Drag &amp; drop or click to upload</div>
+        <div class="drop-hint">PNG · JPG · WebP · GIF supported</div>
+      </div>
+      <div class="prev-box" id="prevBox" style="display:none;margin-top:10px">
+        <img id="prevImg">
+        <button class="prev-rm" onclick="clearImg()">✕ Remove</button>
+      </div>
+    </div>
+    <div>
+      <div class="sec-lbl">QUESTION</div>
+      <textarea class="vq" id="prompt" placeholder="Describe this image in detail."></textarea>
+      <div class="hint-row" style="margin-top:8px">
+        <button class="hint" onclick="setQ('Describe this image in detail.')">Describe</button>
+        <button class="hint" onclick="setQ('Extract all text from this image.')">Extract text</button>
+        <button class="hint" onclick="setQ('Identify all objects and their positions.')">Objects</button>
+        <button class="hint" onclick="setQ('What does this chart or graph show?')">Read chart</button>
+        <button class="hint" onclick="setQ('Count all items visible in this image.')">Count items</button>
+        <button class="hint" onclick="setQ('Describe the colors, mood, and composition.')">Mood &amp; style</button>
+        <button class="hint" onclick="setQ('Is there any code or data in this image? Extract it.')">Code/data</button>
+        <button class="hint" onclick="setQ('Describe what is wrong or unusual in this image.')">Anomalies</button>
+      </div>
+    </div>
+    <button class="run-btn" id="runBtn" onclick="analyze()">👁 Analyze Image ›</button>
+    <div class="prog" id="prog"><div class="pb"></div></div>
+    <div class="vst" id="status"></div>
+  </aside>
+  <main class="vr">
+    <div class="result-card">
+      <img class="rc-img" id="rcImg">
+      <div class="rc-ph" id="rcPh">
+        <div class="ico">👁</div>
+        <p>Upload an image and ask a question. Supports OCR, charts, screenshots, photos, documents, and more. All processing is local — no data leaves your machine.</p>
+      </div>
+      <div class="rc-body" id="rcBody" style="display:none">
+        <div class="answer-txt" id="answer"></div>
+      </div>
+      <div class="rc-acts" id="rcActs" style="display:none">
+        <button class="rc-btn" onclick="copyAnswer()">📋 Copy answer</button>
+        <button class="rc-btn" onclick="clearResult()">✕ Clear</button>
+      </div>
+    </div>
+  </main>
 </div>
 <script>
-function prev(){
-  const f=document.getElementById('img').files[0]; if(!f) return;
-  const p=document.getElementById('preview'); p.src=URL.createObjectURL(f); p.style.display='block';
+let selModel='mlx-community/Qwen3-VL-8B-Instruct-4bit',imgFile=null;
+function setModel(btn){
+  selModel=btn.dataset.model;
+  document.querySelectorAll('#chips .mc').forEach(b=>b.classList.toggle('active',b===btn));
+  document.getElementById('modelNote').textContent=btn.dataset.note||'';
 }
-async function run(){
-  const f=document.getElementById('img').files[0];
-  const out=document.getElementById('out');
-  if(!f){out.style.display='block';out.textContent='Select an image first.';return;}
-  const btn=document.getElementById('btn');
-  btn.disabled=true; out.style.display='block';
-  out.textContent='👁 Analyzing… (loading vision model if cold, please wait up to 90s)';
-  const fd=new FormData();
-  fd.append('image',f);
-  fd.append('prompt',document.getElementById('prompt').value);
-  fd.append('model',document.getElementById('model').value);
+function doDrag(e,on){e.preventDefault();document.getElementById('dz').classList.toggle('drag',on);}
+function doDrop(e){
+  e.preventDefault();document.getElementById('dz').classList.remove('drag');
+  const f=[...(e.dataTransfer.files||[])].find(x=>x.type.startsWith('image/'));
+  if(f)pickFile(f);
+}
+function pickFile(f){
+  if(!f)return;imgFile=f;
+  document.getElementById('dz').style.display='none';
+  document.getElementById('prevBox').style.display='block';
+  document.getElementById('prevImg').src=URL.createObjectURL(f);
+}
+function clearImg(){
+  imgFile=null;document.getElementById('imgFile').value='';
+  document.getElementById('dz').style.display='flex';
+  document.getElementById('prevBox').style.display='none';
+}
+function setQ(q){document.getElementById('prompt').value=q;}
+async function analyze(){
+  const st=document.getElementById('status');
+  if(!imgFile){st.textContent='Upload an image first.';st.className='vst err';return;}
+  const btn=document.getElementById('runBtn');
+  btn.disabled=true;document.getElementById('prog').classList.add('on');
+  st.textContent='Analyzing… (first run loads model — 30–90s)';st.className='vst';
+  document.getElementById('rcPh').style.display='none';
+  document.getElementById('rcBody').style.display='none';
+  document.getElementById('rcActs').style.display='none';
+  const rcImg=document.getElementById('rcImg');
+  rcImg.src=URL.createObjectURL(imgFile);rcImg.style.display='block';
+  const fd=new FormData();fd.append('image',imgFile);
+  fd.append('prompt',document.getElementById('prompt').value||'Describe this image in detail.');
+  fd.append('model',selModel);
   try{
     const r=await fetch('/api/vision',{method:'POST',body:fd});
     if(r.status===401){location='/login';return;}
     const d=await r.json();
-    out.textContent=r.ok ? d.answer : ('⚠ '+(d.error||'failed'));
-  }catch(e){out.textContent='⚠ '+e;}
-  btn.disabled=false;
+    document.getElementById('answer').textContent=r.ok?d.answer:'⚠ '+(d.error||'failed');
+    document.getElementById('rcBody').style.display='block';
+    document.getElementById('rcActs').style.display='flex';
+    st.textContent=r.ok?'Analysis complete.':'Error.';st.className=r.ok?'vst ok':'vst err';
+  }catch(e){
+    document.getElementById('rcPh').style.display='flex';
+    rcImg.style.display='none';
+    st.textContent='⚠ '+e;st.className='vst err';
+  }
+  btn.disabled=false;document.getElementById('prog').classList.remove('on');
+}
+function copyAnswer(){
+  const t=document.getElementById('answer').textContent;
+  navigator.clipboard.writeText(t).catch(()=>{});
+  const b=event.target;const p=b.textContent;b.textContent='Copied!';setTimeout(()=>b.textContent=p,2000);
+}
+function clearResult(){
+  document.getElementById('rcImg').style.display='none';
+  document.getElementById('rcPh').style.display='flex';
+  document.getElementById('rcBody').style.display='none';
+  document.getElementById('rcActs').style.display='none';
+  document.getElementById('status').textContent='';document.getElementById('status').className='vst';
 }
 </script></body></html>"""
 
@@ -1419,8 +1539,31 @@ body.drag{outline:3px dashed var(--purple);outline-offset:-4px}
 </div>
 <script>
 let msgs=[],busy=false,img=null,agentOn=true;
+const CHAT_KEY='law_chat_v2';
+const IMG_TRIGGER=/^(generate|create|make|draw|show me|give me|produce)\s+(a |an |some )?(image|photo|picture|illustration|art|drawing|painting|render|visualization) of (.+)/i;
 function autosize(ta){ta.style.height='auto';ta.style.height=Math.min(ta.scrollHeight,160)+'px';}
 async function j(u,o){const r=await fetch(u,o);if(r.status==401){location='/login';throw 0;}return r;}
+function saveChatState(){
+  try{
+    const savable=msgs.filter(m=>m.content&&m.content!=='__typing__').slice(-60).map(m=>{
+      const c={...m};if(c.image&&c.image.startsWith('blob:'))delete c.image;return c;});
+    localStorage.setItem(CHAT_KEY,JSON.stringify({msgs:savable,agentOn}));
+  }catch(e){}
+}
+function restoreChatState(){
+  try{
+    const saved=JSON.parse(localStorage.getItem(CHAT_KEY)||'{}');
+    if(saved.msgs&&saved.msgs.length){
+      msgs=saved.msgs;
+      if(saved.agentOn!==undefined&&saved.agentOn!==agentOn){
+        agentOn=saved.agentOn;
+        const b=document.getElementById('modeBtn');
+        b.classList.toggle('on',agentOn);b.innerHTML=agentOn?'&#127760; Agent':'&#9889; Direct';
+      }
+      render();
+    }
+  }catch(e){}
+}
 function toggleMode(){agentOn=!agentOn;const b=document.getElementById('modeBtn');
 b.classList.toggle('on',agentOn);b.innerHTML=(agentOn?'&#127760; Agent':'&#9889; Direct');loadDropdown();}
 async function loadDropdown(){
@@ -1479,11 +1622,12 @@ h+='<details class=steps><summary>&#9654; Thinking ('+m.steps.length+' steps)</s
 }
 if(m.content==='__typing__'){h+='<div class=typing><span></span><span></span><span></span></div>';}
 else{h+=fmt(m.content||'');}
+if(m.imageResult){h+='<img src="'+m.imageResult+'" style="max-width:100%;max-height:380px;border-radius:10px;margin-top:10px;display:block;border:1px solid rgba(14,165,233,.2);cursor:pointer" onclick="window.open(this.src)">';}
 }
 b.innerHTML=h;wrap.appendChild(b);return wrap;
 }
 function render(){const t=document.getElementById('thread');t.innerHTML='';
-msgs.forEach(m=>t.appendChild(makeBubble(m)));t.scrollTop=t.scrollHeight;return t;}
+msgs.forEach(m=>t.appendChild(makeBubble(m)));t.scrollTop=t.scrollHeight;saveChatState();return t;}
 function key(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}
 function pickImg(f){if(!f)return;img=f;
 document.getElementById('chip').style.display='flex';
@@ -1499,10 +1643,32 @@ if(busy)return;
 const inp=document.getElementById('in'),text=inp.value.trim();
 if(!text&&!img)return;
 busy=true;document.getElementById('sendbtn').disabled=true;
-if(img)await visionTurn(text);
+const imgM=!img&&text.match(IMG_TRIGGER);
+if(imgM)await imageGenTurn(text,imgM[4]||text.replace(IMG_TRIGGER,'').trim());
+else if(img)await visionTurn(text);
 else if(agentOn)await agentTurn(text);
 else await chatTurn(text);
 busy=false;document.getElementById('sendbtn').disabled=false;
+}
+async function imageGenTurn(text,subject){
+const inp=document.getElementById('in');
+inp.value='';autosize(inp);
+msgs.push({role:'user',content:text});
+const a={role:'assistant',content:'__typing__',steps:['🎨 Generating image from prompt…']};msgs.push(a);
+const t=render();
+function paint(){const prev=t.lastChild;prev.replaceWith(makeBubble(a));t.scrollTop=t.scrollHeight;}
+try{
+const r=await j('/api/imagine',{method:'POST',headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({prompt:subject,model:'qwen',steps:20,width:1024,height:1024})});
+const d=await r.json();
+if(r.ok){
+  const url='/api/image-file/'+d.file+'?t='+Date.now();
+  a.content='Here\'s your generated image:';a.imageResult=url;a.steps=[];
+}else{
+  a.content='⚠ Image generation failed: '+(d.error||'failed');a.steps=[];
+}
+}catch(e){a.content='Error: '+e;a.steps=[];}
+paint();saveChatState();
 }
 async function agentTurn(text){
 const persona=document.getElementById('model').value;
@@ -1564,74 +1730,547 @@ a.content=r.ok?d.answer:'Error: '+(d.error||'failed');
 }catch(e){a.content='Error: '+e;}
 t.lastChild.replaceWith(makeBubble(a));t.scrollTop=t.scrollHeight;
 }
-loadDropdown();
+(async()=>{await loadDropdown();restoreChatState();})();
+// P6-2: mic input (browser SpeechRecognition)
+const SpeechRec=window.SpeechRecognition||window.webkitSpeechRecognition;
+if(SpeechRec){
+  const micBtn=document.createElement('button');
+  micBtn.className='att-btn';micBtn.title='Voice input';micBtn.innerHTML='🎙';
+  micBtn.style.cssText='';
+  let rec=null,recording=false;
+  micBtn.onclick=function(){
+    if(recording){rec&&rec.stop();recording=false;micBtn.innerHTML='🎙';micBtn.style.borderColor='';return;}
+    rec=new SpeechRec();rec.lang='en-US';rec.interimResults=false;
+    rec.onresult=e=>{const t=e.results[0][0].transcript;const inp=document.getElementById('in');inp.value=(inp.value+' '+t).trim();autosize(inp);};
+    rec.onend=()=>{recording=false;micBtn.innerHTML='🎙';micBtn.style.borderColor='';};
+    rec.start();recording=true;micBtn.innerHTML='🔴';micBtn.style.borderColor='#ef4444';
+  };
+  document.querySelector('.inp-row').insertBefore(micBtn,document.getElementById('in'));
+}
 </script></body></html>"""
 
 
-IMAGINE_PAGE = r"""<!doctype html><html><head><meta charset=utf-8><title>Create image - MLX</title>
-<meta name=viewport content="width=device-width,initial-scale=1"><!--NAV_CSS--><style>
-*{box-sizing:border-box}body{font:15px system-ui;background:#0b1020;color:#e6edf3;margin:0;padding:0;overflow-y:auto}
-a{color:#60a5fa;text-decoration:none}h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;color:#93c5fd;margin:24px 0 10px}
-.sub{color:#8b98b8;font-size:13px;margin-bottom:16px}label{display:block;font-size:13px;margin:12px 0 4px;color:#b6c2da}
-textarea,select,input{width:100%;padding:9px;border-radius:8px;border:1px solid #2a3550;background:#141b2e;color:#e6edf3;font:14px system-ui}
-textarea{min-height:66px}.row{display:flex;gap:10px;flex-wrap:wrap}.row>div{flex:1;min-width:120px}
-button{border:0;border-radius:8px;padding:11px 18px;font-weight:600;cursor:pointer;background:#7c3aed;color:#fff;margin-top:14px}
-button:disabled{opacity:.5;cursor:default}
-#result{margin-top:18px}#result img{max-width:100%;border-radius:12px;border:1px solid #223052}
-#status{color:#c4b5fd;font-size:13px;min-height:18px;margin-top:10px}
-.warn{color:#fca5a5;font-size:12px;margin-bottom:12px}.lic{color:#8b98b8;font-size:12px;margin-top:4px}
-#gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
-#gallery img{width:100%;border-radius:8px;border:1px solid #223052;cursor:pointer}
+IMAGINE_PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Create · LAW</title>
+<!--NAV_CSS-->
+<style>
+:root{--bg:#020817;--surf:#0a1628;--card:rgba(13,30,53,.9);--bdr:rgba(14,165,233,.13);--bdrbrt:rgba(14,165,233,.35);
+--purple:#7c3aed;--purple2:#a78bfa;--blue:#0ea5e9;--green:#10b981;--red:#ef4444;--amber:#f59e0b;
+--text:#e2e8f0;--muted:#94a3b8;--mono:'JetBrains Mono',ui-monospace,monospace;--sans:'Space Grotesk',system-ui,sans-serif;}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;
+  background-image:radial-gradient(ellipse 70% 50% at 30% -10%,rgba(124,58,237,.1),transparent),
+    radial-gradient(ellipse 50% 40% at 80% 0%,rgba(14,165,233,.06),transparent);}
+a{color:var(--blue);text-decoration:none}
+/* ── page layout ── */
+.ig-wrap{display:grid;grid-template-columns:380px 1fr;gap:0;min-height:calc(100vh - 56px)}
+@media(max-width:900px){.ig-wrap{grid-template-columns:1fr;grid-template-rows:auto 1fr}}
+/* ── left control panel ── */
+.ig-controls{padding:20px;display:flex;flex-direction:column;gap:14px;
+  border-right:1px solid var(--bdr);background:rgba(10,22,40,.6);
+  position:sticky;top:56px;max-height:calc(100vh - 56px);overflow-y:auto;
+  scrollbar-width:thin;scrollbar-color:rgba(14,165,233,.2) transparent}
+@media(max-width:900px){.ig-controls{position:static;max-height:none;border-right:none;border-bottom:1px solid var(--bdr)}}
+.sec-lbl{font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--muted);margin-bottom:6px}
+/* model chips */
+.model-chips{display:flex;gap:6px;flex-wrap:wrap}
+.mc{padding:5px 12px;border-radius:20px;border:1px solid var(--bdr);font-size:12px;font-weight:500;
+  color:var(--muted);cursor:pointer;transition:.15s;background:transparent;font-family:var(--sans)}
+.mc:hover{border-color:var(--purple);color:var(--purple2)}
+.mc.active{border-color:var(--purple);background:rgba(124,58,237,.15);color:var(--purple2)}
+/* prompt */
+.ig-prompt{width:100%;min-height:120px;padding:12px;border-radius:10px;
+  border:1px solid var(--bdr);background:rgba(13,30,53,.8);color:var(--text);
+  font:14px var(--sans);resize:vertical;outline:none;transition:.2s;line-height:1.5}
+.ig-prompt:focus{border-color:var(--purple);box-shadow:0 0 0 2px rgba(124,58,237,.12)}
+/* style presets */
+.presets{display:flex;gap:5px;flex-wrap:wrap}
+.preset{padding:4px 10px;border-radius:14px;font-size:11px;cursor:pointer;border:1px solid var(--bdr);
+  color:var(--muted);transition:.15s;background:transparent;font-family:var(--sans)}
+.preset:hover{border-color:var(--blue);color:var(--blue);background:rgba(14,165,233,.06)}
+/* resolution presets */
+.res-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.res-btn{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 4px;
+  border-radius:8px;border:1px solid var(--bdr);cursor:pointer;color:var(--muted);
+  background:transparent;transition:.15s;font-family:var(--sans)}
+.res-btn:hover{border-color:var(--blue);color:var(--blue)}
+.res-btn.active{border-color:var(--purple);background:rgba(124,58,237,.12);color:var(--purple2)}
+.res-icon{display:flex;align-items:flex-end;justify-content:center;height:28px}
+.res-icon div{background:currentColor;border-radius:2px;opacity:.8}
+.res-lbl{font-size:10px;font-family:var(--mono)}
+/* steps slider */
+.slider-wrap{display:flex;align-items:center;gap:10px}
+.slider-wrap input[type=range]{flex:1;-webkit-appearance:none;height:4px;border-radius:2px;
+  background:linear-gradient(90deg,var(--purple) var(--pct,50%),rgba(255,255,255,.1) var(--pct,50%));
+  outline:none;cursor:pointer}
+.slider-wrap input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;
+  border-radius:50%;background:var(--purple);box-shadow:0 0 6px rgba(124,58,237,.5)}
+.slider-val{font-family:var(--mono);font-size:13px;color:var(--purple2);min-width:22px;text-align:right}
+/* seed row */
+.seed-row{display:flex;gap:8px}
+.seed-inp{flex:1;padding:8px 10px;border-radius:8px;border:1px solid var(--bdr);
+  background:rgba(13,30,53,.8);color:var(--text);font:13px var(--mono);outline:none;transition:.2s}
+.seed-inp:focus{border-color:var(--blue)}
+.seed-btn{padding:8px 10px;border-radius:8px;border:1px solid var(--bdr);background:transparent;
+  color:var(--muted);cursor:pointer;font-size:13px;transition:.15s;font-family:var(--sans)}
+.seed-btn:hover{border-color:var(--blue);color:var(--blue)}
+/* neg prompt */
+.adv-toggle{font-size:12px;color:var(--muted);cursor:pointer;display:flex;align-items:center;gap:5px;
+  padding:4px 0;border:none;background:transparent;font-family:var(--sans)}
+.adv-toggle:hover{color:var(--text)}.adv-arrow{transition:.2s}.adv-arrow.open{transform:rotate(90deg)}
+.adv-panel{display:none;flex-direction:column;gap:8px;padding-top:6px}
+.adv-panel.open{display:flex}
+.neg-inp{width:100%;min-height:60px;padding:9px;border-radius:8px;border:1px solid var(--bdr);
+  background:rgba(13,30,53,.8);color:var(--text);font:13px var(--sans);resize:vertical;outline:none;transition:.2s}
+.neg-inp:focus{border-color:var(--red)}
+/* lic note */
+.lic-note{font-size:11px;color:var(--muted);font-family:var(--mono)}
+/* mode tabs */
+.mode-tabs{display:flex;border-radius:8px;overflow:hidden;border:1px solid var(--bdr);margin-bottom:4px}
+.mode-tab{flex:1;padding:9px;border:none;cursor:pointer;font:600 12px var(--sans);
+  background:transparent;color:var(--muted);transition:.15s}
+.mode-tab.active{background:rgba(124,58,237,.2);color:var(--purple2)}
+.mode-tab:hover:not(.active){background:rgba(255,255,255,.04);color:var(--text)}
+/* edit source drop */
+.edit-dz{border:2px dashed rgba(14,165,233,.2);border-radius:10px;padding:18px;
+  text-align:center;cursor:pointer;transition:.2s;font-size:12px;color:var(--muted);position:relative}
+.edit-dz:hover{border-color:var(--blue);background:rgba(14,165,233,.04)}
+.edit-dz input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.edit-prev{max-width:100%;max-height:140px;border-radius:8px;display:none;margin-top:8px;border:1px solid var(--bdr)}
+.edit-chips{display:flex;gap:6px}
+.ec{padding:5px 12px;border-radius:14px;border:1px solid var(--bdr);font-size:12px;
+  color:var(--muted);cursor:pointer;transition:.15s;background:transparent;font-family:var(--sans)}
+.ec.active{border-color:var(--purple);background:rgba(124,58,237,.15);color:var(--purple2)}
+.ec:hover{border-color:var(--blue);color:#7dd3fc}
+/* generate button */
+.gen-btn{width:100%;padding:14px;border:none;border-radius:10px;cursor:pointer;
+  font:600 15px var(--sans);color:#fff;position:relative;overflow:hidden;transition:.2s;margin-top:4px;
+  background:linear-gradient(135deg,var(--purple),#6d28d9)}
+.gen-btn:not(:disabled):hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(124,58,237,.4)}
+.gen-btn:disabled{opacity:.6;cursor:default;transform:none}
+.gen-btn .btn-txt{position:relative;z-index:1}
+.gen-btn .btn-glow{position:absolute;inset:0;background:linear-gradient(135deg,rgba(167,139,250,.3),transparent);
+  opacity:0;transition:.3s}
+.gen-btn:not(:disabled):hover .btn-glow{opacity:1}
+/* progress bar */
+.progress-bar{height:3px;width:100%;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden;
+  display:none;margin-top:-4px}
+.progress-bar.active{display:block}
+.pb-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--purple),var(--blue),var(--purple));
+  background-size:200% 100%;animation:pbAnim 1.5s linear infinite;width:100%}
+@keyframes pbAnim{0%{background-position:0 0}100%{background-position:200% 0}}
+/* ── right panel ── */
+.ig-right{padding:20px;display:flex;flex-direction:column;gap:20px;min-width:0}
+/* result area */
+.result-area{border-radius:14px;border:1px solid var(--bdr);background:var(--card);
+  overflow:hidden;position:relative;min-height:200px;display:flex;align-items:center;justify-content:center}
+.result-placeholder{display:flex;flex-direction:column;align-items:center;gap:12px;padding:60px 20px;
+  color:var(--muted);text-align:center}
+.result-placeholder .big{font-size:48px;opacity:.3}
+.result-placeholder p{font-size:13px;max-width:280px;line-height:1.5}
+.result-img{width:100%;display:block;border-radius:14px}
+.result-overlay{position:absolute;bottom:0;left:0;right:0;padding:12px 16px;
+  background:linear-gradient(transparent,rgba(2,8,23,.9));
+  display:flex;align-items:center;gap:8px;opacity:0;transition:.2s}
+.result-area:hover .result-overlay{opacity:1}
+.res-act{padding:6px 12px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;
+  border:1px solid rgba(255,255,255,.15);background:rgba(2,8,23,.7);color:var(--text);
+  backdrop-filter:blur(8px);transition:.15s;font-family:var(--sans)}
+.res-act:hover{background:rgba(255,255,255,.1)}
+.res-stats{font-family:var(--mono);font-size:10px;color:var(--muted);margin-left:auto}
+/* status / error */
+.ig-status{font-size:13px;color:var(--muted);min-height:18px;font-family:var(--mono)}
+.ig-status.error{color:var(--red)}
+.ig-status.ok{color:var(--green)}
+/* gallery */
+.gallery-header{display:flex;align-items:center;gap:10px}
+.gallery-ttl{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--muted)}
+.gallery-count{font-family:var(--mono);font-size:10px;color:var(--muted);background:rgba(255,255,255,.06);
+  padding:2px 7px;border-radius:10px}
+.gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+@media(max-width:600px){.gallery-grid{grid-template-columns:repeat(auto-fill,minmax(100px,1fr))}}
+.gal-item{position:relative;border-radius:8px;overflow:hidden;cursor:pointer;
+  border:1px solid var(--bdr);aspect-ratio:1;background:var(--surf);transition:.2s}
+.gal-item:hover{border-color:var(--bdrbrt);transform:scale(1.02);z-index:2}
+.gal-item img{width:100%;height:100%;object-fit:cover;display:block}
+.gal-item .gal-overlay{position:absolute;inset:0;background:linear-gradient(transparent 40%,rgba(2,8,23,.92));
+  opacity:0;transition:.2s;display:flex;flex-direction:column;justify-content:flex-end;padding:8px}
+.gal-item:hover .gal-overlay{opacity:1}
+.gal-prompt{font-size:10px;color:var(--text);line-height:1.3;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.gal-dl{position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:5px;
+  background:rgba(2,8,23,.7);color:var(--text);display:flex;align-items:center;justify-content:center;
+  font-size:12px;text-decoration:none;opacity:0;transition:.2s;backdrop-filter:blur(4px)}
+.gal-item:hover .gal-dl{opacity:1}
+/* lightbox */
+.lb{display:none;position:fixed;inset:0;z-index:999;background:rgba(2,8,23,.92);
+  backdrop-filter:blur(12px);align-items:center;justify-content:center;padding:20px}
+.lb.open{display:flex}
+.lb-inner{position:relative;max-width:min(90vw,1200px);max-height:90vh}
+.lb-img{max-width:100%;max-height:90vh;border-radius:12px;display:block;
+  box-shadow:0 24px 80px rgba(0,0,0,.6)}
+.lb-close{position:absolute;top:-12px;right:-12px;width:32px;height:32px;border-radius:50%;
+  background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:var(--text);
+  cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;
+  transition:.15s;font-family:var(--sans)}
+.lb-close:hover{background:rgba(255,255,255,.2)}
+.lb-actions{position:absolute;bottom:-44px;left:0;right:0;display:flex;justify-content:center;gap:8px}
+.lb-btn{padding:6px 16px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;
+  border:1px solid rgba(255,255,255,.15);background:rgba(10,22,40,.8);color:var(--text);
+  backdrop-filter:blur(8px);font-family:var(--sans)}
+.lb-btn:hover{background:rgba(255,255,255,.1)}
 </style></head><body>
 <!--NAV-->
-<div style="padding:20px 24px 24px">
-<h1>🎨 Create image</h1>
-<div class=sub>Text→image locally with FLUX (mflux) — no API, no cost, private.</div>
-<div class=warn>First run downloads the model (a few GB) — that generation can take a few minutes; later ones are fast.</div>
-<label>Prompt</label><textarea id=prompt placeholder="a cozy reading nook by a rainy window, warm light, watercolor"></textarea>
-<div class=row>
-  <div><label>Model</label><select id=model onchange="lic()"><option value=z-image-turbo>Z-Image Turbo (fast, non-gated)</option><option value=schnell>FLUX.1-schnell (needs HF access)</option><option value=dev>FLUX.1-dev (needs HF access)</option></select><div class=lic id=lic>Z-Image Turbo - non-gated - Tongyi Qianwen license (commercial use OK; verify at large scale)</div></div>
-  <div><label>Steps</label><input id=steps type=number value=9 min=1 max=50></div>
-  <div><label>Width</label><input id=width type=number value=1024 min=256 max=1536 step=64></div>
-  <div><label>Height</label><input id=height type=number value=1024 min=256 max=1536 step=64></div>
-  <div><label>Seed (optional)</label><input id=seed placeholder="random"></div>
+<div class="ig-wrap">
+  <!-- LEFT: Controls -->
+  <aside class="ig-controls">
+    <div class="mode-tabs">
+      <button class="mode-tab active" id="tab-gen" onclick="setMode('gen')">✦ Generate</button>
+      <button class="mode-tab" id="tab-edit" onclick="setMode('edit')">✎ Edit Image</button>
+    </div>
+    <div id="gen-section">
+      <div class="sec-lbl">MODEL</div>
+      <div class="model-chips">
+        <button class="mc active" data-model="qwen" onclick="setModel(this)">Qwen-Image 20B</button>
+        <button class="mc" data-model="ernie" onclick="setModel(this)">ERNIE-Image 8B</button>
+        <button class="mc" data-model="z-image-turbo" onclick="setModel(this)">Z-Image Turbo</button>
+      </div>
+      <div class="lic-note" id="licNote" style="margin-top:6px">Qwen/Qwen-Image 20.4B · 4-bit · Apache-2.0 · best quality</div>
+    </div>
+    <div id="edit-section" style="display:none">
+      <div class="sec-lbl">SOURCE IMAGE</div>
+      <div class="edit-dz" id="editDz">
+        <input type="file" id="editFile" accept="image/*" onchange="pickEditFile(this.files[0])">
+        <div id="editDzTxt">📁 Upload image to edit</div>
+        <img id="editPrev" class="edit-prev">
+      </div>
+      <div class="sec-lbl" style="margin-top:10px">EDIT STRENGTH</div>
+      <div class="edit-chips">
+        <button class="ec" data-str="0.35" onclick="setEC(this)">Subtle</button>
+        <button class="ec active" data-str="0.65" onclick="setEC(this)">Moderate</button>
+        <button class="ec" data-str="0.85" onclick="setEC(this)">Strong</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="sec-lbl">PROMPT</div>
+      <textarea class="ig-prompt" id="prompt" placeholder="a futuristic city skyline at sunset with flying cars and holographic billboards, cinematic lighting, 8k detail…"></textarea>
+    </div>
+
+    <div>
+      <div class="sec-lbl">STYLE</div>
+      <div class="presets" id="presets">
+        <button class="preset" data-append=", photorealistic, DSLR, 4k sharp" onclick="addPreset(this)">Photorealistic</button>
+        <button class="preset" data-append=", cinematic film still, anamorphic, color graded" onclick="addPreset(this)">Cinematic</button>
+        <button class="preset" data-append=", anime illustration, cel shaded, Studio Ghibli quality" onclick="addPreset(this)">Anime</button>
+        <button class="preset" data-append=", oil painting, impasto, museum quality" onclick="addPreset(this)">Oil Painting</button>
+        <button class="preset" data-append=", digital concept art, artstation quality" onclick="addPreset(this)">Digital Art</button>
+        <button class="preset" data-append=", watercolor painting, soft edges, paper texture" onclick="addPreset(this)">Watercolor</button>
+        <button class="preset" data-append=", 3D render, octane render, hyperrealistic" onclick="addPreset(this)">3D Render</button>
+        <button class="preset" data-append=", pencil sketch, fine line art, detailed" onclick="addPreset(this)">Sketch</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="sec-lbl">RESOLUTION</div>
+      <div class="res-grid">
+        <button class="res-btn active" data-w="1024" data-h="1024" onclick="setRes(this)">
+          <div class="res-icon"><div style="width:22px;height:22px"></div></div>
+          <span class="res-lbl">Square</span>
+        </button>
+        <button class="res-btn" data-w="768" data-h="1280" onclick="setRes(this)">
+          <div class="res-icon"><div style="width:16px;height:24px"></div></div>
+          <span class="res-lbl">Portrait</span>
+        </button>
+        <button class="res-btn" data-w="1280" data-h="768" onclick="setRes(this)">
+          <div class="res-icon"><div style="width:26px;height:16px"></div></div>
+          <span class="res-lbl">Landscape</span>
+        </button>
+        <button class="res-btn" data-w="1536" data-h="640" onclick="setRes(this)">
+          <div class="res-icon"><div style="width:30px;height:12px"></div></div>
+          <span class="res-lbl">Wide</span>
+        </button>
+      </div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:6px" id="resDim">1024 × 1024 px</div>
+    </div>
+
+    <div>
+      <div class="sec-lbl">STEPS &nbsp;<span id="stepsVal" style="color:var(--purple2)">9</span></div>
+      <div class="slider-wrap">
+        <input type="range" id="steps" min="1" max="16" value="9" style="--pct:50%"
+          oninput="document.getElementById('stepsVal').textContent=this.value;this.style.setProperty('--pct',((this.value-1)/15*100)+'%')">
+      </div>
+    </div>
+
+    <div>
+      <div class="sec-lbl">SEED</div>
+      <div class="seed-row">
+        <input type="text" class="seed-inp" id="seed" placeholder="random">
+        <button class="seed-btn" onclick="randSeed()" title="randomize">⚄</button>
+      </div>
+    </div>
+
+    <div>
+      <button class="adv-toggle" onclick="toggleAdv()">
+        <span class="adv-arrow" id="advArrow">›</span> Advanced (negative prompt)
+      </button>
+      <div class="adv-panel" id="advPanel">
+        <div class="sec-lbl">NEGATIVE PROMPT</div>
+        <textarea class="neg-inp" id="negPrompt" placeholder="blur, watermark, text, low quality, distorted…"></textarea>
+      </div>
+    </div>
+
+    <button class="gen-btn" id="genBtn" onclick="igAction()">
+      <div class="btn-glow"></div>
+      <span class="btn-txt">✦ Generate</span>
+    </button>
+    <div class="progress-bar" id="progBar"><div class="pb-fill"></div></div>
+    <div class="ig-status" id="status"></div>
+  </aside>
+
+  <!-- RIGHT: Result + Gallery -->
+  <main class="ig-right">
+    <div>
+      <div class="result-area" id="resultArea">
+        <div class="result-placeholder" id="placeholder">
+          <div class="big">✦</div>
+          <p>Your image will appear here. Describe what you want to create in the prompt panel.</p>
+        </div>
+        <img class="result-img" id="resultImg" style="display:none">
+        <div class="result-overlay">
+          <button class="res-act" id="dlBtn" onclick="dlResult()">⬇ Download</button>
+          <button class="res-act" onclick="copyPrompt()">📋 Copy prompt</button>
+          <span class="res-stats" id="resStats"></span>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="gallery-header">
+        <span class="gallery-ttl">RECENT GENERATIONS</span>
+        <span class="gallery-count" id="galCount">0</span>
+      </div>
+      <div class="gallery-grid" id="gallery"></div>
+    </div>
+  </main>
 </div>
-<button id=go onclick=gen()>Generate</button>
-<div id=status></div>
-<div id=result></div>
-<h2>Recent</h2><div id=gallery></div>
+
+<!-- Lightbox -->
+<div class="lb" id="lb" onclick="closeLb(event)">
+  <div class="lb-inner">
+    <button class="lb-close" onclick="closeLb()">✕</button>
+    <img class="lb-img" id="lbImg">
+    <div class="lb-actions">
+      <a class="lb-btn" id="lbDl" download>⬇ Download</a>
+      <button class="lb-btn" id="lbCopy" onclick="copyLbPrompt()">📋 Copy prompt</button>
+    </div>
+  </div>
+</div>
+
 <script>
+const PROMPTS_KEY='law_img_prompts';
+let curFile='',curPrompt='',curW=1024,curH=1024,selModel='qwen',igMode='gen',editFile=null,editStr=0.65;
+function setMode(m){
+  igMode=m;
+  document.getElementById('tab-gen').classList.toggle('active',m==='gen');
+  document.getElementById('tab-edit').classList.toggle('active',m==='edit');
+  document.getElementById('gen-section').style.display=m==='gen'?'':'none';
+  document.getElementById('edit-section').style.display=m==='edit'?'':'none';
+  document.getElementById('genBtn').querySelector('.btn-txt').textContent=m==='gen'?'✦ Generate':'✎ Apply Edit';
+}
+function pickEditFile(f){
+  if(!f)return;editFile=f;
+  document.getElementById('editDzTxt').textContent=f.name.slice(0,28);
+  const prev=document.getElementById('editPrev');prev.src=URL.createObjectURL(f);prev.style.display='block';
+}
+function setEC(btn){
+  editStr=parseFloat(btn.dataset.str)||0.65;
+  document.querySelectorAll('.ec').forEach(b=>b.classList.toggle('active',b===btn));
+}
+async function igAction(){if(igMode==='edit')await applyEdit();else await gen();}
+async function applyEdit(){
+  const prompt=document.getElementById('prompt').value.trim();
+  const st=document.getElementById('status');
+  if(!prompt){st.textContent='Enter an edit prompt';st.className='ig-status error';return;}
+  if(!editFile){st.textContent='Upload a source image first';st.className='ig-status error';return;}
+  const btn=document.getElementById('genBtn');
+  btn.disabled=true;btn.querySelector('.btn-txt').textContent='Editing…';
+  document.getElementById('progBar').classList.add('active');
+  st.textContent='Applying edit… (FLUX.1-dev must be downloaded on first run — ~17 GB)';st.className='ig-status';
+  document.getElementById('placeholder').style.display='flex';
+  document.getElementById('resultImg').style.display='none';
+  const t0=Date.now();
+  const fd=new FormData();fd.append('image',editFile);fd.append('prompt',prompt);fd.append('strength',String(editStr));
+  try{
+    const r=await j('/api/imagine-edit',{method:'POST',body:fd});
+    const d=await r.json();const elapsed=((Date.now()-t0)/1000).toFixed(1);
+    if(r.ok){
+      const u='/api/image-file/'+d.file+'?t='+Date.now();
+      curFile=d.file;curPrompt=prompt;savePrompt(d.file,prompt);
+      document.getElementById('placeholder').style.display='none';
+      const img=document.getElementById('resultImg');img.src=u;img.style.display='block';
+      document.getElementById('resStats').textContent='edit · str='+editStr+' · '+elapsed+'s';
+      st.textContent='Edit done in '+elapsed+'s';st.className='ig-status ok';
+      loadGallery();
+    }else{
+      const pre=document.createElement('pre');
+      pre.style.cssText='white-space:pre-wrap;font-size:0.78rem;margin:0;color:inherit';
+      pre.textContent=d.error||'failed';st.textContent='';st.appendChild(pre);
+      st.className='ig-status error';
+    }
+  }catch(e){st.textContent='⚠ '+e;st.className='ig-status error';}
+  btn.disabled=false;btn.querySelector('.btn-txt').textContent='✎ Apply Edit';
+  document.getElementById('progBar').classList.remove('active');
+}
+
+function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 async function j(u,o){const r=await fetch(u,o);if(r.status==401){location='/login';throw 0;}return r;}
-function lic(){
-  const v=document.getElementById('model').value;
-  const info={'z-image-turbo':['Z-Image Turbo - non-gated - Tongyi Qianwen license (commercial use OK; verify at large scale)',9],
-              'schnell':['FLUX.1-schnell - Apache-2.0 - requires accepting the license on huggingface.co/black-forest-labs/FLUX.1-schnell',4],
-              'dev':['FLUX.1-dev - non-commercial - requires an HF access grant',20]}[v];
-  document.getElementById('lic').textContent=info[0];
-  document.getElementById('steps').value=info[1];
+
+// model
+const LIC={
+  'qwen':         'Qwen/Qwen-Image 20.4B · 4-bit · Apache-2.0 · best quality (downloads ~10 GB on first run)',
+  'ernie':        'ERNIE-Image 8B · 4-bit · Apache-2.0 · high quality, fast (downloads ~4 GB on first run)',
+  'z-image-turbo':'Z-Image Turbo · cached · Tongyi Qianwen · fastest (ready now)',
+};
+const DEF_STEPS={'qwen':20,'ernie':20,'z-image-turbo':9};
+function setModel(btn){
+  selModel=btn.dataset.model;
+  document.querySelectorAll('.mc').forEach(b=>b.classList.toggle('active',b===btn));
+  document.getElementById('licNote').textContent=LIC[selModel]||'';
+  const s=DEF_STEPS[selModel]||9;
+  const sl=document.getElementById('steps');sl.value=s;
+  document.getElementById('stepsVal').textContent=s;
+  sl.style.setProperty('--pct',((s-1)/15*100)+'%');
 }
+
+// resolution
+function setRes(btn){
+  curW=+btn.dataset.w;curH=+btn.dataset.h;
+  document.querySelectorAll('.res-btn').forEach(b=>b.classList.toggle('active',b===btn));
+  document.getElementById('resDim').textContent=curW+' × '+curH+' px';
+}
+
+// style presets
+function addPreset(btn){
+  const ta=document.getElementById('prompt');
+  const app=btn.dataset.append||'';
+  if(!ta.value.includes(app.trim()))ta.value+=(ta.value.endsWith(' ')||!ta.value?'':' ')+app.trim();
+}
+
+// advanced
+function toggleAdv(){
+  const p=document.getElementById('advPanel'),a=document.getElementById('advArrow');
+  const open=p.classList.toggle('open');a.classList.toggle('open',open);
+  a.textContent=open?'›':'›';
+  a.style.transform=open?'rotate(90deg)':'';
+}
+
+// seed
+function randSeed(){document.getElementById('seed').value=Math.floor(Math.random()*999999);}
+
+// prompt storage
+function savePrompt(file,prompt){
+  try{const p=JSON.parse(localStorage.getItem(PROMPTS_KEY)||'{}');p[file]=prompt;localStorage.setItem(PROMPTS_KEY,JSON.stringify(p));}catch(e){}
+}
+function getPrompt(file){try{return (JSON.parse(localStorage.getItem(PROMPTS_KEY)||'{}'))[file]||'';}catch(e){return '';}}
+
+// generate
 async function gen(){
-  const prompt=document.getElementById('prompt').value.trim();const st=document.getElementById('status');
-  if(!prompt){st.textContent='enter a prompt first';return;}
-  const body={prompt,model:document.getElementById('model').value,steps:document.getElementById('steps').value,
-    width:document.getElementById('width').value,height:document.getElementById('height').value,seed:document.getElementById('seed').value};
-  const go=document.getElementById('go');go.disabled=true;st.textContent='🎨 generating… (first run pulls the model, be patient)';
-  document.getElementById('result').innerHTML='';
-  try{const r=await j('/api/imagine',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const prompt=document.getElementById('prompt').value.trim();
+  const st=document.getElementById('status');
+  if(!prompt){st.textContent='Enter a prompt first';st.className='ig-status error';return;}
+  const steps=+document.getElementById('steps').value||9;
+  const seed=(document.getElementById('seed').value||'').trim();
+  const neg=document.getElementById('negPrompt').value.trim();
+  const fullPrompt=neg?prompt+'. '+neg:prompt;
+  const body={prompt:fullPrompt,model:selModel,steps,width:curW,height:curH};
+  if(seed&&/^\d+$/.test(seed))body.seed=seed;
+  const btn=document.getElementById('genBtn');
+  btn.disabled=true;btn.querySelector('.btn-txt').textContent='Generating…';
+  document.getElementById('progBar').classList.add('active');
+  st.textContent='Generating… (first run may take a few minutes while the model loads)';st.className='ig-status';
+  document.getElementById('placeholder').style.display='flex';
+  document.getElementById('resultImg').style.display='none';
+  const t0=Date.now();
+  try{
+    const r=await j('/api/imagine',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
-    if(r.ok){const u='/api/image-file/'+d.file+'?t='+Date.now();
-      document.getElementById('result').innerHTML=`<img src="${u}"><div style="margin-top:8px"><a href="${u}" download>⬇ download</a></div>`;
-      st.textContent='done';loadGallery();}
-    else st.textContent='⚠ '+(d.error||'failed');}
-  catch(e){st.textContent='⚠ '+e;}
-  go.disabled=false;
+    const elapsed=((Date.now()-t0)/1000).toFixed(1);
+    if(r.ok){
+      const u='/api/image-file/'+d.file+'?t='+Date.now();
+      curFile=d.file;curPrompt=prompt;
+      savePrompt(d.file,prompt);
+      document.getElementById('placeholder').style.display='none';
+      const img=document.getElementById('resultImg');img.src=u;img.style.display='block';
+      document.getElementById('dlBtn').onclick=()=>{const a=document.createElement('a');a.href=u;a.download=d.file;a.click();};
+      document.getElementById('resStats').textContent=curW+'×'+curH+' · '+steps+'steps · '+elapsed+'s';
+      st.textContent='Done in '+elapsed+'s';st.className='ig-status ok';
+      loadGallery();
+    }else{
+      const msg=d.error||'failed';
+      if(r.status===422){
+        // model not downloaded — show a friendly multi-line message
+        const pre=document.createElement('pre');
+        pre.style.cssText='white-space:pre-wrap;font-size:0.78rem;margin:0;color:inherit';
+        pre.textContent=msg;
+        st.textContent='';st.appendChild(pre);
+      }else{st.textContent='⚠ '+msg;}
+      st.className='ig-status error';
+    }
+  }catch(e){st.textContent='⚠ '+e;st.className='ig-status error';}
+  btn.disabled=false;btn.querySelector('.btn-txt').textContent='✦ Generate';
+  document.getElementById('progBar').classList.remove('active');
 }
+
+function dlResult(){
+  if(!curFile)return;
+  const a=document.createElement('a');a.href='/api/image-file/'+curFile+'?t='+Date.now();a.download=curFile;a.click();
+}
+function copyPrompt(){
+  if(!curPrompt)return;
+  navigator.clipboard.writeText(curPrompt).catch(()=>{});
+  const st=document.getElementById('status');
+  const prev=st.textContent;st.textContent='Prompt copied!';
+  setTimeout(()=>st.textContent=prev,2000);
+}
+
+// gallery
+let lbPrompt='';
+function openLb(src,file){
+  lbPrompt=getPrompt(file)||'';
+  document.getElementById('lbImg').src=src;
+  const dl=document.getElementById('lbDl');dl.href=src;dl.download=file;
+  document.getElementById('lb').classList.add('open');
+}
+function closeLb(e){if(!e||e.target===document.getElementById('lb'))document.getElementById('lb').classList.remove('open');}
+function copyLbPrompt(){
+  if(lbPrompt)navigator.clipboard.writeText(lbPrompt).catch(()=>{});
+  const b=document.getElementById('lbCopy');const p=b.textContent;b.textContent='Copied!';setTimeout(()=>b.textContent=p,1500);
+}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')document.getElementById('lb').classList.remove('open');});
+
 async function loadGallery(){
-  const d=await(await j('/api/images')).json();const g=document.getElementById('gallery');g.innerHTML='';
-  (d.images||[]).forEach(f=>{const u='/api/image-file/'+f;const im=document.createElement('img');im.src=u;im.onclick=()=>window.open(u);g.appendChild(im);});
+  try{
+    const d=await(await j('/api/images')).json();
+    const g=document.getElementById('gallery');g.innerHTML='';
+    const imgs=d.images||[];
+    document.getElementById('galCount').textContent=imgs.length;
+    imgs.forEach(f=>{
+      const u='/api/image-file/'+f;
+      const prompt=getPrompt(f)||'';
+      const el=document.createElement('div');el.className='gal-item';
+      el.innerHTML='<img src="'+u+'" loading="lazy"><div class="gal-overlay">'+
+        (prompt?'<div class="gal-prompt">'+esc(prompt)+'</div>':'')+
+        '</div><a class="gal-dl" href="'+u+'" download="'+f+'" onclick="event.stopPropagation()">⬇</a>';
+      el.onclick=()=>openLb(u,f);
+      g.appendChild(el);
+    });
+  }catch(e){}
 }
 loadGallery();
-</script></div></body></html>"""
+</script>
+</body></html>"""
 
 @app.route("/models")
 @require_auth
@@ -1801,17 +2440,20 @@ from flask import send_file
 IMAGES_DIR = Path(os.environ.get("MLX_IMAGES_DIR", str(Path.home() / "MLX-AI" / "documents" / "images")))
 IMG_WRAPPER = str(WORKDIR / "mlx-image.sh")
 
+_VALID_MODELS = {"qwen", "ernie", "z-image-turbo", "schnell", "dev"}
+_MODEL_STEPS  = {"qwen": 20, "ernie": 20, "z-image-turbo": 9, "schnell": 4, "dev": 20}
+
 @app.route("/api/imagine", methods=["POST"])
 @require_auth
 def api_imagine():
     d = request.get_json(force=True, silent=True) or {}
     prompt = (d.get("prompt") or "").strip()
     if not prompt: return jsonify({"error": "prompt required"}), 400
-    model = d.get("model") if d.get("model") in ("z-image-turbo", "schnell", "dev") else "z-image-turbo"
+    model = d.get("model") if d.get("model") in _VALID_MODELS else "qwen"
     def _int(v, lo, hi, dflt):
         try: return max(lo, min(hi, int(v)))
         except Exception: return dflt
-    steps = _int(d.get("steps"), 1, 50, {"z-image-turbo": 9, "schnell": 4, "dev": 20}[model])
+    steps = _int(d.get("steps"), 1, 50, _MODEL_STEPS.get(model, 20))
     w = _int(d.get("width"), 256, 1536, 1024); h = _int(d.get("height"), 256, 1536, 1024)
     seed = str(d.get("seed") or "").strip()
     if seed and not seed.isdigit(): seed = ""
@@ -1821,11 +2463,12 @@ def api_imagine():
         return jsonify({"error": "image tool missing — run --bootstrap"}), 500
     args = ["bash", IMG_WRAPPER, prompt, out, model, str(steps), str(w), str(h)] + ([seed] if seed else [])
     try:
-        r = subprocess.run(args, capture_output=True, text=True, timeout=900)
+        r = subprocess.run(args, capture_output=True, text=True, timeout=1800)
     except subprocess.TimeoutExpired:
-        return jsonify({"error": "image generation timed out (900s) — first run downloads FLUX (multi-GB)"}), 504
+        return jsonify({"error": "image generation timed out — first run downloads the model (~10 GB for Qwen). Try again in a few minutes."}), 504
     if r.returncode != 0 or not os.path.exists(out):
-        return jsonify({"error": (r.stderr or r.stdout or "generation failed").strip()[-600:]}), 500
+        err = (r.stderr or r.stdout or "generation failed").strip()[-800:]
+        return jsonify({"error": err}), 500
     return jsonify({"file": os.path.basename(out)})
 
 @app.route("/api/image-file/<name>")
@@ -1847,6 +2490,683 @@ def api_images():
 @require_auth
 def imagine_page():
     return Response(IMAGINE_PAGE.replace('<!--NAV_CSS-->', NAV_CSS).replace('<!--NAV-->', _build_nav('create')), mimetype="text/html")
+
+@app.route("/api/imagine-edit", methods=["POST"])
+@require_auth
+def api_imagine_edit():
+    prompt = (request.form.get("prompt") or "").strip()
+    if not prompt: return jsonify({"error": "prompt required"}), 400
+    try: strength = max(0.1, min(0.99, float(request.form.get("strength", 0.65))))
+    except Exception: strength = 0.65
+    f = request.files.get("image")
+    if not f: return jsonify({"error": "source image required"}), 400
+    suffix = os.path.splitext(f.filename or "img.png")[1] or ".png"
+    src = _tmp.mktemp(suffix=suffix); f.save(src)
+    IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+    out = str(IMAGES_DIR / f"edit_{int(_time.time())}.png")
+    try:
+        args = ["mflux-generate", "--base-model", "dev", "--image", src,
+                "--image-strength", str(strength), "--steps", "20",
+                "--guidance", "3.5", "--width", "1024", "--height", "1024",
+                "--prompt", prompt, "--output", out]
+        r = subprocess.run(args, capture_output=True, text=True, timeout=1800)
+        if r.returncode != 0 or not os.path.exists(out):
+            err = (r.stderr or r.stdout or "edit failed").strip()[-600:]
+            return jsonify({"error": "Image editing requires FLUX.1-dev weights (~17 GB). Run mflux-generate --base-model dev once to trigger download. Details: " + err[:300]}), 500
+        return jsonify({"file": os.path.basename(out)})
+    finally:
+        try: os.remove(src)
+        except Exception: pass
+
+# ── video generation ─────────────────────────────────────────────────────────
+VIDEOS_DIR = Path(os.environ.get("MLX_VIDEOS_DIR", str(Path.home() / "MLX-AI" / "documents" / "videos")))
+
+VIDEO_PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Video · LAW Creative Studio</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<!--NAV_CSS-->
+<style>
+:root{--bg:#020817;--surf:#0a1628;--card:rgba(13,30,53,.9);--bdr:rgba(14,165,233,.13);--bdrbrt:rgba(14,165,233,.35);
+--blue:#0ea5e9;--purple:#7c3aed;--purple2:#a78bfa;--green:#10b981;--red:#ef4444;--amber:#f59e0b;
+--text:#e2e8f0;--muted:#94a3b8;--mono:'JetBrains Mono',ui-monospace,monospace;--sans:'Space Grotesk',system-ui,sans-serif;}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;
+  background-image:radial-gradient(ellipse 60% 50% at 20% -10%,rgba(124,58,237,.12),transparent),
+    radial-gradient(ellipse 50% 40% at 80% 0%,rgba(14,165,233,.06),transparent);}
+a{color:var(--blue);text-decoration:none}
+.vw{display:grid;grid-template-columns:380px 1fr;gap:0;min-height:calc(100vh - 56px)}
+@media(max-width:900px){.vw{grid-template-columns:1fr}}
+.vc{padding:20px;display:flex;flex-direction:column;gap:14px;
+  border-right:1px solid var(--bdr);background:rgba(10,22,40,.6);
+  position:sticky;top:56px;max-height:calc(100vh - 56px);overflow-y:auto;
+  scrollbar-width:thin;scrollbar-color:rgba(124,58,237,.2) transparent}
+@media(max-width:900px){.vc{position:static;max-height:none;border-right:none;border-bottom:1px solid var(--bdr)}}
+.sec-lbl{font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--muted);margin-bottom:6px}
+.mode-tabs{display:flex;border-radius:8px;overflow:hidden;border:1px solid var(--bdr)}
+.mode-tab{flex:1;padding:10px;border:none;cursor:pointer;font:600 12px var(--sans);
+  background:transparent;color:var(--muted);transition:.15s}
+.mode-tab.active{background:rgba(124,58,237,.2);color:var(--purple2)}
+.mode-tab:hover:not(.active){background:rgba(255,255,255,.05);color:var(--text)}
+.mc{padding:5px 12px;border-radius:20px;border:1px solid var(--bdr);font-size:12px;font-weight:500;
+  color:var(--muted);cursor:pointer;transition:.15s;background:transparent;font-family:var(--sans)}
+.mc:hover{border-color:var(--purple);color:var(--purple2)}
+.mc.active{border-color:var(--purple);background:rgba(124,58,237,.15);color:var(--purple2)}
+.vq{width:100%;min-height:100px;padding:12px;border-radius:10px;
+  border:1px solid var(--bdr);background:rgba(13,30,53,.8);color:var(--text);
+  font:14px var(--sans);resize:vertical;outline:none;transition:.2s;line-height:1.5}
+.vq:focus{border-color:var(--purple);box-shadow:0 0 0 2px rgba(124,58,237,.12)}
+.drop-zone{border:2px dashed rgba(124,58,237,.2);border-radius:12px;padding:24px;
+  text-align:center;cursor:pointer;transition:.2s;position:relative;font-size:12px;color:var(--muted)}
+.drop-zone:hover,.drop-zone.drag{border-color:var(--purple);background:rgba(124,58,237,.04)}
+.drop-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.drop-prev{max-width:100%;max-height:140px;border-radius:8px;display:none;margin-top:8px;border:1px solid var(--bdr)}
+.preset-chips{display:flex;gap:5px;flex-wrap:wrap}
+.preset{padding:4px 9px;border-radius:12px;font-size:11px;cursor:pointer;border:1px solid var(--bdr);
+  color:var(--muted);transition:.15s;background:transparent;font-family:var(--sans)}
+.preset:hover{border-color:var(--purple);color:var(--purple2)}
+.slider-wrap{display:flex;align-items:center;gap:10px}
+.slider-wrap input[type=range]{flex:1;-webkit-appearance:none;height:4px;border-radius:2px;
+  background:linear-gradient(90deg,var(--purple) var(--pct,50%),rgba(255,255,255,.1) var(--pct,50%));outline:none;cursor:pointer}
+.slider-wrap input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;
+  border-radius:50%;background:var(--purple);box-shadow:0 0 6px rgba(124,58,237,.4)}
+.slider-val{font-family:var(--mono);font-size:13px;color:var(--purple2);min-width:36px;text-align:right}
+.res-chips{display:flex;gap:6px}
+.rc{padding:5px 12px;border-radius:8px;border:1px solid var(--bdr);font-size:12px;font-family:var(--mono);
+  color:var(--muted);cursor:pointer;transition:.15s;background:transparent}
+.rc.active{border-color:var(--blue);background:rgba(14,165,233,.12);color:var(--blue)}
+.gen-btn{width:100%;padding:14px;border:none;border-radius:10px;cursor:pointer;
+  font:600 15px var(--sans);color:#fff;transition:.2s;position:relative;overflow:hidden;
+  background:linear-gradient(135deg,var(--purple),#6d28d9)}
+.gen-btn:not(:disabled):hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(124,58,237,.4)}
+.gen-btn:disabled{opacity:.6;cursor:default;transform:none}
+.prog{height:3px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden;display:none;margin-top:-4px}
+.prog.on{display:block}
+.pb{height:100%;background:linear-gradient(90deg,var(--purple),var(--blue),var(--purple));background-size:200% 100%;animation:pb 1.5s linear infinite}
+@keyframes pb{0%{background-position:0 0}100%{background-position:200% 0}}
+.ig-status{font-size:11px;color:var(--muted);min-height:14px;font-family:var(--mono)}
+.ig-status.error{color:var(--red)}.ig-status.ok{color:var(--green)}
+.vr{padding:20px;display:flex;flex-direction:column;gap:20px;min-width:0}
+.result-area{border-radius:14px;border:1px solid var(--bdr);background:var(--card);
+  overflow:hidden;min-height:200px;display:flex;align-items:center;justify-content:center;position:relative}
+.result-ph{display:flex;flex-direction:column;align-items:center;gap:14px;padding:80px 20px;
+  color:var(--muted);text-align:center}
+.result-ph .ico{font-size:56px;opacity:.2}
+.result-ph p{font-size:13px;max-width:300px;line-height:1.6}
+video{width:100%;border-radius:14px;display:none;max-height:560px;background:#000}
+.vid-acts{position:absolute;bottom:0;left:0;right:0;padding:10px 14px;
+  background:linear-gradient(transparent,rgba(2,8,23,.9));display:flex;gap:8px;opacity:0;transition:.2s}
+.result-area:hover .vid-acts{opacity:1}
+.va{padding:6px 12px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;
+  border:1px solid rgba(255,255,255,.15);background:rgba(2,8,23,.7);color:var(--text);
+  backdrop-filter:blur(8px);font-family:var(--sans)}
+.va:hover{background:rgba(255,255,255,.1)}
+.gal-section{display:flex;flex-direction:column;gap:10px}
+.gal-hdr{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--muted)}
+.gal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px}
+.gal-item{border-radius:8px;overflow:hidden;cursor:pointer;border:1px solid var(--bdr);
+  aspect-ratio:16/9;background:var(--surf);transition:.2s;position:relative}
+.gal-item:hover{border-color:var(--bdrbrt);transform:scale(1.02)}
+.gal-item video{width:100%;height:100%;object-fit:cover}
+.gal-dl{position:absolute;bottom:4px;right:4px;background:rgba(2,8,23,.75);
+  border-radius:5px;font-size:11px;padding:3px 7px;color:var(--text);text-decoration:none;
+  opacity:0;transition:.2s}
+.gal-item:hover .gal-dl{opacity:1}
+.install-note{background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.2);border-radius:10px;
+  padding:14px;font-size:12px;line-height:1.7;color:var(--amber);font-family:var(--mono)}
+.install-note code{background:rgba(0,0,0,.3);padding:2px 6px;border-radius:4px;font-size:11px}
+</style></head><body>
+<!--NAV-->
+<div class="vw">
+  <aside class="vc">
+    <div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--purple2);letter-spacing:.08em;margin-bottom:2px">🎬 CREATIVE STUDIO</div>
+      <div class="mode-tabs" style="margin-top:8px">
+        <button class="mode-tab active" id="tab-t2v" onclick="setMode('t2v')">📝 Text → Video</button>
+        <button class="mode-tab" id="tab-i2v" onclick="setMode('i2v')">🖼 Image → Video</button>
+      </div>
+    </div>
+    <div>
+      <div class="sec-lbl">MODEL</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="mc active" data-model="ltx" data-note="LTX-2.3 · T2V+I2V+Audio · fast · ~21GB" onclick="setModel(this)">LTX-2.3 ⚡</button>
+        <button class="mc" data-model="wan" data-note="Wan2.2 5B · T2V+I2V · best quality · Apache 2.0 · ~10GB" onclick="setModel(this)">Wan2.2 ★</button>
+      </div>
+      <div class="ig-status" id="modelNote" style="margin-top:6px">LTX-2.3 · T2V+I2V+Audio · fast · ~21GB on first run</div>
+    </div>
+    <div id="i2v-section" style="display:none">
+      <div class="sec-lbl">SOURCE IMAGE</div>
+      <div class="drop-zone" id="imgDz" ondragover="doDrag(event,true)" ondragleave="doDrag(event,false)" ondrop="doDrop(event)">
+        <input type="file" id="imgFile" accept="image/*" onchange="pickImg(this.files[0])">
+        <div>🖼 Drag &amp; drop or click to upload starting frame</div>
+        <img id="imgPrev" class="drop-prev">
+      </div>
+    </div>
+    <div>
+      <div class="sec-lbl">PROMPT</div>
+      <textarea class="vq" id="prompt" placeholder="A cinematic drone shot over a misty mountain valley at sunrise, golden hour light, 4K quality, smooth camera movement…"></textarea>
+      <div class="preset-chips" style="margin-top:8px">
+        <button class="preset" onclick="ap('cinematic drone shot, smooth camera movement, golden hour lighting')">Cinematic</button>
+        <button class="preset" onclick="ap('timelapse of clouds moving over mountains, dramatic sky')">Timelapse</button>
+        <button class="preset" onclick="ap('slow motion, bokeh, shallow depth of field')">Slow-mo</button>
+        <button class="preset" onclick="ap('anime style, vibrant colors, dynamic motion')">Anime</button>
+        <button class="preset" onclick="ap('photorealistic, DSLR quality, natural lighting')">Realistic</button>
+        <button class="preset" onclick="ap('abstract art, colorful fluid motion, hypnotic')">Abstract</button>
+      </div>
+    </div>
+    <div>
+      <div class="sec-lbl">DURATION &nbsp;<span id="durVal" style="color:var(--purple2)">5s</span></div>
+      <div class="slider-wrap">
+        <input type="range" id="dur" min="3" max="15" value="5" style="--pct:15%"
+          oninput="document.getElementById('durVal').textContent=this.value+'s';this.style.setProperty('--pct',((this.value-3)/12*100)+'%')">
+      </div>
+    </div>
+    <div>
+      <div class="sec-lbl">ASPECT</div>
+      <div class="res-chips">
+        <button class="rc active" data-w="16" data-h="9" onclick="setAR(this)">16:9</button>
+        <button class="rc" data-w="1" data-h="1" onclick="setAR(this)">1:1</button>
+        <button class="rc" data-w="9" data-h="16" onclick="setAR(this)">9:16</button>
+        <button class="rc" data-w="21" data-h="9" onclick="setAR(this)">21:9</button>
+      </div>
+    </div>
+    <button class="gen-btn" id="genBtn" onclick="generate()">
+      <span id="btnTxt">🎬 Generate Video</span>
+    </button>
+    <div class="prog" id="prog"><div class="pb"></div></div>
+    <div class="ig-status" id="status"></div>
+  </aside>
+  <main class="vr">
+    <div class="result-area" id="resultArea">
+      <div class="result-ph" id="resPh">
+        <div class="ico">🎬</div>
+        <p>Your video will appear here. Describe a scene in the prompt panel and click Generate.</p>
+        <div style="font-size:11px;font-family:var(--mono);color:rgba(148,163,184,.5);margin-top:8px">LTX-2.3 · ~45s per 5s clip · Audio included</div>
+      </div>
+      <video id="resultVid" controls></video>
+      <div class="vid-acts" id="vidActs">
+        <button class="va" onclick="dlVideo()">⬇ Download</button>
+        <button class="va" onclick="clearResult()">✕ Clear</button>
+        <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--muted)" id="vidStats"></span>
+      </div>
+    </div>
+    <div class="gal-section">
+      <div class="gal-hdr">RECENT GENERATIONS <span id="galCnt" style="background:rgba(255,255,255,.06);padding:2px 7px;border-radius:10px;font-size:10px">0</span></div>
+      <div class="gal-grid" id="gallery"></div>
+    </div>
+    <div class="install-note">
+      <strong>First-time setup:</strong> Models download automatically on first generation.<br>
+      <strong>LTX-2.3</strong> (~21 GB): <code>pip install mlx-video-with-audio</code> — fast, includes audio<br>
+      <strong>Wan2.2 5B</strong> (~10 GB): <code>pip install git+https://github.com/Blaizzy/mlx-video.git</code> — Apache 2.0, best quality<br>
+      Generation time: ~45s for LTX-2.3 · ~15–25 min for Wan2.2 (per 5-second clip on M5 Pro)
+    </div>
+  </main>
+</div>
+<script>
+let vMode='t2v',selModel='ltx',imgFile=null,curVideoFile='',arW=16,arH=9;
+const MODEL_NOTES={'ltx':'LTX-2.3 · T2V+I2V+Audio · fast · ~21GB on first run','wan':'Wan2.2 5B · best motion quality · Apache 2.0 · ~10GB on first run'};
+function setMode(m){
+  vMode=m;
+  document.getElementById('tab-t2v').classList.toggle('active',m==='t2v');
+  document.getElementById('tab-i2v').classList.toggle('active',m==='i2v');
+  document.getElementById('i2v-section').style.display=m==='i2v'?'':'none';
+}
+function setModel(btn){
+  selModel=btn.dataset.model;
+  document.querySelectorAll('.mc').forEach(b=>b.classList.toggle('active',b===btn));
+  document.getElementById('modelNote').textContent=MODEL_NOTES[selModel]||'';
+}
+function setAR(btn){
+  arW=+btn.dataset.w;arH=+btn.dataset.h;
+  document.querySelectorAll('.rc').forEach(b=>b.classList.toggle('active',b===btn));
+}
+function ap(t){const ta=document.getElementById('prompt');if(!ta.value.includes(t.trim()))ta.value=(ta.value+' '+t).trim();}
+function doDrag(e,on){e.preventDefault();document.getElementById('imgDz').classList.toggle('drag',on);}
+function doDrop(e){
+  e.preventDefault();document.getElementById('imgDz').classList.remove('drag');
+  const f=[...(e.dataTransfer.files||[])].find(x=>x.type.startsWith('image/'));if(f)pickImg(f);
+}
+function pickImg(f){
+  if(!f)return;imgFile=f;
+  const p=document.getElementById('imgPrev');p.src=URL.createObjectURL(f);p.style.display='block';
+  document.querySelector('#imgDz div').textContent='📸 '+f.name.slice(0,30);
+}
+async function generate(){
+  const prompt=document.getElementById('prompt').value.trim();
+  const st=document.getElementById('status');
+  if(!prompt){st.textContent='Enter a prompt first';st.className='ig-status error';return;}
+  if(vMode==='i2v'&&!imgFile){st.textContent='Upload a source image for Image→Video';st.className='ig-status error';return;}
+  const btn=document.getElementById('genBtn'),dur=document.getElementById('dur').value;
+  btn.disabled=true;document.getElementById('prog').classList.add('on');
+  st.textContent='Generating '+dur+'s video… (first run downloads model)';st.className='ig-status';
+  document.getElementById('resPh').style.display='flex';
+  document.getElementById('resultVid').style.display='none';
+  const t0=Date.now();
+  const fd=new FormData();
+  fd.append('prompt',prompt);fd.append('model',selModel);fd.append('duration',dur);
+  fd.append('aspect',arW+':'+arH);fd.append('mode',vMode);
+  if(imgFile)fd.append('image',imgFile);
+  try{
+    const r=await fetch('/api/video',{method:'POST',body:fd});
+    if(r.status===401){location='/login';return;}
+    const d=await r.json();
+    const elapsed=((Date.now()-t0)/1000).toFixed(0);
+    if(r.ok){
+      const vid=document.getElementById('resultVid');
+      vid.src='/api/video-file/'+d.file+'?t='+Date.now();
+      vid.style.display='block';
+      document.getElementById('resPh').style.display='none';
+      document.getElementById('vidStats').textContent=dur+'s · '+elapsed+'s gen time';
+      curVideoFile=d.file;
+      st.textContent='Done in '+elapsed+'s';st.className='ig-status ok';
+      loadGallery();
+    }else{
+      const pre=document.createElement('pre');
+      pre.style.cssText='white-space:pre-wrap;font-size:0.78rem;margin:0;color:inherit;word-break:break-word';
+      pre.textContent=d.error||'failed';st.textContent='';st.appendChild(pre);
+      st.className='ig-status error';
+    }
+  }catch(e){st.textContent='⚠ '+e;st.className='ig-status error';}
+  btn.disabled=false;document.getElementById('prog').classList.remove('on');
+  btn.querySelector('#btnTxt').textContent='🎬 Generate Video';
+}
+function dlVideo(){
+  if(!curVideoFile)return;
+  const a=document.createElement('a');a.href='/api/video-file/'+curVideoFile;a.download=curVideoFile;a.click();
+}
+function clearResult(){
+  document.getElementById('resultVid').style.display='none';
+  document.getElementById('resPh').style.display='flex';
+}
+async function loadGallery(){
+  try{
+    const d=await(await fetch('/api/videos')).json();
+    const g=document.getElementById('gallery');g.innerHTML='';
+    const vids=d.videos||[];document.getElementById('galCnt').textContent=vids.length;
+    vids.forEach(f=>{
+      const u='/api/video-file/'+f;
+      const el=document.createElement('div');el.className='gal-item';
+      el.innerHTML='<video src="'+u+'" muted loop></video><a class="gal-dl" href="'+u+'" download="'+f+'" onclick="event.stopPropagation()">⬇</a>';
+      el.querySelector('video').onmouseover=function(){this.play();};
+      el.querySelector('video').onmouseout=function(){this.pause();};
+      el.onclick=()=>{document.getElementById('resultVid').src=u+'&t='+Date.now();document.getElementById('resultVid').style.display='block';document.getElementById('resPh').style.display='none';curVideoFile=f;};
+      g.appendChild(el);
+    });
+  }catch(e){}
+}
+loadGallery();
+</script></body></html>"""
+
+@app.route("/api/video", methods=["POST"])
+@require_auth
+def api_video():
+    prompt = (request.form.get("prompt") or "").strip()
+    if not prompt: return jsonify({"error": "prompt required"}), 400
+    model = request.form.get("model", "ltx").strip()
+    try: duration = max(3, min(30, int(request.form.get("duration", 5))))
+    except Exception: duration = 5
+    aspect = request.form.get("aspect", "16:9")
+    mode = request.form.get("mode", "t2v")
+    VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
+    out = str(VIDEOS_DIR / f"vid_{int(_time.time())}.mp4")
+    src_path = None
+    f = request.files.get("image")
+    if f and mode == "i2v":
+        suffix = os.path.splitext(f.filename or "img.png")[1] or ".png"
+        src_path = _tmp.mktemp(suffix=suffix); f.save(src_path)
+    try:
+        if model == "ltx":
+            cmd = [sys.executable, "-m", "mlx_video.generate_av",
+                   "--prompt", prompt, "--output", out,
+                   "--model", "notapalindrome/ltx2-mlx-av"]
+        else:
+            cmd = [sys.executable, "-m", "mlx_video.wan_2.generate",
+                   "--prompt", prompt, "--output-path", out,
+                   "--num-frames", str(min(81, duration * 16))]
+        if src_path:
+            cmd += ["--image", src_path]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=7200)
+        if r.returncode != 0 or not os.path.exists(out):
+            err = (r.stderr or r.stdout or "generation failed").strip()[-800:]
+            if "ModuleNotFoundError" in err or "No module" in err:
+                pkg = "mlx-video-with-audio" if model == "ltx" else "git+https://github.com/Blaizzy/mlx-video.git"
+                return jsonify({"error": f"Video package not installed. Run: pip install {pkg} — then restart the dashboard and try again.\n\n{err[:300]}"}), 500
+            return jsonify({"error": err}), 500
+        return jsonify({"file": os.path.basename(out)})
+    finally:
+        if src_path:
+            try: os.remove(src_path)
+            except Exception: pass
+
+@app.route("/api/video-file/<name>")
+@require_auth
+def api_video_file(name):
+    if not re.match(r"^[A-Za-z0-9._-]+\.mp4$", name): return ("bad name", 400)
+    p = VIDEOS_DIR / name
+    if not p.exists(): return ("not found", 404)
+    return send_file(str(p), mimetype="video/mp4")
+
+@app.route("/api/videos")
+@require_auth
+def api_videos():
+    if not VIDEOS_DIR.exists(): return jsonify({"videos": []})
+    files = sorted((f.name for f in VIDEOS_DIR.glob("*.mp4")), reverse=True)[:20]
+    return jsonify({"videos": files})
+
+@app.route("/video")
+@require_auth
+def video_page():
+    return Response(VIDEO_PAGE.replace('<!--NAV_CSS-->', NAV_CSS).replace('<!--NAV-->', _build_nav('video')), mimetype="text/html")
+
+# ── audio studio ─────────────────────────────────────────────────────────────
+AUDIO_DIR = Path(os.environ.get("MLX_AUDIO_DIR", str(Path.home() / "MLX-AI" / "documents" / "audio")))
+
+AUDIO_PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Audio Studio · LAW</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<!--NAV_CSS-->
+<style>
+:root{--bg:#020817;--surf:#0a1628;--card:rgba(13,30,53,.9);--bdr:rgba(14,165,233,.13);
+--blue:#0ea5e9;--purple:#7c3aed;--purple2:#a78bfa;--green:#10b981;--red:#ef4444;--amber:#f59e0b;
+--text:#e2e8f0;--muted:#94a3b8;--mono:'JetBrains Mono',ui-monospace,monospace;--sans:'Space Grotesk',system-ui,sans-serif;}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;
+  background-image:radial-gradient(ellipse 60% 50% at 50% -20%,rgba(16,185,129,.08),transparent),
+    radial-gradient(ellipse 40% 30% at 90% 0%,rgba(124,58,237,.06),transparent);}
+a{color:var(--blue);text-decoration:none}
+.aw{max-width:900px;margin:0 auto;padding:24px 20px}
+.page-hdr{margin-bottom:20px}
+.page-title{font-size:22px;font-weight:700;display:flex;align-items:center;gap:10px}
+.page-sub{color:var(--muted);font-size:13px;margin-top:4px}
+.tab-bar{display:flex;gap:2px;border-bottom:1px solid var(--bdr);margin-bottom:20px}
+.tab{padding:10px 18px;font-size:13px;font-weight:600;cursor:pointer;border:none;background:transparent;
+  color:var(--muted);border-bottom:2px solid transparent;transition:.15s;margin-bottom:-1px;font-family:var(--sans)}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--green);border-bottom-color:var(--green)}
+.tab-pane{display:none}.tab-pane.active{display:flex;flex-direction:column;gap:16px}
+.card{background:var(--card);border:1px solid var(--bdr);border-radius:14px;padding:20px;backdrop-filter:blur(12px)}
+.sec-lbl{font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--muted);margin-bottom:8px}
+.vq{width:100%;min-height:90px;padding:12px;border-radius:10px;border:1px solid var(--bdr);
+  background:rgba(13,30,53,.8);color:var(--text);font:14px var(--sans);resize:vertical;outline:none;transition:.2s;line-height:1.5}
+.vq:focus{border-color:var(--green);box-shadow:0 0 0 2px rgba(16,185,129,.12)}
+.voice-chips{display:flex;gap:6px;flex-wrap:wrap}
+.vc{padding:5px 12px;border-radius:20px;border:1px solid var(--bdr);font-size:12px;
+  color:var(--muted);cursor:pointer;transition:.15s;background:transparent;font-family:var(--sans)}
+.vc:hover{border-color:var(--green);color:var(--green)}
+.vc.active{border-color:var(--green);background:rgba(16,185,129,.15);color:var(--green)}
+.slider-wrap{display:flex;align-items:center;gap:10px}
+.slider-wrap input[type=range]{flex:1;-webkit-appearance:none;height:4px;border-radius:2px;
+  background:linear-gradient(90deg,var(--green) var(--pct,50%),rgba(255,255,255,.1) var(--pct,50%));outline:none;cursor:pointer}
+.slider-wrap input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;
+  border-radius:50%;background:var(--green);box-shadow:0 0 6px rgba(16,185,129,.4)}
+.slider-val{font-family:var(--mono);font-size:13px;color:var(--green);min-width:36px;text-align:right}
+.gen-btn{width:100%;padding:14px;border:none;border-radius:10px;cursor:pointer;
+  font:600 15px var(--sans);color:#fff;transition:.2s;
+  background:linear-gradient(135deg,var(--green),#059669)}
+.gen-btn:not(:disabled):hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(16,185,129,.35)}
+.gen-btn:disabled{opacity:.6;cursor:default;transform:none}
+.prog{height:3px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden;display:none;margin-top:-4px}
+.prog.on{display:block}
+.pb{height:100%;background:linear-gradient(90deg,var(--green),var(--blue),var(--green));background-size:200% 100%;animation:pb 1.5s linear infinite}
+@keyframes pb{0%{background-position:0 0}100%{background-position:200% 0}}
+.st{font-size:11px;font-family:var(--mono);color:var(--muted);min-height:14px}
+.st.ok{color:var(--green)}.st.err{color:var(--red)}
+.audio-player{width:100%;border-radius:10px;margin-top:4px;accent-color:var(--green)}
+.gal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px;margin-top:8px}
+.gal-item{background:rgba(10,22,40,.8);border:1px solid var(--bdr);border-radius:10px;padding:12px;
+  display:flex;flex-direction:column;gap:6px}
+.gal-name{font-family:var(--mono);font-size:11px;color:var(--muted);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gal-audio{width:100%;accent-color:var(--green)}
+.gal-dl{font-size:11px;color:var(--blue);text-align:right}
+.music-genre-chips{display:flex;gap:5px;flex-wrap:wrap}
+.gc{padding:4px 10px;border-radius:12px;font-size:11px;cursor:pointer;border:1px solid var(--bdr);
+  color:var(--muted);transition:.15s;background:transparent;font-family:var(--sans)}
+.gc.active{border-color:var(--purple);background:rgba(124,58,237,.15);color:var(--purple2)}
+.gc:hover{border-color:var(--purple);color:var(--purple2)}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:600px){.two-col{grid-template-columns:1fr}}
+.install-note{background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.2);border-radius:10px;
+  padding:14px;font-size:12px;line-height:1.7;color:var(--amber);font-family:var(--mono)}
+.install-note code{background:rgba(0,0,0,.3);padding:2px 6px;border-radius:4px;font-size:11px}
+</style></head><body>
+<!--NAV-->
+<div class="aw">
+  <div class="page-hdr">
+    <div class="page-title">🎵 Audio Studio</div>
+    <div class="page-sub">Text-to-speech, voice cloning, and AI music generation — 100% local.</div>
+  </div>
+  <div class="tab-bar">
+    <button class="tab active" onclick="switchTab('tts',this)">🗣 Text-to-Speech</button>
+    <button class="tab" onclick="switchTab('music',this)">🎸 Music Studio</button>
+    <button class="tab" onclick="switchTab('gallery',this)">📁 Library</button>
+  </div>
+
+  <!-- TTS TAB -->
+  <div class="tab-pane active" id="tab-tts">
+    <div class="card">
+      <div class="sec-lbl">TEXT</div>
+      <textarea class="vq" id="ttsText" placeholder="Enter text to convert to speech…&#10;&#10;Tip: Use punctuation for natural pauses. Add [excited] or [whispering] tone hints." rows="5"></textarea>
+    </div>
+    <div class="card">
+      <div class="sec-lbl">VOICE</div>
+      <div class="voice-chips" id="voiceChips">
+        <button class="vc active" data-voice="af_sky" onclick="setVoice(this)">af_sky — Female · Warm</button>
+        <button class="vc" data-voice="af_heart" onclick="setVoice(this)">af_heart — Female · Soft</button>
+        <button class="vc" data-voice="am_adam" onclick="setVoice(this)">am_adam — Male · Deep</button>
+        <button class="vc" data-voice="bm_lewis" onclick="setVoice(this)">bm_lewis — British · Male</button>
+        <button class="vc" data-voice="bf_emma" onclick="setVoice(this)">bf_emma — British · Female</button>
+        <button class="vc" data-voice="am_echo" onclick="setVoice(this)">am_echo — Male · Resonant</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="two-col">
+        <div>
+          <div class="sec-lbl">SPEED &nbsp;<span id="speedVal" style="color:var(--green)">1.0×</span></div>
+          <div class="slider-wrap">
+            <input type="range" id="speed" min="5" max="20" value="10" style="--pct:33%"
+              oninput="document.getElementById('speedVal').textContent=(this.value/10).toFixed(1)+'×';this.style.setProperty('--pct',((this.value-5)/15*100)+'%')">
+          </div>
+        </div>
+        <div>
+          <div class="sec-lbl">FORMAT</div>
+          <div style="display:flex;gap:6px">
+            <button class="vc active" data-fmt="wav" onclick="setFmt(this)">WAV</button>
+            <button class="vc" data-fmt="mp3" onclick="setFmt(this)">MP3</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <button class="gen-btn" id="ttsBtn" onclick="genTTS()">🗣 Generate Speech</button>
+    <div class="prog" id="ttsProg"><div class="pb"></div></div>
+    <div class="st" id="ttsStatus"></div>
+    <audio class="audio-player" id="ttsPlayer" controls style="display:none"></audio>
+  </div>
+
+  <!-- MUSIC TAB -->
+  <div class="tab-pane" id="tab-music">
+    <div class="card">
+      <div class="sec-lbl">LYRICS / DESCRIPTION</div>
+      <textarea class="vq" id="musicText" placeholder="Verse 1:&#10;Walking down a city street at night&#10;Neon lights reflect on rain-soaked ground…&#10;&#10;Chorus:&#10;Feel the rhythm of the night&#10;Electric dreams in neon light…&#10;&#10;Tip: Use verse/chorus/bridge structure, or describe mood and theme." rows="8"></textarea>
+    </div>
+    <div class="card">
+      <div class="sec-lbl">GENRE</div>
+      <div class="music-genre-chips">
+        <button class="gc active" onclick="setGC(this)">Pop</button>
+        <button class="gc" onclick="setGC(this)">Jazz</button>
+        <button class="gc" onclick="setGC(this)">Electronic</button>
+        <button class="gc" onclick="setGC(this)">Hip-hop</button>
+        <button class="gc" onclick="setGC(this)">Rock</button>
+        <button class="gc" onclick="setGC(this)">Orchestral</button>
+        <button class="gc" onclick="setGC(this)">Ambient</button>
+        <button class="gc" onclick="setGC(this)">R&amp;B</button>
+      </div>
+      <div class="sec-lbl" style="margin-top:12px">MOOD</div>
+      <div class="music-genre-chips">
+        <button class="gc" onclick="setMood(this)">Uplifting</button>
+        <button class="gc active" onclick="setMood(this)">Melancholic</button>
+        <button class="gc" onclick="setMood(this)">Energetic</button>
+        <button class="gc" onclick="setMood(this)">Calm</button>
+        <button class="gc" onclick="setMood(this)">Romantic</button>
+        <button class="gc" onclick="setMood(this)">Epic</button>
+      </div>
+    </div>
+    <div class="install-note">
+      <strong>🎵 Music generation requires ACE-Step 1.5</strong> — the best Apple Silicon music model (Apache 2.0).<br>
+      <strong>Install:</strong> <code>git clone https://github.com/clockworksquirrel/ace-step-apple-silicon ~/ace-step && cd ~/ace-step && uv sync</code><br>
+      <strong>Launch:</strong> <code>cd ~/ace-step &amp;&amp; ./run_mac.sh</code> → opens at <a href="http://localhost:7860" target="_blank">localhost:7860</a><br>
+      Generates full songs with lyrics + vocals + instruments in 50+ languages on your M5 Pro 64 GB.
+    </div>
+    <button class="gen-btn" id="musicBtn" onclick="genMusic()">🎵 Generate Music</button>
+    <div class="prog" id="musicProg"><div class="pb"></div></div>
+    <div class="st" id="musicStatus"></div>
+    <audio class="audio-player" id="musicPlayer" controls style="display:none"></audio>
+  </div>
+
+  <!-- GALLERY TAB -->
+  <div class="tab-pane" id="tab-gallery">
+    <div class="card">
+      <div class="sec-lbl">AUDIO LIBRARY</div>
+      <div class="gal-grid" id="audGallery"><div style="color:var(--muted);font-size:13px">Loading…</div></div>
+    </div>
+  </div>
+</div>
+<script>
+let selVoice='af_sky',selFmt='wav',selGenre='Pop',selMood='Melancholic';
+function switchTab(name,btn){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-'+name).classList.add('active');
+  if(name==='gallery')loadGallery();
+}
+function setVoice(btn){selVoice=btn.dataset.voice;document.querySelectorAll('.vc').forEach(b=>b.classList.toggle('active',b===btn));}
+function setFmt(btn){selFmt=btn.dataset.fmt;document.querySelectorAll('[data-fmt]').forEach(b=>b.classList.toggle('active',b===btn));}
+function setGC(btn){selGenre=btn.textContent;document.querySelectorAll('.music-genre-chips .gc').forEach((b,i)=>{if(i<8)b.classList.toggle('active',b===btn);});}
+function setMood(btn){selMood=btn.textContent;document.querySelectorAll('.music-genre-chips .gc').forEach((b,i)=>{if(i>=8)b.classList.toggle('active',b===btn);});}
+async function genTTS(){
+  const text=document.getElementById('ttsText').value.trim();
+  const st=document.getElementById('ttsStatus');
+  if(!text){st.textContent='Enter text first';st.className='st err';return;}
+  const btn=document.getElementById('ttsBtn');
+  btn.disabled=true;document.getElementById('ttsProg').classList.add('on');
+  st.textContent='Generating speech… (first run downloads Kokoro ~327 MB)';st.className='st';
+  const speed=document.getElementById('speed').value/10;
+  const t0=Date.now();
+  try{
+    const r=await fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({text,voice:selVoice,speed,format:selFmt})});
+    if(r.status===401){location='/login';return;}
+    const d=await r.json();
+    const elapsed=((Date.now()-t0)/1000).toFixed(1);
+    if(r.ok){
+      const pl=document.getElementById('ttsPlayer');
+      pl.src='/api/audio-file/'+d.file+'?t='+Date.now();pl.style.display='block';
+      pl.play().catch(()=>{});
+      st.textContent='Done in '+elapsed+'s';st.className='st ok';
+    }else{
+      const pre=document.createElement('pre');
+      pre.style.cssText='white-space:pre-wrap;font-size:0.78rem;margin:0';
+      pre.textContent=d.error||'failed';st.textContent='';st.appendChild(pre);
+      st.className='st err';
+    }
+  }catch(e){st.textContent='⚠ '+e;st.className='st err';}
+  btn.disabled=false;document.getElementById('ttsProg').classList.remove('on');
+}
+async function genMusic(){
+  const lyrics=document.getElementById('musicText').value.trim();
+  const st=document.getElementById('musicStatus');
+  if(!lyrics){st.textContent='Enter lyrics or description';st.className='st err';return;}
+  st.textContent='For full song generation, install and launch ACE-Step 1.5 — see instructions above. Attempting backend generation…';st.className='st';
+  const btn=document.getElementById('musicBtn');
+  btn.disabled=true;document.getElementById('musicProg').classList.add('on');
+  try{
+    const r=await fetch('/api/music',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({lyrics,genre:selGenre,mood:selMood})});
+    if(r.status===401){location='/login';return;}
+    const d=await r.json();
+    if(r.ok&&d.file){
+      const pl=document.getElementById('musicPlayer');
+      pl.src='/api/audio-file/'+d.file+'?t='+Date.now();pl.style.display='block';
+      pl.play().catch(()=>{});
+      st.textContent='Done!';st.className='st ok';
+    }else{
+      const pre=document.createElement('pre');
+      pre.style.cssText='white-space:pre-wrap;font-size:0.78rem;margin:0;color:inherit';
+      pre.textContent=d.error||'Music generation requires ACE-Step 1.5 — see install instructions above.';
+      st.textContent='';st.appendChild(pre);st.className='st err';
+    }
+  }catch(e){st.textContent='⚠ '+e;st.className='st err';}
+  btn.disabled=false;document.getElementById('musicProg').classList.remove('on');
+}
+async function loadGallery(){
+  try{
+    const d=await(await fetch('/api/audios')).json();
+    const g=document.getElementById('audGallery');g.innerHTML='';
+    if(!(d.files||[]).length){g.innerHTML='<div style="color:var(--muted);font-size:13px">No audio generated yet.</div>';return;}
+    (d.files||[]).forEach(f=>{
+      const u='/api/audio-file/'+f;
+      const el=document.createElement('div');el.className='gal-item';
+      el.innerHTML='<div class="gal-name">'+f+'</div><audio class="gal-audio" src="'+u+'" controls></audio>'+
+        '<div class="gal-dl"><a href="'+u+'" download="'+f+'">⬇ Download</a></div>';
+      g.appendChild(el);
+    });
+  }catch(e){}
+}
+</script></body></html>"""
+
+@app.route("/api/tts", methods=["POST"])
+@require_auth
+def api_tts():
+    d = request.get_json(force=True, silent=True) or {}
+    text = (d.get("text") or "").strip()
+    if not text: return jsonify({"error": "text required"}), 400
+    voice = (d.get("voice") or "af_sky").strip()
+    try: speed = max(0.5, min(2.0, float(d.get("speed", 1.0))))
+    except Exception: speed = 1.0
+    fmt = "wav" if (d.get("format") or "wav") == "wav" else "mp3"
+    AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    out = str(AUDIO_DIR / f"tts_{int(_time.time())}.{fmt}")
+    try:
+        r = subprocess.run([sys.executable, "-m", "mlx_audio.tts.generate",
+                            "--model", "kokoro", "--text", text,
+                            "--voice", voice, "--speed", str(speed), "--output", out],
+                           capture_output=True, text=True, timeout=300)
+        if r.returncode != 0 or not os.path.exists(out):
+            err = (r.stderr or r.stdout or "TTS failed").strip()[-600:]
+            if "ModuleNotFoundError" in err or "No module" in err:
+                return jsonify({"error": "mlx-audio not installed. Run: pip install mlx-audio — then restart the dashboard. " + err[:200]}), 500
+            return jsonify({"error": err}), 500
+        return jsonify({"file": os.path.basename(out)})
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "TTS timed out"}), 504
+
+@app.route("/api/music", methods=["POST"])
+@require_auth
+def api_music():
+    return jsonify({"error": "Music generation requires ACE-Step 1.5. Install: git clone https://github.com/clockworksquirrel/ace-step-apple-silicon ~/ace-step && cd ~/ace-step && uv sync. Then launch with ./run_mac.sh — Gradio UI opens at localhost:7860."}), 501
+
+@app.route("/api/audio-file/<name>")
+@require_auth
+def api_audio_file(name):
+    if not re.match(r"^[A-Za-z0-9._-]+\.(wav|mp3)$", name): return ("bad name", 400)
+    p = AUDIO_DIR / name
+    if not p.exists(): return ("not found", 404)
+    mime = "audio/wav" if name.endswith(".wav") else "audio/mpeg"
+    return send_file(str(p), mimetype=mime)
+
+@app.route("/api/audios")
+@require_auth
+def api_audios():
+    if not AUDIO_DIR.exists(): return jsonify({"files": []})
+    files = sorted((f.name for f in AUDIO_DIR.iterdir() if f.suffix in (".wav", ".mp3")), reverse=True)[:30]
+    return jsonify({"files": files})
+
+@app.route("/audio")
+@require_auth
+def audio_page():
+    return Response(AUDIO_PAGE.replace('<!--NAV_CSS-->', NAV_CSS).replace('<!--NAV-->', _build_nav('audio')), mimetype="text/html")
 
 @app.route("/")
 @require_auth
