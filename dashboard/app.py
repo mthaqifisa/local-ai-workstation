@@ -1515,6 +1515,8 @@ display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:
 .send-btn:disabled{opacity:.4;cursor:default;transform:none}
 .note{font-family:var(--mono);font-size:10px;color:var(--muted);padding:4px 0 0}
 body.drag{outline:3px dashed var(--purple);outline-offset:-4px}
+.clr-btn.voice-on{background:rgba(16,185,129,.15);border-color:var(--green);color:var(--green)}
+.voice-player{display:none}
 .ba-btn{font-size:11px;padding:3px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--muted);margin-top:6px;margin-right:4px;transition:.15s;font-family:var(--sans)}
 .ba-btn:hover{background:rgba(255,255,255,.1);color:var(--text)}
 .ba-btn.del{border-color:rgba(239,68,68,.3);color:#ef4444;background:rgba(239,68,68,.06)}
@@ -1529,6 +1531,7 @@ body.drag{outline:3px dashed var(--purple);outline-offset:-4px}
 <div class="mode-toggle on" id="modeBtn" onclick="toggleMode()">&#127760; Agent</div>
 <select id=model style="max-width:200px"></select>
 <span class="note" id="note"></span>
+<button class="clr-btn" id="voiceBtn" onclick="toggleVoiceMode()" title="Voice mode: auto-speak agent responses">&#127908; Voice</button>
 <button class="clr-btn" onclick="msgs=[];render()">Clear</button>
 </div>
 <div class="thread" id=thread></div>
@@ -1708,7 +1711,7 @@ else if(o.type==='answer'){a.content=o.text;}
 paint();
 }
 }
-if(a.content==='__typing__'||!a.content){a.content='[no answer]';}paint();saveChatState();
+if(a.content==='__typing__'||!a.content){a.content='[no answer]';}paint();saveChatState();autoSpeak(a.content);
 }catch(e){a.content='Error: '+e;a.steps=[];paint();saveChatState();}
 }
 async function chatTurn(text){
@@ -1727,7 +1730,7 @@ acc+=dec.decode(value,{stream:true});a.content=acc;
 const nb=makeBubble(a);t.lastChild.replaceWith(nb);t.scrollTop=t.scrollHeight;
 }
 if(!acc){a.content='[no output]';t.lastChild.replaceWith(makeBubble(a));}
-saveChatState();
+saveChatState();autoSpeak(a.content);
 }catch(e){a.content='Error: '+e;t.lastChild.replaceWith(makeBubble(a));saveChatState();}
 }
 async function visionTurn(text){
@@ -1742,7 +1745,32 @@ const fd=new FormData();fd.append('image',f);fd.append('prompt',prompt);
 const r=await j('/api/vision',{method:'POST',body:fd}),d=await r.json();
 a.content=r.ok?d.answer:'Error: '+(d.error||'failed');
 }catch(e){a.content='Error: '+e;}
-t.lastChild.replaceWith(makeBubble(a));t.scrollTop=t.scrollHeight;saveChatState();
+t.lastChild.replaceWith(makeBubble(a));t.scrollTop=t.scrollHeight;saveChatState();autoSpeak(a.content);
+}
+// ── Voice Mode (auto-TTS agent responses via Kokoro backend) ─────────────────
+let voiceMode=false;
+const voiceAudio=new Audio();
+function toggleVoiceMode(){
+  voiceMode=!voiceMode;
+  const btn=document.getElementById('voiceBtn');
+  btn.classList.toggle('voice-on',voiceMode);
+  btn.innerHTML=voiceMode?'&#127908; Voice ON':'&#127908; Voice';
+  if(!voiceMode){voiceAudio.pause();voiceAudio.src='';}
+}
+async function autoSpeak(text){
+  if(!voiceMode||!text||text==='__typing__')return;
+  const clean=text.replace(/```[\s\S]*?```/g,'code block').replace(/`[^`]+`/g,'').replace(/[*_#>]/g,'').trim();
+  if(!clean)return;
+  try{
+    const r=await fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({text:clean.slice(0,3000),voice:'af_heart',speed:1.0})});
+    if(!r.ok)return;
+    const d=await r.json();
+    if(!d.file)return;
+    voiceAudio.pause();
+    voiceAudio.src='/api/audio-file/'+d.file+'?t='+Date.now();
+    voiceAudio.play().catch(()=>{});
+  }catch(e){}
 }
 function speakTxt(btn){
   if(speechSynthesis.speaking){speechSynthesis.cancel();btn.textContent='🔊';
@@ -2582,14 +2610,14 @@ def api_imagine_edit():
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     out = str(IMAGES_DIR / f"edit_{int(_time.time())}.png")
     try:
-        args = ["mflux-generate", "--base-model", "dev", "--image", src,
-                "--image-strength", str(strength), "--steps", "20",
-                "--guidance", "3.5", "--width", "1024", "--height", "1024",
+        args = ["mflux-generate-qwen", "--quantize", "4",
+                "--image-path", src, "--image-strength", str(strength),
+                "--steps", "20", "--width", "1024", "--height", "1024",
                 "--prompt", prompt, "--output", out]
         r = subprocess.run(args, capture_output=True, text=True, timeout=1800)
         if r.returncode != 0 or not os.path.exists(out):
             err = (r.stderr or r.stdout or "edit failed").strip()[-600:]
-            return jsonify({"error": "Image editing requires FLUX.1-dev weights (~17 GB). Run mflux-generate --base-model dev once to trigger download. Details: " + err[:300]}), 500
+            return jsonify({"error": err[-400:]}), 500
         return jsonify({"file": os.path.basename(out)})
     finally:
         try: os.remove(src)
@@ -2810,6 +2838,7 @@ function pickImg(f){
   const p=document.getElementById('imgPrev');p.src=URL.createObjectURL(f);p.style.display='block';
   document.querySelector('#imgDz div').textContent='📸 '+f.name.slice(0,30);
 }
+let _vidPollTimer=null;
 async function generate(){
   const prompt=document.getElementById('prompt').value.trim();
   const st=document.getElementById('status');
@@ -2817,7 +2846,6 @@ async function generate(){
   if(vMode==='i2v'&&!imgFile){st.textContent='Upload a source image for Image→Video';st.className='ig-status error';return;}
   const btn=document.getElementById('genBtn'),dur=document.getElementById('dur').value;
   btn.disabled=true;document.getElementById('prog').classList.add('on');
-  st.textContent='Generating '+dur+'s video… (first run downloads model)';st.className='ig-status';
   document.getElementById('resPh').style.display='flex';
   document.getElementById('resultVid').style.display='none';
   const t0=Date.now();
@@ -2829,25 +2857,50 @@ async function generate(){
     const r=await fetch('/api/video',{method:'POST',body:fd});
     if(r.status===401){location='/login';return;}
     const d=await r.json();
-    const elapsed=((Date.now()-t0)/1000).toFixed(0);
-    if(r.ok){
-      const vid=document.getElementById('resultVid');
-      vid.src='/api/video-file/'+d.file+'?t='+Date.now();
-      vid.style.display='block';
-      document.getElementById('resPh').style.display='none';
-      document.getElementById('vidStats').textContent=dur+'s · '+elapsed+'s gen time';
-      curVideoFile=d.file;
-      st.textContent='Done in '+elapsed+'s';st.className='ig-status ok';
-      loadGallery();
-    }else{
+    if(!r.ok){
       const pre=document.createElement('pre');
       pre.style.cssText='white-space:pre-wrap;font-size:0.78rem;margin:0;color:inherit;word-break:break-word';
       pre.textContent=d.error||'failed';st.textContent='';st.appendChild(pre);
       st.className='ig-status error';
+      btn.disabled=false;document.getElementById('prog').classList.remove('on');
+      return;
     }
-  }catch(e){st.textContent='⚠ '+e;st.className='ig-status error';}
-  btn.disabled=false;document.getElementById('prog').classList.remove('on');
-  btn.querySelector('#btnTxt').textContent='🎬 Generate Video';
+    // Start polling for job completion
+    const jobId=d.job_id;
+    st.textContent='⏳ Started — first run downloads LTX-2.3 (~21GB), then ~45s generation…';st.className='ig-status';
+    if(_vidPollTimer)clearInterval(_vidPollTimer);
+    _vidPollTimer=setInterval(async()=>{
+      try{
+        const jr=await fetch('/api/video-job/'+jobId);
+        const jd=await jr.json();
+        const elapsed=jd.elapsed||0;
+        const mins=Math.floor(elapsed/60),secs=elapsed%60;
+        const timeStr=mins?mins+'m '+secs+'s':secs+'s';
+        if(jd.status==='running'){
+          st.textContent='⏳ Generating… '+timeStr+' elapsed'+(elapsed<120?' (downloading model on first run)':'');
+          st.className='ig-status';
+        }else if(jd.status==='done'){
+          clearInterval(_vidPollTimer);_vidPollTimer=null;
+          const vid=document.getElementById('resultVid');
+          vid.src='/api/video-file/'+jd.file+'?t='+Date.now();
+          vid.style.display='block';
+          document.getElementById('resPh').style.display='none';
+          document.getElementById('vidStats').textContent=dur+'s · '+timeStr+' total';
+          curVideoFile=jd.file;
+          st.textContent='✓ Done in '+timeStr;st.className='ig-status ok';
+          btn.disabled=false;document.getElementById('prog').classList.remove('on');
+          loadGallery();
+        }else{
+          clearInterval(_vidPollTimer);_vidPollTimer=null;
+          const pre=document.createElement('pre');
+          pre.style.cssText='white-space:pre-wrap;font-size:0.78rem;margin:0;color:inherit;word-break:break-word';
+          pre.textContent=jd.error||'failed';st.textContent='';st.appendChild(pre);
+          st.className='ig-status error';
+          btn.disabled=false;document.getElementById('prog').classList.remove('on');
+        }
+      }catch(e){}
+    },5000);
+  }catch(e){st.textContent='⚠ '+e;st.className='ig-status error';btn.disabled=false;document.getElementById('prog').classList.remove('on');}
 }
 function dlVideo(){
   if(!curVideoFile)return;
@@ -2886,15 +2939,36 @@ async function delGalleryFile(ev,fname,kind){
 loadGallery();
 </script></body></html>"""
 
+import uuid as _uuid
+_VIDEO_JOBS: dict = {}  # job_id → {status, file, error, start, prompt}
+
+def _run_video_job(job_id, cmd, out, src_path):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=7200)
+        if r.returncode != 0 or not os.path.exists(out):
+            err = (r.stderr or r.stdout or "generation failed").strip()[-800:]
+            _VIDEO_JOBS[job_id].update({"status": "error", "error": err[-400:]})
+        else:
+            _VIDEO_JOBS[job_id].update({"status": "done", "file": os.path.basename(out)})
+    except subprocess.TimeoutExpired:
+        _VIDEO_JOBS[job_id].update({"status": "error", "error": "Timed out after 2 hours"})
+    except Exception as e:
+        _VIDEO_JOBS[job_id].update({"status": "error", "error": str(e)})
+    finally:
+        if src_path:
+            try: os.remove(src_path)
+            except Exception: pass
+
 @app.route("/api/video", methods=["POST"])
 @require_auth
 def api_video():
     prompt = (request.form.get("prompt") or "").strip()
     if not prompt: return jsonify({"error": "prompt required"}), 400
     model = request.form.get("model", "ltx").strip()
+    if model == "wan":
+        return jsonify({"error": "Wan2.2 requires: pip install git+https://github.com/Blaizzy/mlx-video.git — then restart dashboard. Use LTX-2.3 (already installed)."}), 501
     try: duration = max(3, min(30, int(request.form.get("duration", 5))))
     except Exception: duration = 5
-    aspect = request.form.get("aspect", "16:9")
     mode = request.form.get("mode", "t2v")
     VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
     out = str(VIDEOS_DIR / f"vid_{int(_time.time())}.mp4")
@@ -2903,28 +2977,25 @@ def api_video():
     if f and mode == "i2v":
         suffix = os.path.splitext(f.filename or "img.png")[1] or ".png"
         src_path = _tmp.mktemp(suffix=suffix); f.save(src_path)
-    try:
-        if model == "wan":
-            return jsonify({"error": "Wan2.2 requires a separate install: pip install git+https://github.com/Blaizzy/mlx-video.git — then restart the dashboard. Using LTX-2.3 is recommended (already installed)."}), 501
-        # LTX-2.3 (default)
-        cmd = [sys.executable, "-m", "mlx_video.generate_av",
-               "--prompt", prompt, "--output-path", out,
-               "--model-repo", "notapalindrome/ltx2-mlx-av",
-               "--num-frames", str(min(257, duration * 24))]
-        if src_path:
-            cmd += ["--image", src_path]
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=7200)
-        if r.returncode != 0 or not os.path.exists(out):
-            err = (r.stderr or r.stdout or "generation failed").strip()[-800:]
-            if "ModuleNotFoundError" in err or "No module" in err:
-                pkg = "mlx-video-with-audio" if model == "ltx" else "git+https://github.com/Blaizzy/mlx-video.git"
-                return jsonify({"error": f"Video package not installed. Run: pip install {pkg} — then restart the dashboard and try again.\n\n{err[:300]}"}), 500
-            return jsonify({"error": err}), 500
-        return jsonify({"file": os.path.basename(out)})
-    finally:
-        if src_path:
-            try: os.remove(src_path)
-            except Exception: pass
+    cmd = [sys.executable, "-m", "mlx_video.generate_av",
+           "--prompt", prompt, "--output-path", out,
+           "--model-repo", "notapalindrome/ltx2-mlx-av",
+           "--num-frames", str(min(257, duration * 24))]
+    if src_path:
+        cmd += ["--image", src_path, "--image-strength", "0.85"]
+    job_id = str(_uuid.uuid4())[:8]
+    _VIDEO_JOBS[job_id] = {"status": "running", "file": None, "error": None,
+                           "start": _time.time(), "prompt": prompt[:80]}
+    _th.Thread(target=_run_video_job, args=(job_id, cmd, out, src_path), daemon=True).start()
+    return jsonify({"job_id": job_id, "status": "running"})
+
+@app.route("/api/video-job/<job_id>")
+@require_auth
+def api_video_job(job_id):
+    job = _VIDEO_JOBS.get(job_id)
+    if not job: return jsonify({"status": "not_found"}), 404
+    elapsed = int(_time.time() - job["start"])
+    return jsonify({**job, "elapsed": elapsed})
 
 @app.route("/api/video-file/<name>")
 @require_auth
@@ -3109,10 +3180,10 @@ a{color:var(--blue);text-decoration:none}
       <strong>Launch:</strong> <code>cd ~/ace-step &amp;&amp; ./run_mac.sh</code> → opens at <a href="http://localhost:7860" target="_blank">localhost:7860</a><br>
       Generates full songs with lyrics + vocals + instruments in 50+ languages on your M5 Pro 64 GB.
     </div>
-    <button class="gen-btn" id="musicBtn" onclick="genMusic()">🎵 Generate Music</button>
-    <div class="prog" id="musicProg"><div class="pb"></div></div>
+    <div id="aceStatus" style="font-size:12px;font-family:var(--mono);margin-bottom:8px;color:var(--muted)">Checking ACE-Step status…</div>
+    <button class="gen-btn" id="musicBtn" onclick="openAceStep()">🎵 Open Music Studio (ACE-Step)</button>
+    <div class="prog" id="musicProg" style="display:none"><div class="pb"></div></div>
     <div class="st" id="musicStatus"></div>
-    <audio class="audio-player" id="musicPlayer" controls style="display:none"></audio>
   </div>
 
   <!-- GALLERY TAB -->
@@ -3165,32 +3236,35 @@ async function genTTS(){
   }catch(e){st.textContent='⚠ '+e;st.className='st err';}
   btn.disabled=false;document.getElementById('ttsProg').classList.remove('on');
 }
-async function genMusic(){
-  const lyrics=document.getElementById('musicText').value.trim();
-  const st=document.getElementById('musicStatus');
-  if(!lyrics){st.textContent='Enter lyrics or description';st.className='st err';return;}
-  st.textContent='For full song generation, install and launch ACE-Step 1.5 — see instructions above. Attempting backend generation…';st.className='st';
+let aceRunning=false;
+async function checkAceStep(){
+  const el=document.getElementById('aceStatus');
   const btn=document.getElementById('musicBtn');
-  btn.disabled=true;document.getElementById('musicProg').classList.add('on');
   try{
-    const r=await fetch('/api/music',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({lyrics,genre:selGenre,mood:selMood})});
-    if(r.status===401){location='/login';return;}
-    const d=await r.json();
-    if(r.ok&&d.file){
-      const pl=document.getElementById('musicPlayer');
-      pl.src='/api/audio-file/'+d.file+'?t='+Date.now();pl.style.display='block';
-      pl.play().catch(()=>{});
-      st.textContent='Done!';st.className='st ok';
-    }else{
-      const pre=document.createElement('pre');
-      pre.style.cssText='white-space:pre-wrap;font-size:0.78rem;margin:0;color:inherit';
-      pre.textContent=d.error||'Music generation requires ACE-Step 1.5 — see install instructions above.';
-      st.textContent='';st.appendChild(pre);st.className='st err';
-    }
-  }catch(e){st.textContent='⚠ '+e;st.className='st err';}
-  btn.disabled=false;document.getElementById('musicProg').classList.remove('on');
+    const r=await fetch('http://localhost:7860/',{mode:'no-cors'});
+    aceRunning=true;
+    el.innerHTML='<span style="color:var(--green)">● ACE-Step running at localhost:7860</span>';
+    btn.textContent='🎵 Open Music Studio →';
+  }catch(e){
+    aceRunning=false;
+    el.innerHTML='<span style="color:var(--red)">● ACE-Step not running.</span> Start it: <code style="font-size:10px">cd ~/ace-step && ./run_mac.sh</code>';
+    btn.textContent='🎵 Launch ACE-Step (opens :7860)';
+  }
 }
+function openAceStep(){
+  if(aceRunning){
+    window.open('http://localhost:7860','_blank');
+  }else{
+    const st=document.getElementById('musicStatus');
+    st.innerHTML='<strong>Setup ACE-Step 1.5:</strong><br>'+
+      '1. <code>git clone https://github.com/clockworksquirrel/ace-step-apple-silicon ~/ace-step</code><br>'+
+      '2. <code>cd ~/ace-step && uv sync</code><br>'+
+      '3. <code>./run_mac.sh</code> → Gradio UI opens at <a href="http://localhost:7860" target="_blank">localhost:7860</a><br>'+
+      'Generates full songs with lyrics + vocals. Reload this page after launch.';
+    st.className='st';
+  }
+}
+checkAceStep();
 async function loadGallery(){
   try{
     const d=await(await fetch('/api/audios')).json();
@@ -3229,12 +3303,14 @@ def api_tts():
     AUDIO_DIR.mkdir(parents=True, exist_ok=True)
     ts = int(_time.time())
     prefix = f"tts_{ts}"
-    out = AUDIO_DIR / f"{prefix}_000.wav"
+    # --join_audio merges all sentence chunks into {prefix}.wav (not {prefix}_000.wav)
+    out = AUDIO_DIR / f"{prefix}.wav"
     try:
         r = subprocess.run([sys.executable, "-m", "mlx_audio.tts.generate",
                             "--model", "prince-canuma/Kokoro-82M",
                             "--text", text, "--voice", voice, "--speed", str(speed),
-                            "--output_path", str(AUDIO_DIR), "--file_prefix", prefix],
+                            "--output_path", str(AUDIO_DIR), "--file_prefix", prefix,
+                            "--join_audio"],
                            capture_output=True, text=True, timeout=300)
         if r.returncode != 0 or not out.exists():
             err = (r.stderr or r.stdout or "TTS failed").strip()[-600:]

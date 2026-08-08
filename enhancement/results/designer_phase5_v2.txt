@@ -1,0 +1,4 @@
+mlx-agent  persona=designer  model=writer:qwen3.6-27b  gateway=http://localhost:8000/v1
+  → run_shell(command='mkdir -p ~/MLX-AI/onboarding-design')
+  $ mkdir -p ~/MLX-AI/onboarding-design
+gateway error: 500 Server Error: Internal Server Error for url: http://localhost:8000/v1/chat/completions — is :4000 up?

@@ -708,6 +708,12 @@ YAMLEOF
 litellm_settings:
   drop_params: true
   request_timeout: 1200
+
+router_settings:
+  enable_pre_call_checks: false
+
+general_settings:
+  health_check_interval: 86400
 YAMLEOF
     ok "wrote $CFG"
 }
