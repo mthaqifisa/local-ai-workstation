@@ -2979,8 +2979,8 @@ def api_video():
         src_path = _tmp.mktemp(suffix=suffix); f.save(src_path)
     cmd = [sys.executable, "-m", "mlx_video.generate_av",
            "--prompt", prompt, "--output-path", out,
-           "--model-repo", "notapalindrome/ltx2-mlx-av",
-           "--text-encoder-repo", "mlx-community/gemma-3-12b-it-bf16",
+           "--model-repo", "notapalindrome/ltx23-mlx-av-q4",
+           "--text-encoder-repo", "mlx-community/gemma-3-12b-it-4bit",
            "--num-frames", str(min(257, duration * 24))]
     if src_path:
         cmd += ["--image", src_path, "--image-strength", "0.85"]
