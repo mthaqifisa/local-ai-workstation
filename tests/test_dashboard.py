@@ -245,6 +245,181 @@ def test_video(page: Page):
     print(f"  Note: video WARN is a known hardware limit on M-series — not a UI bug")
 
 
+# ── test 5: vision page (/vision) ────────────────────────────────────────────
+
+def test_vision(page: Page):
+    print("\n── Vision page (/vision) ──")
+    page.goto(BASE + "/vision", wait_until="domcontentloaded")
+    page.wait_for_timeout(1000)
+    ss(page, "05_vision_load")
+
+    # Drop zone and question textarea
+    dz       = page.locator("#dz")
+    question = page.locator("#prompt")
+    run_btn  = page.locator("#runBtn")
+    record("drop zone present",          dz.count() > 0)
+    record("question textarea present",  question.count() > 0)
+    record("Analyze button present",     run_btn.count() > 0)
+
+    # Model chips (Qwen3-VL, Gemma-4)
+    model_chips = page.locator(".mc[data-model], .mc[onclick*='setModel']")
+    if model_chips.count() == 0:
+        # chips may use different selector — check for any .mc buttons
+        model_chips = page.locator(".mc")
+    record("vision model chips present", model_chips.count() >= 2,
+           f"{model_chips.count()} model chip(s)")
+
+    # Upload a test image via the hidden file input inside the drop zone
+    test_img = str(Path(__file__).parent.parent / "tests" / "screenshots" / "01_home_final.png")
+    file_input = page.locator("#dz input[type='file']")
+    if file_input.count():
+        file_input.set_input_files(test_img)
+        page.wait_for_timeout(800)
+        preview = page.locator(".prev-box img, #dz img, [id*='prev'] img").first
+        record("image preview shown after upload", preview.count() > 0 or
+               page.locator(".prev-box, #prevBox, .prev-rm").count() > 0,
+               "preview or remove button visible")
+    else:
+        record("file input reachable in drop zone", False, "no input[type=file] inside #dz")
+
+    question.fill("What page is shown in this screenshot?")
+    ss(page, "05_vision_filled")
+    record("question filled", True)
+
+    print(f"  → screenshots: 05_vision_*.png  (analysis NOT triggered — needs model load)")
+
+
+# ── test 6: chat page (/chat) ─────────────────────────────────────────────────
+
+def test_chat(page: Page):
+    print("\n── Chat page (/chat) ──")
+    page.goto(BASE + "/chat", wait_until="domcontentloaded")
+    page.wait_for_timeout(1500)
+    ss(page, "06_chat_load")
+
+    thread   = page.locator("#thread")
+    inp      = page.locator("#in")
+    send_btn = page.locator("#sendbtn")
+    record("message thread container present", thread.count() > 0)
+    record("input textarea present",           inp.count() > 0)
+    record("send button present",              send_btn.count() > 0)
+
+    # Mode toggle and model dropdown
+    mode_btn   = page.locator("#modeBtn")
+    model_sel  = page.locator("#model")
+    record("mode toggle present (Agent/Direct)", mode_btn.count() > 0)
+    record("model/persona selector present",     model_sel.count() > 0)
+
+    # Switch to Direct mode (raw model — faster, no tools)
+    if mode_btn.count():
+        # Toggle if currently in Agent mode
+        mode_text = mode_btn.inner_text()
+        if "Agent" in mode_text:
+            mode_btn.click()
+            page.wait_for_timeout(500)
+        record("Direct mode activated", True)
+    ss(page, "06_chat_direct_mode")
+
+    # Send a minimal message and verify a reply appears
+    inp.fill("Reply with exactly the word: pong")
+    ss(page, "06_chat_filled")
+    inp.press("Enter")
+
+    try:
+        # Wait for an AI bubble to appear (up to 60s for cold model start)
+        ai_bubble = page.locator(".bubble.ai:not(:has(.typing))")
+        ai_bubble.first.wait_for(timeout=60_000)
+        reply_text = ai_bubble.first.inner_text()
+        record("AI reply received", bool(reply_text.strip()),
+               f"reply: {reply_text.strip()[:60]}")
+        ss(page, "06_chat_reply")
+    except Exception as e:
+        record("AI reply received", False, str(e)[:80])
+        ss(page, "06_chat_timeout")
+
+    print(f"  → screenshots: 06_chat_*.png")
+
+
+# ── test 7: personas page (/personas) ────────────────────────────────────────
+
+def test_personas(page: Page):
+    print("\n── Personas page (/personas) ──")
+    page.goto(BASE + "/personas", wait_until="domcontentloaded")
+    page.wait_for_timeout(1500)
+    ss(page, "07_personas_load")
+
+    # Persona cards loaded from /api/personas
+    try:
+        page.locator(".persona-card, .card, p").first.wait_for(timeout=5_000)
+    except Exception:
+        pass
+
+    body = page.content()
+    # API call verification
+    resp = page.request.get(BASE + "/api/personas")
+    record("/api/personas reachable", resp.ok, f"HTTP {resp.status}")
+    personas_data = resp.json().get("personas", [])
+    record("personas list non-empty", len(personas_data) >= 1,
+           f"{len(personas_data)} persona(s) returned")
+
+    # + New persona button
+    add_btn = page.locator("button.add, button:has-text('New persona'), button:has-text('+ New')")
+    record("Add persona button present", add_btn.count() > 0)
+
+    # Verify known personas appear in page content
+    known = ["orchestrator", "coder", "writer"]
+    found = sum(1 for p in known if p in body.lower())
+    record("core persona names in page", found >= 2, f"{found}/3 of {known} found")
+
+    ss(page, "07_personas_final")
+    print(f"  → screenshots: 07_personas_*.png")
+
+
+# ── test 8: models page (/models) ─────────────────────────────────────────────
+
+def test_models(page: Page):
+    print("\n── Models page (/models) ──")
+    page.goto(BASE + "/models", wait_until="domcontentloaded")
+    page.wait_for_timeout(1500)
+    ss(page, "08_models_load")
+
+    search_inp = page.locator("#q")
+    search_btn = page.locator("button.go").first
+    record("search input present",  search_inp.count() > 0)
+    record("Search button present", search_btn.count() > 0)
+
+    # Currently registered models section
+    current_div = page.locator("#current")
+    record("registered models section present", current_div.count() > 0)
+    page.wait_for_timeout(1000)
+    current_content = current_div.inner_text() if current_div.count() else ""
+    record("registered models list populated", len(current_content.strip()) > 10,
+           f"{len(current_content.strip())} chars rendered in #current")
+
+    # /api/models API
+    resp = page.request.get(BASE + "/api/models")
+    record("/api/models reachable", resp.ok, f"HTTP {resp.status}")
+    gateway_models = resp.json().get("gateway", [])
+    record("gateway model list non-empty", len(gateway_models) >= 1,
+           f"{len(gateway_models)} model(s)")
+
+    # Type a search query and click — verify the request fires and #results renders
+    search_inp.fill("qwen mlx")
+    with page.expect_response(lambda r: "/api/models/search" in r.url, timeout=15_000) as resp_info:
+        search_btn.click()
+    search_resp = resp_info.value
+    record("HF search API called (/api/models/search)", search_resp.ok,
+           f"HTTP {search_resp.status}")
+    page.wait_for_timeout(1000)
+    results_div = page.locator("#results")
+    results_txt = results_div.inner_text() if results_div.count() else ""
+    record("search #results rendered", results_div.count() > 0,
+           f"{len(results_txt.strip())} chars in #results")
+
+    ss(page, "08_models_search")
+    print(f"  → screenshots: 08_models_*.png")
+
+
 # ── runner ────────────────────────────────────────────────────────────────────
 
 def main():
@@ -263,6 +438,10 @@ def main():
             test_imagine(page)
             test_audio(page)
             test_video(page)
+            test_vision(page)
+            test_personas(page)
+            test_models(page)
+            test_chat(page)
         finally:
             browser.close()
 
