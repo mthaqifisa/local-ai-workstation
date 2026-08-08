@@ -1515,6 +1515,11 @@ display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:
 .send-btn:disabled{opacity:.4;cursor:default;transform:none}
 .note{font-family:var(--mono);font-size:10px;color:var(--muted);padding:4px 0 0}
 body.drag{outline:3px dashed var(--purple);outline-offset:-4px}
+.ba-btn{font-size:11px;padding:3px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--muted);margin-top:6px;margin-right:4px;transition:.15s;font-family:var(--sans)}
+.ba-btn:hover{background:rgba(255,255,255,.1);color:var(--text)}
+.ba-btn.del{border-color:rgba(239,68,68,.3);color:#ef4444;background:rgba(239,68,68,.06)}
+.ba-btn.del:hover{background:rgba(239,68,68,.18)}
+.ba-btn.speak{float:right}
 </style></head><body>
 <!--NAV-->
 <div class="hdr">
@@ -1547,12 +1552,12 @@ function saveChatState(){
   try{
     const savable=msgs.filter(m=>m.content&&m.content!=='__typing__').slice(-60).map(m=>{
       const c={...m};if(c.image&&c.image.startsWith('blob:'))delete c.image;return c;});
-    localStorage.setItem(CHAT_KEY,JSON.stringify({msgs:savable,agentOn}));
+    sessionStorage.setItem(CHAT_KEY,JSON.stringify({msgs:savable,agentOn}));
   }catch(e){}
 }
 function restoreChatState(){
   try{
-    const saved=JSON.parse(localStorage.getItem(CHAT_KEY)||'{}');
+    const saved=JSON.parse(sessionStorage.getItem(CHAT_KEY)||'{}');
     if(saved.msgs&&saved.msgs.length){
       msgs=saved.msgs;
       if(saved.agentOn!==undefined&&saved.agentOn!==agentOn){
@@ -1622,7 +1627,14 @@ h+='<details class=steps><summary>&#9654; Thinking ('+m.steps.length+' steps)</s
 }
 if(m.content==='__typing__'){h+='<div class=typing><span></span><span></span><span></span></div>';}
 else{h+=fmt(m.content||'');}
-if(m.imageResult){h+='<img src="'+m.imageResult+'" style="max-width:100%;max-height:380px;border-radius:10px;margin-top:10px;display:block;border:1px solid rgba(14,165,233,.2);cursor:pointer" onclick="window.open(this.src)">';}
+if(m.imageResult){
+  const fname=(m.imageResult.match(/\/api\/image-file\/([^?]+)/)||[])[1]||'';
+  h+='<img src="'+m.imageResult+'" style="max-width:100%;max-height:380px;border-radius:10px;margin-top:10px;display:block;border:1px solid rgba(14,165,233,.2);cursor:pointer" onclick="window.open(this.src)">';
+  if(fname)h+='<button class="ba-btn del" onclick="delChatImg(this,\''+fname+'\')">🗑 Delete from disk</button>';
+}
+if(m.content&&m.content!=='__typing__'){
+  h+='<button class="ba-btn speak" onclick="speakTxt(this)">🔊</button>';
+}
 }
 b.innerHTML=h;wrap.appendChild(b);return wrap;
 }
@@ -1695,8 +1707,8 @@ else if(o.type==='answer'){a.content=o.text;}
 paint();
 }
 }
-if(a.content==='__typing__'||!a.content){a.content='[no answer]';}paint();
-}catch(e){a.content='Error: '+e;a.steps=[];paint();}
+if(a.content==='__typing__'||!a.content){a.content='[no answer]';}paint();saveChatState();
+}catch(e){a.content='Error: '+e;a.steps=[];paint();saveChatState();}
 }
 async function chatTurn(text){
 const model=document.getElementById('model').value;
@@ -1714,7 +1726,8 @@ acc+=dec.decode(value,{stream:true});a.content=acc;
 const nb=makeBubble(a);t.lastChild.replaceWith(nb);t.scrollTop=t.scrollHeight;
 }
 if(!acc){a.content='[no output]';t.lastChild.replaceWith(makeBubble(a));}
-}catch(e){a.content='Error: '+e;t.lastChild.replaceWith(makeBubble(a));}
+saveChatState();
+}catch(e){a.content='Error: '+e;t.lastChild.replaceWith(makeBubble(a));saveChatState();}
 }
 async function visionTurn(text){
 const f=img,prompt=text||'Describe this image in detail.';
@@ -1728,7 +1741,29 @@ const fd=new FormData();fd.append('image',f);fd.append('prompt',prompt);
 const r=await j('/api/vision',{method:'POST',body:fd}),d=await r.json();
 a.content=r.ok?d.answer:'Error: '+(d.error||'failed');
 }catch(e){a.content='Error: '+e;}
-t.lastChild.replaceWith(makeBubble(a));t.scrollTop=t.scrollHeight;
+t.lastChild.replaceWith(makeBubble(a));t.scrollTop=t.scrollHeight;saveChatState();
+}
+function speakTxt(btn){
+  if(speechSynthesis.speaking){speechSynthesis.cancel();btn.textContent='🔊';return;}
+  const bub=btn.closest('.bubble');
+  const clone=bub.cloneNode(true);
+  clone.querySelectorAll('details,button,img').forEach(el=>el.remove());
+  const txt=(clone.innerText||clone.textContent||'').trim();
+  if(!txt)return;
+  const u=new SpeechSynthesisUtterance(txt);u.rate=1.05;u.pitch=1;
+  u.onstart=()=>{btn.textContent='⏹ Stop';};
+  u.onend=()=>{btn.textContent='🔊';};
+  speechSynthesis.speak(u);
+}
+async function delChatImg(btn,fname){
+  if(!confirm('Delete '+fname+' from this machine?'))return;
+  const r=await j('/api/delete-file',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name:fname,kind:'image'})});
+  if(r.ok){
+    const idx=msgs.findIndex(m=>m.imageResult&&m.imageResult.includes(fname));
+    if(idx>=0)msgs.splice(idx,1);
+    render();
+  }else{try{const d=await r.json();alert('Delete failed: '+(d.error||'unknown'));}catch(e){alert('Delete failed');}}
 }
 (async()=>{await loadDropdown();restoreChatState();})();
 // P6-2: mic input (browser SpeechRecognition)
@@ -2485,6 +2520,25 @@ def api_images():
     if not IMAGES_DIR.exists(): return jsonify({"images": []})
     files = sorted((f.name for f in IMAGES_DIR.glob("*.png")), reverse=True)[:24]
     return jsonify({"images": files})
+
+@app.route("/api/delete-file", methods=["POST"])
+@require_auth
+def api_delete_file():
+    data = request.json or {}
+    name = (data.get("name") or "").strip()
+    kind = data.get("kind", "image")
+    if kind == "video":
+        if not re.match(r"^[A-Za-z0-9._-]+\.mp4$", name): return jsonify({"error": "bad name"}), 400
+        p = VIDEOS_DIR / name
+    elif kind == "audio":
+        if not re.match(r"^[A-Za-z0-9._-]+\.(wav|mp3)$", name): return jsonify({"error": "bad name"}), 400
+        p = AUDIO_DIR / name
+    else:
+        if not re.match(r"^[A-Za-z0-9._-]+\.png$", name): return jsonify({"error": "bad name"}), 400
+        p = IMAGES_DIR / name
+    if not p.exists(): return jsonify({"error": "not found"}), 404
+    p.unlink()
+    return jsonify({"ok": True})
 
 @app.route("/imagine")
 @require_auth
