@@ -6,6 +6,49 @@ A production-grade local AI setup for Apple M-series Macs. One command brings up
 
 ---
 
+## What's New — v4.1-elite (2026-08-08)
+
+### 16 Elite Personas
+Expanded from 11 to 16 fully-trained personas. All upgraded to Fable-5 / Devin / Kimi-K3 benchmark quality with hardened system prompts, tool discipline, and anti-hallucination tuning:
+
+| New Personas | Role |
+|---|---|
+| `security` | STRIDE threat modelling, OWASP Top 10, active pentest guidance |
+| `data` | EDA → model → evaluate → interpret full pipeline |
+| `devops` | IaC, GitOps, hardening, CI/CD pipelines |
+| `architect` | C4 diagrams, ADRs, CAP theorem, 12-factor app design |
+| `imagegen` | Dedicated FLUX image specialist — prompt engineering, resolution, style presets |
+
+### Image Generation — First-Class Tool
+Agents can now generate images directly via the `generate_image` tool, which calls `mflux-generate-z-image-turbo` internally. No manual CLI commands needed:
+
+```bash
+mlx-agent "Generate a photorealistic image of a mountain at sunrise, 1024x1024"
+# → agent calls generate_image tool → FLUX runs → saves PNG → reports path + size
+```
+
+The dedicated `imagegen` persona knows 8 style presets, 4 resolution modes, and optimal step counts.
+
+### Dashboard Create Page — Midjourney-Quality UI
+Complete redesign of `/imagine` (Create page):
+- **Model selector chips** — Z-Image Turbo / FLUX schnell / FLUX dev, one click
+- **Style presets** — Photorealistic, Cinematic, Anime, Oil Painting, Digital Art, Watercolor, 3D Render, Sketch
+- **Resolution grid** — Square 1024², Portrait 768×1280, Landscape 1280×768, Wide 1536×640 with visual icons
+- **Steps slider** — 4 (fast) → 9 (default) → 16 (quality), with real-time label
+- **Seed controls** — manual entry or randomize button
+- **Advanced / negative prompt** — collapsible panel
+- **Live progress bar** — animated fill during generation
+- **Gallery** — thumbnail grid of all previous generations with hover overlay (download + copy prompt)
+- **Lightbox** — click any thumbnail for full-size view
+
+### Stability Fixes
+- `MAX_TOOL_CALLS_PER_ROUND = 6` hard cap prevents runaway loops that caused kernel panics
+- MLX server context window reduced (65 536 → 32 768) and prompt cache halved (8 GB → 4 GB) for large models
+- Port 8000 safety: agent checks `:8000` health before calls and restarts the inference service if dead
+- File-read discipline: agent re-reads files only when modification time changes
+
+---
+
 ## Architecture
 
 ![Architecture Diagram](screenshots/architecture.png)
@@ -31,10 +74,10 @@ Full-screen chat in **Agent** mode (tool-calling with thinking panel + step trac
 
 Drop an image, pick a vision model from the dropdown, ask a question. Runs Qwen3-VL-8B or Gemma-4 locally. No data leaves the machine.
 
-### Image Generation
+### Image Generation (Create)
 ![Create Page](screenshots/dashboard-create.png)
 
-Text-to-image with Z-Image Turbo. Configure steps, resolution, seed. ~15 seconds for 512×512 on M5 Pro.
+Redesigned Midjourney-style UI: **model chips** (Z-Image Turbo / FLUX schnell / FLUX dev) · **style presets** (8 options) · **resolution grid** with visual icons · **steps slider** (4–16) · **seed controls** · **negative prompt panel** · **live progress bar** · **gallery** with hover-overlay download + lightbox. ~15 s for 1024×1024 on M5 Pro.
 
 ### Personas
 ![Personas](screenshots/dashboard-personas.png)
@@ -225,7 +268,7 @@ Prompts for `DASHBOARD_PASSWORD`, `TELEGRAM_BOT_TOKEN`, and `TELEGRAM_USER_ID`. 
 | **Dashboard** | Live CPU/RAM/Battery/Disk/Net sparklines, service health, active agent tracker, SSE neural feed, quick dispatch |
 | **Chat** | Full-screen chat — Agent mode (tool-calling agent with thinking panel) or Direct mode (raw model) |
 | **Vision** | Upload image → pick model from dropdown → local OCR / image Q&A |
-| **Create** | Text-to-image with Z-Image Turbo, step/size controls, gallery |
+| **Create** | Text-to-image with Z-Image Turbo — model chips, style presets, resolution grid, steps slider, seed controls, live progress, gallery with lightbox |
 | **Personas** | Create / edit agent personas (model + system prompt + tool permissions) |
 | **Models** | Search HuggingFace, download, probe-load, register new models |
 
@@ -237,9 +280,14 @@ The top navigation is **sticky on all pages** — always one click away from any
 # Ask orchestrator a question
 mlx-agent "how much disk is free on this laptop?"
 
-# Use a specific specialist
-mlx-agent --persona coder "write a binary search tree in Python"
+# Use a specific specialist (16 personas total)
+mlx-agent --persona coder      "write a binary search tree in Python"
 mlx-agent --persona researcher "what are the best MLX models in 2026?"
+mlx-agent --persona imagegen   "generate a cinematic portrait of a cyberpunk city, 768x1280"
+mlx-agent --persona security   "STRIDE threat model for this REST API design"
+mlx-agent --persona architect  "design the data layer for a multi-tenant SaaS, C4 context diagram"
+mlx-agent --persona data       "EDA and feature importance for this CSV"
+mlx-agent --persona devops     "write a Kubernetes deployment manifest with resource limits"
 
 # Interactive REPL
 mlx-agent
@@ -325,8 +373,9 @@ local-ai-workstation/
 | `spawn_subagent` | Delegate to a specialist persona (sequential) |
 | `download_model` | Pull a new model from HuggingFace |
 | `broadcast_event` | Emit an event to the dashboard SSE feed |
+| `generate_image` | Generate an image locally via FLUX (mflux-generate-z-image-turbo) — no API |
 
-`spawn_subagent` is the key tool for SDLC — each call fully loads a different model, runs the task, unloads, and returns the result to the orchestrator.
+`spawn_subagent` is the key tool for SDLC — each call fully loads a different model, runs the task, unloads, and returns the result to the orchestrator. `generate_image` lets any persona produce images without leaving the agent session.
 
 ---
 
@@ -340,6 +389,8 @@ coder           dev
 writer          qa
 reasoner        deep-reasoner
 vision          designer
+security        data          devops        architect
+imagegen        thaqif-clone
 embed
 # bare model names also work: qwen36-35b, deepseek-r1-32b, etc.
 ```

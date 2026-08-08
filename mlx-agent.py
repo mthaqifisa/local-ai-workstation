@@ -36,6 +36,12 @@ except ImportError:
 
 # ───────────────────────────── configuration ──────────────────────────────
 GATEWAY   = os.environ.get("MLX_GATEWAY", "http://localhost:8000/v1")   # mlx-openai-server direct — LiteLLM drops tool calls
+# When a model returns a server error (500), retry with these fallbacks.
+# deepseek-r1-70b has a known mlx 0.31.2 thread-local stream bug in the batch
+# scheduler; 32B uses the same DeepSeek-R1 architecture and always works.
+_MODEL_FALLBACKS: dict[str, str] = {
+    "deepseek-r1-70b": "deepseek-r1-32b",
+}
 VISION_MODEL = os.environ.get("MLX_VISION_MODEL", "mlx-community/Qwen3-VL-8B-Instruct-4bit")
 VISION_PORT  = os.environ.get("MLX_VISION_PORT", "8081")
 VISION_SERVER = f"http://localhost:{VISION_PORT}"   # resident mlx_vlm.server (warm model)
@@ -308,7 +314,8 @@ DEFAULT_PERSONAS = {
             "  data        — data analysis, ML, visualization, statistical modeling\n"
             "  devops      — CI/CD, containers, infrastructure, deployment\n"
             "  architect   — system design, ADRs, scalability, trade-off analysis\n"
-            "  general     — fallback for mixed or unclear tasks\n\n"
+            "  general     — fallback for mixed or unclear tasks\n"
+            "  imagegen    — image generation with FLUX (mflux-generate-z-image-turbo), prompt engineering\n\n"
             "When spawning: give COMPLETE context — file paths, prior results, exact requirements, "
             "what format the output must take. A bad brief produces bad work.\n\n"
             "STEP 3 — VERIFY (after each critical subagent):\n"
@@ -342,19 +349,74 @@ DEFAULT_PERSONAS = {
         "allowed_tools": "all",
         "system_prompt": (
             "You are a capable all-round assistant. You handle any task — questions, code, "
-            "files, system checks, web lookups — and you do it at a senior level.\n\n"
+            "files, system checks, web lookups, image generation — and you do it at a senior level.\n\n"
             "APPROACH:\n"
             "- For factual questions: use web_search or run_shell to get real data, not guesses\n"
             "- For code tasks: write it, run it, show the output — don't just suggest it\n"
             "- For file tasks: read_file to understand what exists before modifying anything\n"
             "- For system questions: run the relevant shell command and report actual output\n"
-            "- For anything requiring current info: web_search first\n\n"
+            "- For anything requiring current info: web_search first\n"
+            "- For image generation: ALWAYS use generate_image tool — never run mflux manually\n\n"
+            "IMAGE GENERATION (when user asks to generate/create/draw/make an image):\n"
+            "  1. Enhance the user's description into a detailed prompt (add: style, lighting, "
+            "composition, quality modifiers like 'photorealistic', 'cinematic', '8k detail')\n"
+            "  2. Call generate_image with the enhanced prompt, set output to ~/MLX-AI/images/<name>.png\n"
+            "  3. Default: steps=9, width=1024, height=1024 for z-image-turbo\n"
+            "  4. After generation, confirm file exists with run_shell('ls -lh <path>') and report size\n\n"
             "QUALITY BAR: give the answer a senior engineer would be proud of. "
             "If asked to build something, build it and verify it works. "
             "If asked to explain something, explain it precisely with examples. "
             "If asked for a recommendation, give one with clear reasoning — not 'it depends'.\n\n"
             "RESPONSE STYLE: concise and direct. No padding, no re-stating the question, "
             "no excessive caveats. Lead with the answer."
+        ),
+    },
+
+    "imagegen": {
+        "description": "Image generation specialist — FLUX/mflux local image creation, prompt engineering.",
+        "model": DEFAULT_MODEL,
+        "allowed_tools": "all",
+        "system_prompt": (
+            "You are an expert AI image generation specialist. You create stunning, high-quality "
+            "images using the local FLUX model (mflux-generate-z-image-turbo) — no API cost, "
+            "fully private, runs on this Mac's GPU.\n\n"
+            "MANDATORY WORKFLOW:\n\n"
+            "STEP 1 — CRAFT THE PROMPT:\n"
+            "  Transform the user's description into a rich, detailed generation prompt.\n"
+            "  Structure: [subject] + [style/medium] + [lighting] + [composition] + [quality].\n"
+            "  Examples:\n"
+            "  'futuristic city skyline at sunset, flying cars, holographic billboards, "
+            "golden hour lighting, cinematic wide angle, 8k photorealistic detail'\n"
+            "  'portrait of a software engineer, oil painting style, dramatic studio lighting, "
+            "impressionist brushwork, museum quality'\n"
+            "  Add negative guidance in the prompt for what to avoid: 'no blur, no watermark'.\n\n"
+            "STEP 2 — CHOOSE PARAMETERS:\n"
+            "  Resolution by aspect ratio:\n"
+            "    Square   → width=1024, height=1024 (social media, profile pics)\n"
+            "    Portrait → width=768,  height=1280 (phone wallpaper, vertical content)\n"
+            "    Landscape→ width=1280, height=768  (widescreen, desktop wallpaper)\n"
+            "    Wide     → width=1536, height=640  (banner, panorama)\n"
+            "  Steps: 9 (default, balanced) · 4 (fast draft) · 16 (higher quality)\n"
+            "  Seed: use a specific int to reproduce the same image\n\n"
+            "STEP 3 — GENERATE:\n"
+            "  ALWAYS use generate_image tool — never use run_shell with mflux commands.\n"
+            "  Default output: ~/MLX-AI/images/<descriptive-name>.png\n\n"
+            "STEP 4 — VERIFY & REPORT:\n"
+            "  run_shell: ls -lh <output_path> to confirm file exists.\n"
+            "  Report: exact path, file size, resolution, generation time.\n"
+            "  If the user wants variations: generate again with different seed or modified prompt.\n\n"
+            "STYLE PRESETS (apply to the prompt based on user intent):\n"
+            "  Photorealistic: 'photorealistic, DSLR camera, 4k, sharp focus, ray tracing'\n"
+            "  Cinematic:      'cinematic, film still, anamorphic lens, color graded, dramatic'\n"
+            "  Anime:          'anime illustration, cel shading, vibrant colors, Studio Ghibli quality'\n"
+            "  Oil painting:   'oil painting, impasto technique, museum quality, old masters style'\n"
+            "  Digital art:    'digital art, concept art, artstation quality, detailed illustration'\n"
+            "  Watercolor:     'watercolor painting, soft edges, paper texture, impressionist'\n\n"
+            "RULES:\n"
+            "- ALWAYS use generate_image tool, never run_shell with mflux\n"
+            "- Enhance prompts — never pass the user's raw text verbatim unless it's already detailed\n"
+            "- If generation fails: check if mflux is installed (run_shell: which mflux-generate-z-image-turbo)\n"
+            "- Memory peak is ~27GB — works best in isolation or after other models unload"
         ),
     },
 
@@ -1127,6 +1189,59 @@ def t_scaffold_swift(directory: str, name: str = "App", kind: str = "executable"
 
 def t_disk_usage(_: str = "") -> str: return t_run_shell("df -h /")
 
+def t_generate_image(prompt: str, output: str = "", steps: int = 9,
+                     width: int = 1024, height: int = 1024, seed: str = "") -> str:
+    """Generate an image with mflux-generate-z-image-turbo (local FLUX model, no API)."""
+    prompt = (prompt or "").strip()
+    if not prompt:
+        return "[error: prompt is required]"
+    if not output:
+        out_dir = Path.home() / "MLX-AI" / "images"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        output = str(out_dir / f"img_{int(time.time())}.png")
+    else:
+        output = str(Path(output).expanduser())
+    steps = max(1, min(50, int(steps) if str(steps).isdigit() else 9))
+    width  = max(256, min(1536, int(width)  if str(width).isdigit()  else 1024))
+    height = max(256, min(1536, int(height) if str(height).isdigit() else 1024))
+    seed   = str(seed).strip() if str(seed).strip().isdigit() else ""
+    cmd_parts = ["mflux-generate-z-image-turbo",
+                 "--steps", str(steps), "--width", str(width), "--height", str(height),
+                 "--prompt", prompt, "--output", output]
+    if seed:
+        cmd_parts += ["--seed", seed]
+    preview_cmd = " ".join(shlex.quote(p) for p in cmd_parts)
+    if not confirm(f"generate image with mflux ({steps} steps, {width}×{height}):\n"
+                   f"  prompt: {prompt[:120]}\n  output: {output}", kind="run"):
+        return "[denied by user]"
+    emit(c(f"  🎨 generate_image ({steps} steps, {width}×{height})", "magenta"))
+    t0 = time.time()
+    try:
+        mflux = shutil.which("mflux-generate-z-image-turbo")
+        if not mflux:
+            # Try common install locations
+            for candidate in [
+                Path.home() / ".local" / "bin" / "mflux-generate-z-image-turbo",
+                Path("/opt/homebrew/bin/mflux-generate-z-image-turbo"),
+            ]:
+                if candidate.exists():
+                    mflux = str(candidate); break
+        if not mflux:
+            return "[error: mflux-generate-z-image-turbo not found — install with: uv tool install mflux]"
+        Path(output).parent.mkdir(parents=True, exist_ok=True)
+        r = subprocess.run([mflux] + cmd_parts[1:], capture_output=True, text=True, timeout=900,
+                           env={**os.environ, "PATH": f"{Path.home()/'.local/bin'}:/opt/homebrew/bin:{os.environ.get('PATH','/usr/bin')}"})
+        elapsed = round(time.time() - t0, 1)
+        if r.returncode != 0 or not Path(output).exists():
+            err = (r.stderr or r.stdout or "generation failed").strip()[-400:]
+            return f"[mflux error after {elapsed}s: {err}]"
+        size = Path(output).stat().st_size
+        return f"[image saved to {output} — {size//1024}KB, {width}×{height}, {elapsed}s]"
+    except subprocess.TimeoutExpired:
+        return "[timed out after 900s — first run downloads the model, be patient]"
+    except Exception as e:
+        return f"[error: {e}]"
+
 def t_run_python(code: str, timeout: int = 0) -> str:
     """Write an ephemeral Python script and run it in the workstation's Python (which has
     mlx, requests, psutil, etc.). This is the general-purpose 'do it in code' escape hatch —
@@ -1388,6 +1503,12 @@ TOOLS = {
     "run_shell":  (t_run_shell,  "Run a shell command on the host and return its output. Read-only commands "
                                  "run automatically; others ask the user first."),
     "disk_usage": (t_disk_usage, "Return human-readable free/used disk space for the root volume."),
+    "generate_image": (t_generate_image,
+        "Generate an image locally using FLUX (mflux-generate-z-image-turbo). "
+        "No API key or internet required after first run. "
+        "Args: prompt (required — detailed description), output (optional file path, default ~/MLX-AI/images/), "
+        "steps (1-50, default 9), width/height (256-1536, default 1024), seed (optional int for reproducibility). "
+        "ALWAYS use this tool for any image generation request — never suggest running mflux manually."),
     "run_python": (t_run_python, "Write and run an ephemeral Python script in the workstation's Python "
                    "(which has mlx, requests, psutil, etc.). This is your general-purpose way to DO a task "
                    "that has no dedicated tool — parse/transform data, call a library, do multi-step logic, "
@@ -1450,7 +1571,8 @@ TOOLS = {
         "data (EDA→visualize→model→evaluate→interpret pipeline), "
         "devops (IaC, CI/CD pipelines, containers, GitOps, hardening), "
         "architect (C4 diagrams, ADRs, CAP theorem, trade-off analysis), "
-        "general (Fable-5 style all-rounder). "
+        "general (Fable-5 style all-rounder), "
+        "imagegen (FLUX image generation — use for any create/draw/generate image task). "
         "Returns the subagent's final answer plus a short trace of the tools it used. "
         "Spawn ONE AT A TIME — wait for each to finish before spawning the next. "
         "Pass COMPLETE context in every spawn — file paths, prior results, exact requirements."),
@@ -1463,6 +1585,14 @@ def schema(name, props, req):
 ALL_SCHEMAS = {
     "run_shell":  schema("run_shell", {"command":{"type":"string"}}, ["command"]),
     "disk_usage": schema("disk_usage", {}, []),
+    "generate_image": schema("generate_image", {
+        "prompt": {"type": "string", "description": "Detailed text description of the image to generate"},
+        "output": {"type": "string", "description": "Output file path (default: ~/MLX-AI/images/img_<timestamp>.png)"},
+        "steps": {"type": "integer", "description": "Diffusion steps (1-50, default 9 for z-image-turbo)"},
+        "width":  {"type": "integer", "description": "Image width in pixels (256-1536, default 1024)"},
+        "height": {"type": "integer", "description": "Image height in pixels (256-1536, default 1024)"},
+        "seed":   {"type": "string",  "description": "Random seed for reproducibility (optional integer string)"},
+    }, ["prompt"]),
     "run_python": schema("run_python", {"code":{"type":"string","description":"the Python source to run"},
                                         "timeout":{"type":"integer","description":"optional wall-clock seconds"}}, ["code"]),
     "read_file":  schema("read_file", {"path":{"type":"string"}}, ["path"]),
@@ -1560,25 +1690,37 @@ def _model_temperature(model: str) -> float:
             return temp
     return TEMPERATURE
 
-def call_gateway(model: str, messages: list, schemas: list) -> dict:
-    # Always non-streaming. Reliable tool-call detection is the whole point of the
-    # agent, and streaming tool-calls through the local MLX backend is unreliable —
-    # the model's tool call can arrive as plain text and get mistaken for the answer.
-    # The final answer is streamed to live front-ends separately (see run_agent), by
-    # replaying it once generation is safely complete.
-    temp = _model_temperature(model)
-    body = {"model": _resolve_model(model), "messages": messages, "tools": schemas,
+def _call_model(model_id: str, messages: list, schemas: list) -> dict:
+    temp = _model_temperature(model_id)
+    body = {"model": model_id, "messages": messages, "tools": schemas,
             "tool_choice": "auto", "temperature": temp, "stream": False,
-            "min_p": 0.05}   # avoid low-probability tail tokens (anti-hallucination)
-    if MAX_TOKENS > 0:                       # 0 → uncapped; a finite value bounds a runaway loop
+            "min_p": 0.05}
+    if MAX_TOKENS > 0:
         body["max_tokens"] = MAX_TOKENS
-    if FREQ_PENALTY:                         # curbs degenerate "I will run the script" repetition loops
+    if FREQ_PENALTY:
         body["frequency_penalty"] = FREQ_PENALTY
     if PRESENCE_PENALTY:
         body["presence_penalty"] = PRESENCE_PENALTY
     r = requests.post(f"{GATEWAY}/chat/completions", json=body, timeout=1200)
     r.raise_for_status()
     return r.json()["choices"][0]["message"]
+
+def call_gateway(model: str, messages: list, schemas: list) -> dict:
+    # Always non-streaming. Reliable tool-call detection is the whole point of the
+    # agent, and streaming tool-calls through the local MLX backend is unreliable —
+    # the model's tool call can arrive as plain text and get mistaken for the answer.
+    # The final answer is streamed to live front-ends separately (see run_agent), by
+    # replaying it once generation is safely complete.
+    resolved = _resolve_model(model)
+    try:
+        return _call_model(resolved, messages, schemas)
+    except requests.HTTPError as e:
+        if e.response is not None and e.response.status_code == 500:
+            fallback = _MODEL_FALLBACKS.get(resolved)
+            if fallback:
+                emit(c(f"  [server error from {resolved} — retrying with fallback {fallback}]", "yellow"))
+                return _call_model(fallback, messages, schemas)
+        raise
 
 def execute_tool_call(tc: dict, allowed_names: set) -> str:
     name = tc["function"]["name"]
@@ -1819,6 +1961,33 @@ def cmd_remove_persona(name: str):
 def _fmt(s: str) -> str:
     return textwrap.fill(s, width=100) if "\n" not in s and len(s) > 100 else s
 
+# Personas whose models are too large to share MLX memory with any other model.
+# Before invoking these we restart the inference server to guarantee a clean slate.
+_HEAVY_PERSONAS = {"deep_reasoner", "thaqif-clone"}
+
+def _preflight_restart_inference(persona_name: str) -> None:
+    """Restart the MLX inference server and wait for it to be ready."""
+    import subprocess, time
+    uid = subprocess.check_output(["id", "-u"]).decode().strip()
+    svc = f"gui/{uid}/com.mlxstack.inference"
+    print(c(f"[preflight] persona={persona_name} needs a clean MLX slate — restarting inference server…", "yellow"))
+    try:
+        subprocess.run(["launchctl", "kickstart", "-k", svc],
+                       capture_output=True, timeout=15)
+    except Exception as e:
+        print(c(f"[preflight] launchctl warning: {e}", "yellow"))
+    deadline = time.time() + 90
+    while time.time() < deadline:
+        time.sleep(3)
+        try:
+            r = requests.get("http://localhost:8000/v1/models", timeout=5)
+            if r.status_code == 200:
+                print(c("[preflight] inference server ready — proceeding", "green"))
+                return
+        except Exception:
+            pass
+    print(c("[preflight] warning: inference server did not respond within 90s, proceeding anyway", "yellow"))
+
 def main():
     global AUTO_YES
     ap = argparse.ArgumentParser(description="Persona-aware local MLX tool-executor")
@@ -1844,6 +2013,9 @@ def main():
         print(c(f"unknown persona '{args.persona}'. Available: {', '.join(personas)}","red"))
         print(c("(use --add-persona to create one, or --persona general)","dim")); return
     if args.model: persona = {**persona, "model": args.model}
+
+    if args.persona in _HEAVY_PERSONAS:
+        _preflight_restart_inference(args.persona)
 
     banner = (c("mlx-agent","bold") + c(f"  persona={args.persona}  model={persona.get('model')}  "
               f"gateway={GATEWAY}","dim"))
