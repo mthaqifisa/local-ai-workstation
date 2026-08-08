@@ -1633,7 +1633,8 @@ if(m.imageResult){
   if(fname)h+='<button class="ba-btn del" onclick="delChatImg(this,\''+fname+'\')">🗑 Delete from disk</button>';
 }
 if(m.content&&m.content!=='__typing__'){
-  h+='<button class="ba-btn speak" onclick="speakTxt(this)">🔊</button>';
+  const enc=encodeURIComponent(m.content);
+  h+='<button class="ba-btn speak" data-speak="'+enc+'" onclick="speakTxt(this)">🔊</button>';
 }
 }
 b.innerHTML=h;wrap.appendChild(b);return wrap;
@@ -1744,12 +1745,22 @@ a.content=r.ok?d.answer:'Error: '+(d.error||'failed');
 t.lastChild.replaceWith(makeBubble(a));t.scrollTop=t.scrollHeight;saveChatState();
 }
 function speakTxt(btn){
-  if(speechSynthesis.speaking){speechSynthesis.cancel();btn.textContent='🔊';return;}
-  const bub=btn.closest('.bubble');
-  const clone=bub.cloneNode(true);
-  clone.querySelectorAll('details,button,img').forEach(el=>el.remove());
-  const txt=(clone.innerText||clone.textContent||'').trim();
-  if(!txt)return;
+  if(speechSynthesis.speaking){speechSynthesis.cancel();btn.textContent='🔊';
+    document.querySelectorAll('.ba-btn.speak').forEach(b=>{b.textContent='🔊';});return;}
+  speechSynthesis.cancel();
+  const raw=decodeURIComponent(btn.dataset.speak||'').trim();
+  if(!raw)return;
+  const txt=raw
+    .replace(/```[\s\S]*?```/g,' code block. ')
+    .replace(/`[^`\n]+`/g,'')
+    .replace(/^#{1,6}\s+/gm,'')
+    .replace(/\*\*([^*]+)\*\*/g,'$1')
+    .replace(/\*([^*]+)\*/g,'$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g,'$1')
+    .replace(/^[-*+]\s+/gm,'')
+    .replace(/^\d+\.\s+/gm,'')
+    .replace(/^>\s*/gm,'')
+    .trim();
   const u=new SpeechSynthesisUtterance(txt);u.rate=1.05;u.pitch=1;
   u.onstart=()=>{btn.textContent='⏹ Stop';};
   u.onend=()=>{btn.textContent='🔊';};
@@ -1937,7 +1948,10 @@ a{color:var(--blue);text-decoration:none}
 .gal-dl{position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:5px;
   background:rgba(2,8,23,.7);color:var(--text);display:flex;align-items:center;justify-content:center;
   font-size:12px;text-decoration:none;opacity:0;transition:.2s;backdrop-filter:blur(4px)}
-.gal-item:hover .gal-dl{opacity:1}
+.gal-del{position:absolute;top:6px;left:6px;width:24px;height:24px;border-radius:5px;border:none;
+  background:rgba(239,68,68,.75);color:#fff;display:flex;align-items:center;justify-content:center;
+  font-size:11px;cursor:pointer;opacity:0;transition:.2s;backdrop-filter:blur(4px)}
+.gal-item:hover .gal-dl,.gal-item:hover .gal-del{opacity:1}
 /* lightbox */
 .lb{display:none;position:fixed;inset:0;z-index:999;background:rgba(2,8,23,.92);
   backdrop-filter:blur(12px);align-items:center;justify-content:center;padding:20px}
@@ -2297,11 +2311,20 @@ async function loadGallery(){
       const el=document.createElement('div');el.className='gal-item';
       el.innerHTML='<img src="'+u+'" loading="lazy"><div class="gal-overlay">'+
         (prompt?'<div class="gal-prompt">'+esc(prompt)+'</div>':'')+
-        '</div><a class="gal-dl" href="'+u+'" download="'+f+'" onclick="event.stopPropagation()">⬇</a>';
+        '</div><a class="gal-dl" href="'+u+'" download="'+f+'" onclick="event.stopPropagation()">⬇</a>'+
+        '<button class="gal-del" title="Delete from disk" onclick="delGalleryFile(event,\''+f+'\',\'image\')">🗑</button>';
       el.onclick=()=>openLb(u,f);
       g.appendChild(el);
     });
   }catch(e){}
+}
+async function delGalleryFile(ev,fname,kind){
+  ev.stopPropagation();
+  if(!confirm('Delete '+fname+' permanently from this machine?'))return;
+  const r=await fetch('/api/delete-file',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name:fname,kind:kind})});
+  if(r.ok){loadGallery();}
+  else{try{const d=await r.json();alert('Delete failed: '+(d.error||'unknown'));}catch(e){alert('Delete failed');}}
 }
 loadGallery();
 </script>
@@ -2665,7 +2688,9 @@ video{width:100%;border-radius:14px;display:none;max-height:560px;background:#00
 .gal-dl{position:absolute;bottom:4px;right:4px;background:rgba(2,8,23,.75);
   border-radius:5px;font-size:11px;padding:3px 7px;color:var(--text);text-decoration:none;
   opacity:0;transition:.2s}
-.gal-item:hover .gal-dl{opacity:1}
+.gal-del{position:absolute;bottom:4px;left:4px;background:rgba(239,68,68,.75);border:none;
+  border-radius:5px;font-size:11px;padding:3px 7px;color:#fff;cursor:pointer;opacity:0;transition:.2s}
+.gal-item:hover .gal-dl,.gal-item:hover .gal-del{opacity:1}
 .install-note{background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.2);border-radius:10px;
   padding:14px;font-size:12px;line-height:1.7;color:var(--amber);font-family:var(--mono)}
 .install-note code{background:rgba(0,0,0,.3);padding:2px 6px;border-radius:4px;font-size:11px}
@@ -2840,13 +2865,23 @@ async function loadGallery(){
     vids.forEach(f=>{
       const u='/api/video-file/'+f;
       const el=document.createElement('div');el.className='gal-item';
-      el.innerHTML='<video src="'+u+'" muted loop></video><a class="gal-dl" href="'+u+'" download="'+f+'" onclick="event.stopPropagation()">⬇</a>';
+      el.innerHTML='<video src="'+u+'" muted loop></video>'+
+        '<a class="gal-dl" href="'+u+'" download="'+f+'" onclick="event.stopPropagation()">⬇</a>'+
+        '<button class="gal-del" title="Delete from disk" onclick="delGalleryFile(event,\''+f+'\',\'video\')">🗑</button>';
       el.querySelector('video').onmouseover=function(){this.play();};
       el.querySelector('video').onmouseout=function(){this.pause();};
       el.onclick=()=>{document.getElementById('resultVid').src=u+'&t='+Date.now();document.getElementById('resultVid').style.display='block';document.getElementById('resPh').style.display='none';curVideoFile=f;};
       g.appendChild(el);
     });
   }catch(e){}
+}
+async function delGalleryFile(ev,fname,kind){
+  ev.stopPropagation();
+  if(!confirm('Delete '+fname+' permanently from this machine?'))return;
+  const r=await fetch('/api/delete-file',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name:fname,kind:kind})});
+  if(r.ok){loadGallery();}
+  else{try{const d=await r.json();alert('Delete failed: '+(d.error||'unknown'));}catch(e){alert('Delete failed');}}
 }
 loadGallery();
 </script></body></html>"""
@@ -2869,14 +2904,13 @@ def api_video():
         suffix = os.path.splitext(f.filename or "img.png")[1] or ".png"
         src_path = _tmp.mktemp(suffix=suffix); f.save(src_path)
     try:
-        if model == "ltx":
-            cmd = [sys.executable, "-m", "mlx_video.generate_av",
-                   "--prompt", prompt, "--output", out,
-                   "--model", "notapalindrome/ltx2-mlx-av"]
-        else:
-            cmd = [sys.executable, "-m", "mlx_video.wan_2.generate",
-                   "--prompt", prompt, "--output-path", out,
-                   "--num-frames", str(min(81, duration * 16))]
+        if model == "wan":
+            return jsonify({"error": "Wan2.2 requires a separate install: pip install git+https://github.com/Blaizzy/mlx-video.git — then restart the dashboard. Using LTX-2.3 is recommended (already installed)."}), 501
+        # LTX-2.3 (default)
+        cmd = [sys.executable, "-m", "mlx_video.generate_av",
+               "--prompt", prompt, "--output-path", out,
+               "--model-repo", "notapalindrome/ltx2-mlx-av",
+               "--num-frames", str(min(257, duration * 24))]
         if src_path:
             cmd += ["--image", src_path]
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=7200)
@@ -2973,7 +3007,10 @@ a{color:var(--blue);text-decoration:none}
 .gal-name{font-family:var(--mono);font-size:11px;color:var(--muted);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .gal-audio{width:100%;accent-color:var(--green)}
-.gal-dl{font-size:11px;color:var(--blue);text-align:right}
+.gal-dl{font-size:11px;color:var(--blue);display:flex;align-items:center;justify-content:space-between}
+.gal-del-btn{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.25);border-radius:5px;
+  font-size:10px;padding:2px 8px;color:#ef4444;cursor:pointer;transition:.15s}
+.gal-del-btn:hover{background:rgba(239,68,68,.25)}
 .music-genre-chips{display:flex;gap:5px;flex-wrap:wrap}
 .gc{padding:4px 10px;border-radius:12px;font-size:11px;cursor:pointer;border:1px solid var(--bdr);
   color:var(--muted);transition:.15s;background:transparent;font-family:var(--sans)}
@@ -3163,10 +3200,19 @@ async function loadGallery(){
       const u='/api/audio-file/'+f;
       const el=document.createElement('div');el.className='gal-item';
       el.innerHTML='<div class="gal-name">'+f+'</div><audio class="gal-audio" src="'+u+'" controls></audio>'+
-        '<div class="gal-dl"><a href="'+u+'" download="'+f+'">⬇ Download</a></div>';
+        '<div class="gal-dl"><a href="'+u+'" download="'+f+'">⬇ Download</a>'+
+        '<button class="gal-del-btn" onclick="delGalleryFile(event,\''+f+'\',\'audio\')">🗑 Delete</button></div>';
       g.appendChild(el);
     });
   }catch(e){}
+}
+async function delGalleryFile(ev,fname,kind){
+  ev.stopPropagation();ev.preventDefault();
+  if(!confirm('Delete '+fname+' permanently from this machine?'))return;
+  const r=await fetch('/api/delete-file',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({name:fname,kind:kind})});
+  if(r.ok){loadGallery();}
+  else{try{const d=await r.json();alert('Delete failed: '+(d.error||'unknown'));}catch(e){alert('Delete failed');}}
 }
 </script></body></html>"""
 
@@ -3181,20 +3227,21 @@ def api_tts():
     except Exception: speed = 1.0
     fmt = "wav" if (d.get("format") or "wav") == "wav" else "mp3"
     AUDIO_DIR.mkdir(parents=True, exist_ok=True)
-    out = str(AUDIO_DIR / f"tts_{int(_time.time())}.{fmt}")
+    ts = int(_time.time())
+    prefix = f"tts_{ts}"
+    out = AUDIO_DIR / f"{prefix}_000.wav"
     try:
         r = subprocess.run([sys.executable, "-m", "mlx_audio.tts.generate",
-                            "--model", "kokoro", "--text", text,
-                            "--voice", voice, "--speed", str(speed), "--output", out],
+                            "--model", "prince-canuma/Kokoro-82M",
+                            "--text", text, "--voice", voice, "--speed", str(speed),
+                            "--output_path", str(AUDIO_DIR), "--file_prefix", prefix],
                            capture_output=True, text=True, timeout=300)
-        if r.returncode != 0 or not os.path.exists(out):
+        if r.returncode != 0 or not out.exists():
             err = (r.stderr or r.stdout or "TTS failed").strip()[-600:]
-            if "ModuleNotFoundError" in err or "No module" in err:
-                return jsonify({"error": "mlx-audio not installed. Run: pip install mlx-audio — then restart the dashboard. " + err[:200]}), 500
-            return jsonify({"error": err}), 500
-        return jsonify({"file": os.path.basename(out)})
+            return jsonify({"error": err[-400:]}), 500
+        return jsonify({"file": out.name})
     except subprocess.TimeoutExpired:
-        return jsonify({"error": "TTS timed out"}), 504
+        return jsonify({"error": "TTS timed out (>5 min)"}), 504
 
 @app.route("/api/music", methods=["POST"])
 @require_auth
