@@ -2,7 +2,45 @@
 
 > 100% local AI stack on Apple Silicon. No API keys, no billing, no data leaving your machine.
 
-A production-grade local AI setup for Apple M-series Macs. One command brings up a multi-agent orchestrator backed by 9 models, a futuristic web dashboard (**LAW**), a Telegram bot, image generation, vision analysis, and full autonomous SDLC capability.
+A production-grade local AI setup for Apple M-series Macs. One command brings up a multi-agent orchestrator backed by 9 models, a full web dashboard (**LAW**), a Telegram bot, image generation, vision analysis, text-to-speech, video generation, and full autonomous SDLC capability.
+
+---
+
+## What's New — v4.2 Phase 6 Media Module (2026-08-08)
+
+### Text-to-Speech Studio
+Full Kokoro-82M TTS integrated into the dashboard at `/audio`:
+- **6 voices** — af_sky, af_heart, am_adam, bm_lewis, bf_emma, am_echo
+- **Speed control** — 0.5× to 2.0× with live label
+- **Format** — WAV or MP3 output
+- **Library tab** — scrollable gallery of all previous generations with inline playback and delete
+- Single-file output via `--join_audio` — no fragmented `_000.wav` chunks
+
+### Video Generation Studio
+LTX-2.3 local video generation at `/video` (no Replicate, no API key):
+- **Text-to-video** — describe a scene, get an MP4 in ~5 minutes on M5 Pro
+- **Image-to-video** — upload a source frame, animate it
+- **Text encoder choice** — Gemma-3-12B or Gemma-4-12B for different prompt styles
+- **Async job polling** — fire and check; dashboard polls job status every 3 s with a progress bar
+- **Gallery** — thumbnail previews, inline player, delete button
+
+### Image Editing (img2img)
+New edit mode on the Create page alongside text-to-image:
+- Upload any image as a base, describe your changes
+- Powered by Qwen FLUX in image-to-image mode (`--image-strength 0.65`)
+- Edit tab sits next to the Generate tab — same UI, same gallery
+
+### Vision Revamp
+`/vision` page upgraded:
+- **Drag-and-drop** upload zone replaces the file picker
+- **Model dropdown** — switch between Qwen3-VL-8B and Gemma-4-12B without leaving the page
+- Image preview before submission with clear button
+
+### Chat Enhancements
+- **Voice mode** — one-click TTS readback of agent responses (af_sky voice, auto-plays)
+- **Inline image generation** — type `/imagine <prompt>` in chat to generate and display an image inline
+- **Session persistence** — conversation history survives page refresh via `sessionStorage`
+- **Response delete** — remove individual messages from the thread
 
 ---
 
@@ -20,32 +58,21 @@ Expanded from 11 to 16 fully-trained personas. All upgraded to Fable-5 / Devin /
 | `imagegen` | Dedicated FLUX image specialist — prompt engineering, resolution, style presets |
 
 ### Image Generation — First-Class Tool
-Agents can now generate images directly via the `generate_image` tool, which calls `mflux-generate-z-image-turbo` internally. No manual CLI commands needed:
+Agents can now generate images directly via the `generate_image` tool:
 
 ```bash
 mlx-agent "Generate a photorealistic image of a mountain at sunrise, 1024x1024"
 # → agent calls generate_image tool → FLUX runs → saves PNG → reports path + size
 ```
 
-The dedicated `imagegen` persona knows 8 style presets, 4 resolution modes, and optimal step counts.
-
 ### Dashboard Create Page — Midjourney-Quality UI
-Complete redesign of `/imagine` (Create page):
-- **Model selector chips** — Z-Image Turbo / FLUX schnell / FLUX dev, one click
-- **Style presets** — Photorealistic, Cinematic, Anime, Oil Painting, Digital Art, Watercolor, 3D Render, Sketch
-- **Resolution grid** — Square 1024², Portrait 768×1280, Landscape 1280×768, Wide 1536×640 with visual icons
-- **Steps slider** — 4 (fast) → 9 (default) → 16 (quality), with real-time label
-- **Seed controls** — manual entry or randomize button
-- **Advanced / negative prompt** — collapsible panel
-- **Live progress bar** — animated fill during generation
-- **Gallery** — thumbnail grid of all previous generations with hover overlay (download + copy prompt)
-- **Lightbox** — click any thumbnail for full-size view
+Redesigned `/imagine`: model chips · 8 style presets · resolution grid · steps slider (4–16) · seed controls · negative prompt · live progress · gallery with lightbox.
 
 ### Stability Fixes
-- `MAX_TOOL_CALLS_PER_ROUND = 6` hard cap prevents runaway loops that caused kernel panics
-- MLX server context window reduced (65 536 → 32 768) and prompt cache halved (8 GB → 4 GB) for large models
-- Port 8000 safety: agent checks `:8000` health before calls and restarts the inference service if dead
-- File-read discipline: agent re-reads files only when modification time changes
+- `MAX_TOOL_CALLS_PER_ROUND = 6` — prevents kernel panics from runaway loops
+- Context window 65 536 → 32 768, prompt cache 8 GB → 4 GB for large models
+- Port 8000 health check — agent restarts inference service if dead
+- deepseek-r1-70b → 32b automatic fallback on server error
 
 ---
 
@@ -78,6 +105,16 @@ Drop an image, pick a vision model from the dropdown, ask a question. Runs Qwen3
 ![Create Page](screenshots/dashboard-create.png)
 
 Redesigned Midjourney-style UI: **model chips** (Z-Image Turbo / FLUX schnell / FLUX dev) · **style presets** (8 options) · **resolution grid** with visual icons · **steps slider** (4–16) · **seed controls** · **negative prompt panel** · **live progress bar** · **gallery** with hover-overlay download + lightbox. ~15 s for 1024×1024 on M5 Pro.
+
+### Audio / TTS Studio
+![Audio Page](screenshots/dashboard-audio.png)
+
+Kokoro-82M TTS running entirely on-device. Pick a voice, set speed, generate — audio plays inline and saves to the Library. No Eleven Labs, no API key.
+
+### Video Studio
+![Video Page](screenshots/dashboard-video.png)
+
+LTX-2.3 text-to-video and image-to-video. Describe a scene, pick a text encoder, click Generate — the dashboard polls the async job and shows the MP4 in the gallery when done. ~5 min on M5 Pro.
 
 ### Personas
 ![Personas](screenshots/dashboard-personas.png)
@@ -266,9 +303,11 @@ Prompts for `DASHBOARD_PASSWORD`, `TELEGRAM_BOT_TOKEN`, and `TELEGRAM_USER_ID`. 
 | Page | What it does |
 |---|---|
 | **Dashboard** | Live CPU/RAM/Battery/Disk/Net sparklines, service health, active agent tracker, SSE neural feed, quick dispatch |
-| **Chat** | Full-screen chat — Agent mode (tool-calling agent with thinking panel) or Direct mode (raw model) |
-| **Vision** | Upload image → pick model from dropdown → local OCR / image Q&A |
-| **Create** | Text-to-image with Z-Image Turbo — model chips, style presets, resolution grid, steps slider, seed controls, live progress, gallery with lightbox |
+| **Chat** | Full-screen chat — Agent mode (tool-calling + thinking panel) or Direct mode. Voice readback. Inline `/imagine`. Session persistence. |
+| **Vision** | Drag-and-drop image → pick model (Qwen3-VL-8B or Gemma-4-12B) → local OCR / image Q&A |
+| **Create** | Text-to-image + img2img editing. Model chips (Z-Turbo / schnell / dev), 8 style presets, resolution grid, steps slider, seed, negative prompt, gallery |
+| **Audio** | Kokoro-82M TTS — 6 voices, speed control, WAV/MP3, Library gallery with inline playback |
+| **Video** | LTX-2.3 text-to-video and image-to-video — async job polling, Gemma text encoder, gallery with player |
 | **Personas** | Create / edit agent personas (model + system prompt + tool permissions) |
 | **Models** | Search HuggingFace, download, probe-load, register new models |
 
@@ -328,7 +367,36 @@ While working:
 # Custom settings
 ~/.mlx-ai-workstation/mlx-image.sh "PROMPT" out.png z-image-turbo 9 1024 1024
 
-# Or use the Create page in the dashboard
+# Or use the Create page in the dashboard — model chips, style presets, gallery
+```
+
+### Text-to-speech
+
+```bash
+# Dashboard API (dashboard must be running at :8800)
+curl -X POST http://localhost:8800/api/tts \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Hello world", "voice": "af_sky", "speed": 1.0}'
+# → {"file": "tts_<ts>.wav"}  saved to ~/MLX-AI/documents/audio/
+
+# Available voices: af_sky, af_heart, am_adam, bm_lewis, bf_emma, am_echo
+# Speed range: 0.5–2.0
+```
+
+### Video generation
+
+```bash
+# Dashboard API — fires an async job, returns job_id
+curl -X POST http://localhost:8800/api/video \
+  -F "prompt=cinematic drone shot over a misty mountain valley at sunrise" \
+  -F "duration=5" \
+  -F "model=ltx"
+# → {"job_id": "abc12345", "status": "running"}
+
+# Poll for completion
+curl http://localhost:8800/api/video-job/abc12345
+# → {"status": "done", "file": "vid_<ts>.mp4", "elapsed": 312}
+# File saved to ~/MLX-AI/documents/videos/
 ```
 
 ---
@@ -342,8 +410,11 @@ local-ai-workstation/
 ├── mlx-telegram.py        ← Telegram bot bridge with live message updates
 ├── mlx-image.sh           ← image generation wrapper (mflux command routing)
 ├── dashboard/
-│   └── app.py             ← Flask dashboard — backend API + all 6 HTML pages
-└── screenshots/
+│   └── app.py             ← Flask dashboard — backend API + 8 pages (/, chat, vision, create, audio, video, personas, models)
+├── tests/
+│   ├── test_dashboard.py  ← Playwright browser automation (30/30 checks)
+│   └── screenshots/       ← per-page screenshots from test runs
+└── screenshots/           ← README screenshots
 
 ~/.mlx-ai-workstation/     ← runtime workdir (never committed)
 ├── .env                   ← secrets
