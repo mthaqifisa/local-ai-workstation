@@ -788,7 +788,7 @@ footer {
     <!-- ── BROWSER AUTOMATION TAB ── -->
     <div class="tab-panel" id="tab-browser">
       <div style="padding:18px">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Playwright browser automation tests — simulating real user interactions across all 3 module pages.</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Playwright browser automation tests — 30/30 checks PASS · 13 screenshots captured · <code>tests/test_dashboard.py</code></div>
         <div style="overflow-x:auto">
         <table class="results-table">
           <thead>
@@ -798,32 +798,32 @@ footer {
           </thead>
           <tbody id="browser-rows">
             <tr>
-              <td class="td-module">/audio</td>
-              <td class="td-case">Navigate → fill text → select voice → click Generate Speech → verify audio player appears</td>
-              <td><span class="badge b-pending">PENDING</span></td>
-              <td class="td-model">—</td>
-              <td class="td-notes">Playwright chromium · headless · simulates human interaction</td>
+              <td class="td-module">/</td>
+              <td class="td-case">Dashboard health: title, nav links (Create/Video/Audio), /api/status 200, hardware stats rendered</td>
+              <td><span class="badge b-pass">PASS 5/5</span></td>
+              <td class="td-model">01_home_*.png</td>
+              <td class="td-notes">Title=LAW ✓ · Nav links ✓ · API 200 ✓ · RAM/CPU/battery in DOM ✓ · Create link visible ✓</td>
             </tr>
             <tr>
               <td class="td-module">/imagine</td>
-              <td class="td-case">Navigate → fill prompt → select model → click Generate → verify image appears in gallery</td>
-              <td><span class="badge b-pending">PENDING</span></td>
-              <td class="td-model">—</td>
-              <td class="td-notes">Tests UI interaction flow end-to-end</td>
+              <td class="td-case">Navigate → fill prompt → click Cinematic preset → select Z-Image Turbo → Generate → verify image + gallery</td>
+              <td><span class="badge b-pass">PASS 10/10</span></td>
+              <td class="td-model">02_imagine_*.png</td>
+              <td class="td-notes">Prompt ✓ · 8 style presets ✓ · 4 resolutions ✓ · Preset appended ✓ · Model chip ✓ · Generate ✓ · Image appeared ✓ · Gallery 24 items ✓</td>
+            </tr>
+            <tr>
+              <td class="td-module">/audio</td>
+              <td class="td-case">Navigate → fill text → click am_adam voice → Generate Speech → verify audio player → open Library tab → verify gallery</td>
+              <td><span class="badge b-pass">PASS 8/8</span></td>
+              <td class="td-model">03_audio_*.png</td>
+              <td class="td-notes">Textarea ✓ · 6 voice chips ✓ · Voice select ✓ · Generate ✓ · Audio player visible ✓ · src=tts_*.wav ✓ · Library tab ✓ · Gallery 30 items ✓</td>
             </tr>
             <tr>
               <td class="td-module">/video</td>
-              <td class="td-case">Navigate → fill prompt → click Generate → verify job started → check polling updates status</td>
-              <td><span class="badge b-pending">PENDING</span></td>
-              <td class="td-model">—</td>
-              <td class="td-notes">Async job — checks spinner + job_id returned in UI</td>
-            </tr>
-            <tr>
-              <td class="td-module">/</td>
-              <td class="td-case">Dashboard health: all nav links present, status indicators green, services panel</td>
-              <td><span class="badge b-pending">PENDING</span></td>
-              <td class="td-model">—</td>
-              <td class="td-notes">Full page screenshot + element verification</td>
+              <td class="td-case">Navigate → fill prompt → Generate → intercept /api/video POST → verify job_id + loading indicator</td>
+              <td><span class="badge b-pass">PASS 7/7</span></td>
+              <td class="td-model">04_video_*.png</td>
+              <td class="td-notes">Prompt ✓ · Gen btn ✓ · Duration ✓ · LTX visible ✓ · Gallery ✓ · Job fired (job_id=954fccb4) ✓ · Loading indicator ✓</td>
             </tr>
           </tbody>
         </table>
@@ -960,10 +960,10 @@ footer {
             <div class="tl-desc">Phase 1 Easy: Voice 9/9, Image 3/4, Video 1/2. Phase 2 Hard: Voice 3/3 PASS, Image 4/4 PASS, Video 1/1 WARN (file size hardware limit). Next: Browser automation.</div>
           </div>
           <div class="tl-item">
-            <div class="tl-dot"></div>
-            <div class="tl-ts">2026-08-08 (NEXT)</div>
-            <div class="tl-label">Browser Automation — Playwright tests for /audio, /imagine, /video, /</div>
-            <div class="tl-desc">Simulate human interaction: navigate → fill → click → verify result. Screenshot each page. Test all UI elements are functional.</div>
+            <div class="tl-dot done"></div>
+            <div class="tl-ts">2026-08-08 22:45</div>
+            <div class="tl-label">Browser Automation — Playwright 30/30 PASS</div>
+            <div class="tl-desc">tests/test_dashboard.py · headless Chromium · 4 pages · 30 checks · 13 screenshots. /, /imagine, /audio, /video all fully functional under automated browser interaction.</div>
           </div>
         </div>
       </div>
@@ -979,11 +979,18 @@ footer {
             <div class="next-desc">DONE — Voice 3/3 PASS, Image 4/4 PASS, Video 1/1 WARN (hardware file size limit — persistent issue)</div>
           </div>
         </div>
+        <div class="next-item" style="opacity:0.55">
+          <div class="next-num" style="background:rgba(16,185,129,.2);color:var(--green)">✓</div>
+          <div>
+            <div class="next-label" style="text-decoration:line-through">Browser automation — Playwright tests</div>
+            <div class="next-desc">DONE — 30/30 PASS · tests/test_dashboard.py · 13 screenshots · /, /imagine, /audio, /video all verified</div>
+          </div>
+        </div>
         <div class="next-item">
           <div class="next-num">01</div>
           <div>
-            <div class="next-label">Browser automation — Playwright tests for /audio, /imagine, /video, /</div>
-            <div class="next-desc">Simulate human interaction: navigate → fill → click → verify result. Screenshot each page. Test all UI elements are functional.</div>
+            <div class="next-label">Fix BUG-1: empty messages[] → 422 (currently 500)</div>
+            <div class="next-desc">Add input validation to mlx-openai-server or intercept in LiteLLM gateway. Low effort fix, improves API compliance.</div>
           </div>
         </div>
         <div class="next-item">
@@ -994,21 +1001,14 @@ footer {
           </div>
         </div>
         <div class="next-item">
-          <div class="next-num">03</div>
+          <div class="next-num">02</div>
           <div>
-            <div class="next-label">Fix BUG-1: empty messages[] → 422 (currently 500)</div>
-            <div class="next-desc">Add input validation to mlx-openai-server or intercept in LiteLLM gateway. Low effort fix, improves API compliance.</div>
-          </div>
-        </div>
-        <div class="next-item">
-          <div class="next-num">04</div>
-          <div>
-            <div class="next-label">README + screenshots update (P6-8)</div>
+            <div class="next-label">README + screenshots update (P6 media features)</div>
             <div class="next-desc">Update README.md with Phase 6 features. Take fresh screenshots: video studio, audio TTS, vision revamp, chat image gen, img2img.</div>
           </div>
         </div>
         <div class="next-item">
-          <div class="next-num">06</div>
+          <div class="next-num">03</div>
           <div>
             <div class="next-label">Model quality upgrades when available</div>
             <div class="next-desc">Qwen4-32B-A3B (replaces qwen36-35b). Qwen4-Coder-32B-A3B (replaces coder-next). LLM5-70B when MLX port available. Monitor HF mlx-community.</div>
