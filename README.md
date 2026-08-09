@@ -197,10 +197,11 @@ All model sizes listed are peak MLX memory. The **on-demand loader** keeps only 
 | Fast Reasoner | mlx-community/DeepSeek-R1-Distill-Qwen-32B | ~18 GB | `<think>` CoT, MIT license |
 | Deep Reasoner | mlx-community/DeepSeek-R1-Distill-Llama-70B | ~37 GB | Best for hard math / planning |
 | Best Coder | mlx-community/Qwen3-Coder-Next (80B MoE) | ~42 GB | SWE-Bench #1, tool calls |
+| Fast Coder | mlx-community/Qwen3-Coder-30B-A3B-Instruct | ~17 GB | Lighter MoE coder, fits alongside orchestrator |
 | RAG Embeddings | mlx-community/Qwen3-Embedding-8B | ~5 GB | Vector search |
 | Vision / OCR | mlx-community/Qwen3-VL-8B | ~5.4 GB | SOTA small VLM |
-| Design / Vision | mlx-community/Gemma-4-12B | ~10 GB | Google Gemma 4 |
-| General Purpose | mlx-community/Gemma-4-31B | ~18 GB | Google Gemma 4, larger |
+| Design / Vision | mlx-community/Gemma-4-12B | ~10 GB | Google Gemma 4, multimodal |
+| General Purpose | mlx-community/Gemma-4-31B | ~18 GB | Google Gemma 4, multimodal, larger |
 | Image Gen | Tongyi-MAI/Z-Image-Turbo (mflux) | ~32.8 GB | Non-gated, ~15 s/512 px |
 
 All LLMs served with `on_demand: true`, `kv_bits: 8` (halved KV-cache), per-model context windows.

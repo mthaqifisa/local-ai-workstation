@@ -1876,12 +1876,22 @@ if(SpeechRec){
   const micBtn=document.createElement('button');
   micBtn.className='att-btn';micBtn.title='Voice input';micBtn.innerHTML='🎙';
   micBtn.style.cssText='';
-  let rec=null,recording=false;
+  let rec=null,recording=false,_micLastT='';
   micBtn.onclick=function(){
     if(recording){rec&&rec.stop();recording=false;micBtn.innerHTML='🎙';micBtn.style.borderColor='';return;}
-    rec=new SpeechRec();rec.lang='en-US';rec.interimResults=false;
-    rec.onresult=e=>{const t=e.results[0][0].transcript;const inp=document.getElementById('in');inp.value=(inp.value+' '+t).trim();autosize(inp);};
-    rec.onend=()=>{recording=false;micBtn.innerHTML='🎙';micBtn.style.borderColor='';};
+    rec=new SpeechRec();rec.lang='en-US';rec.interimResults=false;rec.continuous=false;
+    _micLastT='';
+    rec.onresult=e=>{
+      let t='';
+      for(let i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal)t+=e.results[i][0].transcript;}
+      t=t.trim();
+      if(!t||t===_micLastT)return;   // guard against webkit double-fire
+      _micLastT=t;
+      const inp=document.getElementById('in');
+      inp.value=(inp.value?(inp.value+' '+t):t).trim();
+      autosize(inp);
+    };
+    rec.onend=()=>{recording=false;micBtn.innerHTML='🎙';micBtn.style.borderColor='';_micLastT='';};
     rec.start();recording=true;micBtn.innerHTML='🔴';micBtn.style.borderColor='#ef4444';
   };
   document.querySelector('.inp-row').insertBefore(micBtn,document.getElementById('in'));
