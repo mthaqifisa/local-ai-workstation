@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """MLX AI Workstation — control dashboard: live status, persona management, docs."""
-import os, socket, datetime, secrets, hmac, re, sys, json, importlib.util
+import os, socket, datetime, secrets, hmac, re, sys, json, importlib.util, uuid as _uuid
 import threading as _th, time as _time
 import queue as _queue
 from collections import deque
@@ -65,6 +65,17 @@ SERVICES = [
     ("Docker (Portainer)",       f"http://127.0.0.1:{P_PORTAINER}/api/status",    P_PORTAINER, "Docker image & container manager"),
     ("Dashboard",                f"http://127.0.0.1:{P_DASH}/",                   P_DASH,    "This page"),
 ]
+
+# launchctl label or docker container name for each service restart
+_SVC_RESTART = {
+    "Inference (MLX)":          {"kind": "launchd",  "id": "com.mlxstack.inference"},
+    "Gateway (LiteLLM)":        {"kind": "launchd",  "id": "com.mlxstack.gateway"},
+    "Web chat (Open WebUI)":    {"kind": "docker",   "id": "open-webui"},
+    "Private search (SearXNG)": {"kind": "docker",   "id": "searxng"},
+    "Tracing (Langfuse)":       {"kind": "launchd",  "id": "com.mlxstack.langfuse"},
+    "Docker (Portainer)":       {"kind": "docker",   "id": "portainer"},
+    "Dashboard":                {"kind": "launchd",  "id": "com.mlxstack.dashboard"},
+}
 
 # Role → served model, for the demo model table.
 ROLES = [
@@ -244,11 +255,38 @@ def api_activity():
 @require_auth
 def api_status():
     served = loaded_models()
-    svcs = [{"name": n, "port": int(p), "purpose": desc, "ok": probe(h)}
+    svcs = [{"name": n, "port": int(p), "purpose": desc, "ok": probe(h),
+             "restart_key": n}
             for (n, h, p, desc) in SERVICES]
     models = [{"role": r, "id": mid, "desc": d, "ready": (mid in served)} for (r, mid, d) in ROLES]
     return jsonify({"services": svcs, "models": models, "hardware": hardware(),
                     "updated": datetime.datetime.now().strftime("%H:%M:%S")})
+
+@app.route("/api/service-restart", methods=["POST"])
+@require_auth
+def api_service_restart():
+    import subprocess as _sp
+    key = (request.get_json(force=True, silent=True) or {}).get("key", "")
+    cfg = _SVC_RESTART.get(key)
+    if not cfg:
+        return jsonify({"error": f"unknown service: {key}"}), 400
+    try:
+        if cfg["kind"] == "launchd":
+            label = cfg["id"]
+            _sp.run(["launchctl", "stop", label], timeout=10)
+            _time.sleep(1)
+            r = _sp.run(["launchctl", "start", label], timeout=10, capture_output=True, text=True)
+            if r.returncode != 0:
+                return jsonify({"error": r.stderr or "launchctl start failed"}), 500
+        elif cfg["kind"] == "docker":
+            sock = str(Path.home() / ".colima" / "default" / "docker.sock")
+            r = _sp.run(["docker", "-H", f"unix://{sock}", "restart", cfg["id"]],
+                        timeout=30, capture_output=True, text=True)
+            if r.returncode != 0:
+                return jsonify({"error": r.stderr or "docker restart failed"}), 500
+        return jsonify({"ok": True, "service": key})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/api/vision-models")
 @require_auth
@@ -257,7 +295,7 @@ def api_vision_models():
     return jsonify({"models": [
         {"id": "mlx-community/Qwen3-VL-8B-Instruct-4bit",  "label": "Qwen3-VL-8B — SOTA small VLM (~5.4 GB, fast)"},
         {"id": "mlx-community/gemma-4-12B-it-4bit",        "label": "Gemma-4-12B — Google Vision (~6.7 GB)"},
-        {"id": "mlx-community/gemma-4-31B-it-qat-4bit",    "label": "Gemma-4-31B — Google Vision, best (~28.8 GB)"},
+        {"id": "mlx-community/gemma-4-31B-4bit",            "label": "Gemma-4-31B — Google Vision, best (~28.8 GB)"},
     ]})
 
 # ── shared site nav — injected into every sub-page template ──────────────────
@@ -392,6 +430,9 @@ a{color:var(--blue);text-decoration:none}a:hover{color:#38bdf8}
 .svc-dot.off{background:var(--red);box-shadow:0 0 6px var(--red)}
 .svc-name{font-size:13px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .svc-port{font-family:var(--mono);font-size:10px;color:var(--muted)}
+.svc-restart-btn{margin-left:4px;background:none;border:1px solid rgba(255,255,255,.12);color:var(--muted);font-size:11px;padding:1px 5px;border-radius:4px;cursor:pointer;line-height:1.4;flex-shrink:0}
+.svc-restart-btn:hover{border-color:var(--blue);color:var(--blue)}
+.svc-restart-btn:disabled{opacity:.4;cursor:not-allowed}
 .feed{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;min-height:280px;max-height:420px;scrollbar-width:thin;scrollbar-color:rgba(14,165,233,.2) transparent}
 .feed-item{padding:8px 10px;border-radius:8px;background:rgba(14,165,233,.05);border-left:2px solid var(--blue);font-size:12px;animation:fadeInUp .3s ease}
 .feed-item.tool{border-color:var(--purple)}
@@ -637,9 +678,11 @@ async function pollStatus(){
       'M5 Pro · '+(h.ram_txt||'').split('/').pop().trim()+' RAM · '+(h.disk_txt||'').split('/').pop().trim()+' disk';
     const up=d.services.filter(s=>s.ok).length;
     document.getElementById('svcs').innerHTML=d.services.map(s=>
-      '<div class="svc-row"><div class="svc-dot '+(s.ok?'on':'off')+'"></div>'+
+      '<div class="svc-row" id="svcrow-'+s.port+'"><div class="svc-dot '+(s.ok?'on':'off')+'" id="svcdot-'+s.port+'"></div>'+
       '<a class="svc-name" href="'+su(s.port)+'" target="_blank">'+esc(s.name)+'</a>'+
-      '<span class="svc-port">:'+s.port+'</span></div>').join('');
+      '<span class="svc-port">:'+s.port+'</span>'+
+      '<button class="svc-restart-btn" title="Restart service" onclick="restartSvc(this,\''+esc(s.restart_key||s.name)+'\','+s.port+')">↺</button>'+
+      '</div>').join('');
     document.getElementById('modelRoles').innerHTML=d.models.map(m=>
       '<div class="model-row"><div><div class="model-role">'+esc(m.role)+'</div><div class="model-id">'+esc(m.id)+'</div></div>'+
       '<span class="model-pill '+(m.ready?'ready':'idle')+'">'+(m.ready?'loaded':'on demand')+'</span></div>').join('');
@@ -650,6 +693,22 @@ async function pollStatus(){
   }catch(e){document.getElementById('foot').textContent='Dashboard offline — check services';}
 }
 pollStatus();setInterval(pollStatus,5000);
+
+async function restartSvc(btn,key,port){
+  btn.disabled=true;btn.textContent='⏳';
+  try{
+    const r=await fetch('/api/service-restart',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key})});
+    const d=await r.json();
+    if(r.ok){
+      btn.textContent='✓';btn.style.color='var(--green)';
+      setTimeout(()=>{btn.textContent='↺';btn.style.color='';btn.disabled=false;pollStatus();},3000);
+    }else{
+      btn.textContent='✗';btn.style.color='var(--red)';btn.title=d.error||'failed';
+      setTimeout(()=>{btn.textContent='↺';btn.style.color='';btn.title='Restart service';btn.disabled=false;},4000);
+    }
+  }catch(e){btn.textContent='↺';btn.style.color='';btn.disabled=false;}
+}
 
 async function pollActivity(){
   try{
@@ -1305,7 +1364,7 @@ a{color:var(--blue);text-decoration:none}
       <div style="display:flex;gap:6px;flex-wrap:wrap" id="chips">
         <button class="mc active" data-model="mlx-community/Qwen3-VL-8B-Instruct-4bit" data-note="Qwen3-VL-8B · SOTA · ~5.4 GB · fastest" onclick="setModel(this)">Qwen3-VL-8B</button>
         <button class="mc" data-model="mlx-community/gemma-4-12B-it-4bit" data-note="Gemma-4-12B · Google Vision · ~6.7 GB" onclick="setModel(this)">Gemma-4-12B</button>
-        <button class="mc" data-model="mlx-community/gemma-4-31B-it-qat-4bit" data-note="Gemma-4-31B · Google Vision · ~28.8 GB · best" onclick="setModel(this)">Gemma-4-31B</button>
+        <button class="mc" data-model="mlx-community/gemma-4-31B-4bit" data-note="Gemma-4-31B · Google Vision · ~28.8 GB · best" onclick="setModel(this)">Gemma-4-31B</button>
       </div>
       <div class="vst" id="modelNote" style="margin-top:6px">Qwen3-VL-8B · SOTA · ~5.4 GB · fastest</div>
     </div>
@@ -1750,49 +1809,55 @@ t.lastChild.replaceWith(makeBubble(a));t.scrollTop=t.scrollHeight;saveChatState(
 // ── Voice Mode (auto-TTS agent responses via Kokoro backend) ─────────────────
 let voiceMode=false;
 const voiceAudio=new Audio();
+let _ttsCtrl=null; // single AbortController for all TTS fetches — cancels stale requests
+function _cancelTTS(){if(_ttsCtrl){_ttsCtrl.abort();_ttsCtrl=null;}voiceAudio.pause();voiceAudio.src='';}
 function toggleVoiceMode(){
   voiceMode=!voiceMode;
   const btn=document.getElementById('voiceBtn');
   btn.classList.toggle('voice-on',voiceMode);
   btn.innerHTML=voiceMode?'&#127908; Voice ON':'&#127908; Voice';
-  if(!voiceMode){voiceAudio.pause();voiceAudio.src='';}
+  if(!voiceMode){_cancelTTS();}
 }
 async function autoSpeak(text){
   if(!voiceMode||!text||text==='__typing__')return;
   const clean=text.replace(/```[\s\S]*?```/g,'code block').replace(/`[^`]+`/g,'').replace(/[*_#>]/g,'').trim();
   if(!clean)return;
+  _cancelTTS();
+  _ttsCtrl=new AbortController();
+  const sig=_ttsCtrl.signal;
   try{
     const r=await fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({text:clean.slice(0,3000),voice:'af_heart',speed:1.0})});
-    if(!r.ok)return;
+      body:JSON.stringify({text:clean.slice(0,3000),voice:'af_heart',speed:1.0}),signal:sig});
+    if(!r.ok||sig.aborted)return;
     const d=await r.json();
-    if(!d.file)return;
-    voiceAudio.pause();
+    if(!d.file||sig.aborted)return;
     voiceAudio.src='/api/audio-file/'+d.file+'?t='+Date.now();
     voiceAudio.play().catch(()=>{});
   }catch(e){}
 }
-function speakTxt(btn){
-  if(speechSynthesis.speaking){speechSynthesis.cancel();btn.textContent='🔊';
-    document.querySelectorAll('.ba-btn.speak').forEach(b=>{b.textContent='🔊';});return;}
+async function speakTxt(btn){
+  _cancelTTS();
   speechSynthesis.cancel();
+  document.querySelectorAll('.ba-btn.speak').forEach(b=>{b.textContent='🔊';});
+  if(btn.textContent.includes('Stop'))return;
   const raw=decodeURIComponent(btn.dataset.speak||'').trim();
   if(!raw)return;
-  const txt=raw
-    .replace(/```[\s\S]*?```/g,' code block. ')
-    .replace(/`[^`\n]+`/g,'')
-    .replace(/^#{1,6}\s+/gm,'')
-    .replace(/\*\*([^*]+)\*\*/g,'$1')
-    .replace(/\*([^*]+)\*/g,'$1')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g,'$1')
-    .replace(/^[-*+]\s+/gm,'')
-    .replace(/^\d+\.\s+/gm,'')
-    .replace(/^>\s*/gm,'')
-    .trim();
-  const u=new SpeechSynthesisUtterance(txt);u.rate=1.05;u.pitch=1;
-  u.onstart=()=>{btn.textContent='⏹ Stop';};
-  u.onend=()=>{btn.textContent='🔊';};
-  speechSynthesis.speak(u);
+  const clean=raw.replace(/```[\s\S]*?```/g,'code block').replace(/`[^`]+`/g,'').replace(/[*_#>\[\]]/g,'').trim();
+  if(!clean)return;
+  _ttsCtrl=new AbortController();
+  const sig=_ttsCtrl.signal;
+  try{
+    btn.textContent='⏳';
+    const r=await fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({text:clean.slice(0,3000),voice:'af_heart',speed:1.0}),signal:sig});
+    if(!r.ok||sig.aborted){btn.textContent='🔊';return;}
+    const d=await r.json();
+    if(!d.file||sig.aborted){btn.textContent='🔊';return;}
+    btn.textContent='⏹ Stop';
+    voiceAudio.src='/api/audio-file/'+d.file+'?t='+Date.now();
+    voiceAudio.onended=()=>{btn.textContent='🔊';_ttsCtrl=null;};
+    voiceAudio.play().catch(()=>{btn.textContent='🔊';});
+  }catch(e){if(e.name!=='AbortError')btn.textContent='🔊';}
 }
 async function delChatImg(btn,fname){
   if(!confirm('Delete '+fname+' from this machine?'))return;
@@ -2427,8 +2492,8 @@ def vision_page():
 def api_chat():
     d = request.get_json(force=True, silent=True) or {}
     model = d.get("model"); messages = d.get("messages")
-    if not model or not isinstance(messages, list):
-        return jsonify({"error": "model and messages required"}), 400
+    if not model or not isinstance(messages, list) or not messages:
+        return jsonify({"error": "model and non-empty messages required"}), 422
     def gen():
         try:
             with requests.post(f"http://127.0.0.1:{P_GATEWAY}/v1/chat/completions",
@@ -3266,25 +3331,28 @@ async function checkAceStep(){
   try{
     const r=await fetch('http://localhost:7860/',{mode:'no-cors'});
     aceRunning=true;
-    el.innerHTML='<span style="color:var(--green)">● ACE-Step running at localhost:7860</span>';
+    el.innerHTML='<span style="color:var(--green)">● ACE-Step running at localhost:7860</span> · <a href="http://localhost:7861" target="_blank" style="font-size:10px;color:var(--blue)">AI DJ chat →</a>';
     btn.textContent='🎵 Open Music Studio →';
   }catch(e){
     aceRunning=false;
-    el.innerHTML='<span style="color:var(--red)">● ACE-Step not running.</span> Start it: <code style="font-size:10px">cd ~/ace-step && ./run_mac.sh</code>';
+    el.innerHTML='<span style="color:var(--amber)">● ACE-Step not running.</span> <button onclick="startAceStep()" style="font-size:10px;padding:2px 8px;border:1px solid var(--amber);background:transparent;color:var(--amber);border-radius:4px;cursor:pointer">▶ Start</button>';
     btn.textContent='🎵 Launch ACE-Step (opens :7860)';
   }
+}
+async function startAceStep(){
+  document.getElementById('aceStatus').innerHTML='<span style="color:var(--blue)">⏳ Starting ACE-Step… (first launch: ~5 GB model download)</span>';
+  try{
+    const r=await fetch('/api/music-start',{method:'POST'});
+    const d=await r.json();
+    if(d.ok){setTimeout(checkAceStep,8000);}
+    else{document.getElementById('aceStatus').innerHTML='<span style="color:var(--red)">✗ '+( d.error||'failed')+'</span>';}
+  }catch(e){document.getElementById('aceStatus').innerHTML='<span style="color:var(--red)">✗ '+e+'</span>';}
 }
 function openAceStep(){
   if(aceRunning){
     window.open('http://localhost:7860','_blank');
   }else{
-    const st=document.getElementById('musicStatus');
-    st.innerHTML='<strong>Setup ACE-Step 1.5:</strong><br>'+
-      '1. <code>git clone https://github.com/clockworksquirrel/ace-step-apple-silicon ~/ace-step</code><br>'+
-      '2. <code>cd ~/ace-step && uv sync</code><br>'+
-      '3. <code>./run_mac.sh</code> → Gradio UI opens at <a href="http://localhost:7860" target="_blank">localhost:7860</a><br>'+
-      'Generates full songs with lyrics + vocals. Reload this page after launch.';
-    st.className='st';
+    startAceStep();
   }
 }
 checkAceStep();
@@ -3324,8 +3392,7 @@ def api_tts():
     except Exception: speed = 1.0
     fmt = "wav" if (d.get("format") or "wav") == "wav" else "mp3"
     AUDIO_DIR.mkdir(parents=True, exist_ok=True)
-    ts = int(_time.time())
-    prefix = f"tts_{ts}"
+    prefix = f"tts_{_uuid.uuid4().hex[:12]}"
     # --join_audio merges all sentence chunks into {prefix}.wav (not {prefix}_000.wav)
     out = AUDIO_DIR / f"{prefix}.wav"
     try:
@@ -3345,7 +3412,24 @@ def api_tts():
 @app.route("/api/music", methods=["POST"])
 @require_auth
 def api_music():
-    return jsonify({"error": "Music generation requires ACE-Step 1.5. Install: git clone https://github.com/clockworksquirrel/ace-step-apple-silicon ~/ace-step && cd ~/ace-step && uv sync. Then launch with ./run_mac.sh — Gradio UI opens at localhost:7860."}), 501
+    return jsonify({"error": "Music generation runs via ACE-Step Gradio UI at localhost:7860. Open Music Studio tab to launch."}), 501
+
+@app.route("/api/music-start", methods=["POST"])
+@require_auth
+def api_music_start():
+    import subprocess as _sp
+    ace_dir = Path.home() / "ace-step"
+    if not ace_dir.exists():
+        return jsonify({"error": "~/ace-step not found. Run: git clone https://github.com/clockworksquirrel/ace-step-apple-silicon ~/ace-step && cd ~/ace-step && uv sync"}), 500
+    plist = Path.home() / "Library" / "LaunchAgents" / "com.mlxstack.acestep.plist"
+    if plist.exists():
+        r = _sp.run(["launchctl", "start", "com.mlxstack.acestep"], capture_output=True, text=True)
+        if r.returncode == 0:
+            return jsonify({"ok": True})
+    # Fallback: start directly
+    _sp.Popen(["/opt/homebrew/bin/uv", "run", "acestep", "--server-name", "0.0.0.0", "--port", "7860"],
+              cwd=str(ace_dir), stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+    return jsonify({"ok": True})
 
 @app.route("/api/audio-file/<name>")
 @require_auth
