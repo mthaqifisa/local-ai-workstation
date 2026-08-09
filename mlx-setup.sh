@@ -553,6 +553,25 @@ models:
     on_demand: true
     on_demand_idle_timeout: 300
 
+  # ── Fast Coder (Qwen3-Coder-30B-A3B MoE, ~17 GB, fits alongside other models) ──
+  - model_path: mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit
+    served_model_name: qwen3-coder-30b
+    model_type: lm
+    enable_auto_tool_choice: true
+    tool_call_parser: qwen3_coder
+    reasoning_parser: qwen3
+    context_length: 32768
+    kv_bits: 8
+    kv_group_size: 64
+    batch_completion_size: 2
+    batch_prefill_size: 1
+    prompt_cache_size: 1
+    prompt_cache_max_bytes: 2147483648
+    default_max_tokens: 4096
+    queue_timeout: 600
+    on_demand: true
+    on_demand_idle_timeout: 300
+
   # ── RAG Embeddings ──
   - model_path: mlx-community/Qwen3-Embedding-8B-4bit-DWQ
     served_model_name: qwen3-embed
@@ -574,10 +593,10 @@ models:
     on_demand: true
     on_demand_idle_timeout: 300
 
-  # ── Design / Vision Analysis (Gemma-4-12B, ~10 GB) ──
+  # ── Design / Vision Analysis (Gemma-4-12B, ~10 GB) — multimodal: gemma4_unified arch ──
   - model_path: mlx-community/gemma-4-12B-4bit
     served_model_name: gemma4-12b
-    model_type: lm
+    model_type: multimodal
     context_length: 32768
     kv_bits: 8
     kv_group_size: 64
@@ -590,10 +609,10 @@ models:
     on_demand: true
     on_demand_idle_timeout: 300
 
-  # ── Gemma-4-31B (large general-purpose, ~18 GB) ──
+  # ── Gemma-4-31B (large general-purpose, ~18 GB) — multimodal: gemma4_unified arch ──
   - model_path: mlx-community/gemma-4-31B-4bit
     served_model_name: gemma4-31b
-    model_type: lm
+    model_type: multimodal
     context_length: 32768
     kv_bits: 8
     kv_group_size: 64
@@ -662,6 +681,10 @@ model_list:
     litellm_params: { model: "openai/qwen3-coder-next", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
   - model_name: "dev:qwen3-coder-next"
     litellm_params: { model: "openai/qwen3-coder-next", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
+  - model_name: "coder:qwen3-coder-30b"
+    litellm_params: { model: "openai/qwen3-coder-30b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
+  - model_name: "dev:qwen3-coder-30b"
+    litellm_params: { model: "openai/qwen3-coder-30b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
   - model_name: "coder:qwen3.6-27b"
     litellm_params: { model: "openai/qwen36-27b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
   - model_name: "writer:qwen3.6-27b"
@@ -693,6 +716,8 @@ model_list:
     litellm_params: { model: "openai/deepseek-r1-70b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
   - model_name: "qwen3-coder-next"
     litellm_params: { model: "openai/qwen3-coder-next", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
+  - model_name: "qwen3-coder-30b"
+    litellm_params: { model: "openai/qwen3-coder-30b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
   - model_name: "qwen3-embed"
     litellm_params: { model: "openai/qwen3-embed", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
   - model_name: "qwen3-vl-8b"
@@ -940,6 +965,52 @@ PLIST
         portainer/portainer-ce:latest \
         --host tcp://host.docker.internal:2375 \
       && ok "Portainer → http://localhost:9000" || warn "Portainer failed to start"
+}
+
+setup_acestep() {
+    log "ACE-Step 1.5 (AI music generation, Apple Silicon port)"
+    local ACE_DIR="$HOME/ace-step"
+    local PLIST="$HOME/Library/LaunchAgents/com.mlxstack.acestep.plist"
+    local UVB; UVB=$(command -v uv || echo "/opt/homebrew/bin/uv")
+
+    # 1 — clone
+    if [ ! -d "$ACE_DIR/.git" ]; then
+        log "Cloning ACE-Step Apple Silicon fork…"
+        opt git clone --depth=1 https://github.com/clockworksquirrel/ace-step-apple-silicon.git "$ACE_DIR" \
+            || { warn "ACE-Step clone failed — music studio unavailable"; return; }
+    else
+        ok "~/ace-step already present — skipping clone"
+    fi
+
+    # 2 — install deps (uv handles Python 3.11 automatically)
+    log "Installing ACE-Step dependencies (uv sync, Python 3.11)…"
+    ( cd "$ACE_DIR" && opt "$UVB" sync --no-dev ) || { warn "uv sync failed — music studio unavailable"; return; }
+
+    # 3 — launchd service (RunAtLoad=false: user starts on demand via Music Studio UI)
+    cat > "$PLIST" <<PLISTEOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.mlxstack.acestep</string>
+  <key>ProgramArguments</key><array>
+    <string>$UVB</string>
+    <string>run</string>
+    <string>acestep</string>
+    <string>--server-name</string><string>0.0.0.0</string>
+    <string>--port</string><string>7860</string>
+  </array>
+  <key>WorkingDirectory</key><string>$ACE_DIR</string>
+  <key>RunAtLoad</key><false/>
+  <key>KeepAlive</key><false/>
+  <key>StandardOutPath</key><string>$WORKDIR/logs/com.mlxstack.acestep.log</string>
+  <key>StandardErrorPath</key><string>$WORKDIR/logs/com.mlxstack.acestep.err</string>
+</dict></plist>
+PLISTEOF
+    launchctl bootout "gui/$(id -u)/com.mlxstack.acestep" 2>/dev/null || true
+    launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null || \
+        launchctl load "$PLIST" 2>/dev/null || true
+    ok "ACE-Step installed → start via Music Studio UI or: launchctl start com.mlxstack.acestep"
+    ok "First launch downloads ~5 GB models. Gradio UI: http://localhost:7860 · AI DJ: http://localhost:7861"
 }
 
 setup_docker_services() {
@@ -5333,6 +5404,7 @@ case "${1:---help}" in
         write_agent
         write_telegram
         setup_docker_services
+        setup_acestep
         setup_services
         setup_colima_autostart
         # Auto-install the Telegram background service if secrets are configured, so a

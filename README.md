@@ -141,6 +141,8 @@ Kokoro-82M TTS running entirely on-device. Type any text, pick from 6 voices, se
 
 LTX-2.3 text-to-video and image-to-video. Describe a scene, choose a text encoder (Gemma-3-12B or Gemma-4-12B), click Generate — the async job fires, the dashboard polls status every 3 s, and shows the MP4 in the gallery when complete. ~5 min on M5 Pro.
 
+> **Note:** LTX-Video runs as a 4-bit quantized model on Apple Silicon. Generated MP4s are compact (smaller file sizes than GPU servers) — this is a known hardware constraint of running q4 on unified memory, not a bug. Output quality scales with prompt detail.
+
 ### Personas
 ![Personas](screenshots/dashboard-personas.png)
 
