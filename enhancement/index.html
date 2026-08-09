@@ -340,7 +340,7 @@ footer {
   <div class="card">
     <div class="stat-row" style="padding:16px">
       <div class="stat-box">
-        <div class="stat-val" id="stat-pass" style="color:var(--green)">20</div>
+        <div class="stat-val" id="stat-pass" style="color:var(--green)">25</div>
         <div class="stat-lbl">Tests Passed</div>
       </div>
       <div class="stat-box">
@@ -356,7 +356,7 @@ footer {
         <div class="stat-lbl">In Progress</div>
       </div>
       <div class="stat-box">
-        <div class="stat-val" id="stat-total">23</div>
+        <div class="stat-val" id="stat-total">28</div>
         <div class="stat-lbl">Total Tests</div>
       </div>
     </div>
@@ -890,11 +890,11 @@ footer {
     <!-- ── KNOWN ISSUES TAB ── -->
     <div class="tab-panel" id="tab-issues">
       <div style="padding:18px">
-        <div class="issue-row">
-          <div class="issue-sev sev-med">MED</div>
+        <div class="issue-row" style="opacity:0.5">
+          <div class="issue-sev" style="background:rgba(16,185,129,.15);color:var(--green);font-size:9px">FIXED</div>
           <div>
-            <div class="issue-title">BUG-1: Empty messages[] → HTTP 500 (should be 422)</div>
-            <div class="issue-desc">MLX inference server returns 500 on empty messages array. Correct REST behavior is 422 Unprocessable Entity. Found by QA Phase 5 (94.4% pass rate). Not yet patched in mlx-openai-server.</div>
+            <div class="issue-title" style="text-decoration:line-through">BUG-1: Empty messages[] → HTTP 500 (should be 422)</div>
+            <div class="issue-desc">Fixed 2026-08-09 — /api/chat now validates empty messages[] and returns 422 before forwarding to mlx-openai-server. Tested via curl.</div>
           </div>
         </div>
         <div class="issue-row">
@@ -925,11 +925,18 @@ footer {
             <div class="issue-desc">Resolved via 3-layer fix: MAX_TOOL_CALLS_PER_ROUND=6, context_length 65536→32768, prompt_cache 8GB→4GB. Root cause: 12 tool calls + 65k ctx + 8GB KV cache → OOM → kernel panic. Mitigations deployed to all personas and mlx-setup.sh.</div>
           </div>
         </div>
-        <div class="issue-row">
-          <div class="issue-sev sev-info">INFO</div>
+        <div class="issue-row" style="opacity:0.5">
+          <div class="issue-sev" style="background:rgba(16,185,129,.15);color:var(--green);font-size:9px">FIXED</div>
           <div>
-            <div class="issue-title">Colima/Docker not running (SearXNG :8888 offline)</div>
-            <div class="issue-desc">Docker containers require Colima which may not auto-start after kernel panic reboots. Colima plist hardened with inline command. Manual: colima start + docker start searxng portainer open-webui.</div>
+            <div class="issue-title" style="text-decoration:line-through">Colima/Docker not running after boot (ports 3001/8888/9000 offline)</div>
+            <div class="issue-desc">Fixed 2026-08-09 — Colima plist now does stop --force before start to clear stale Lima ha.sock from sleep/resume. Root cause: colima status returned false-positive, colima start failed silently. Hardened in both live plist and mlx-setup.sh.</div>
+          </div>
+        </div>
+        <div class="issue-row">
+          <div class="issue-sev sev-low">INFO</div>
+          <div>
+            <div class="issue-title">TTS duplicate audio (voice mode + manual 🔊 race)</div>
+            <div class="issue-desc">Fixed 2026-08-09 — AbortController (_ttsCtrl) cancels stale in-flight TTS fetch before any new one starts. uuid filenames prevent backend collision under concurrent requests. Both autoSpeak() and speakTxt() share the controller.</div>
           </div>
         </div>
       </div>
@@ -999,6 +1006,12 @@ footer {
             <div class="tl-label">16/16 Agents CONFIRMED — 100% Pass Rate Achieved</div>
             <div class="tl-desc">t60 imagegen: skyline_2.png 1.2MB generated via generate_image tool PASS. t61 deep_reasoner: BFT proof (PBFT n=10, f=3) produced 23:13–23:15 PASS. t61 thaqif-clone: M5 Pro architecture advisory 09:31–09:32 PASS. Mission complete: all 16 agents at Fable-5 / Devin / Kimi K3 level. README + screenshots updated.</div>
           </div>
+          <div class="tl-item">
+            <div class="tl-dot done"></div>
+            <div class="tl-ts">2026-08-09</div>
+            <div class="tl-label">Backlog sprint — bug fixes, UX, model upgrade, boot hardening</div>
+            <div class="tl-desc">BUG-1 fixed (422 on empty messages[]). TTS duplicate resolved via AbortController + uuid filenames. Service restart buttons (↺) on dashboard homepage. Colima plist force-stop boot fix. Qwen3-Coder-30B-A3B added (qwen3-coder-30b, 17 GB MoE). README + enhancement dashboard updated. 25/28 PASS · 2 WARN (video hardware limit, acceptable).</div>
+          </div>
         </div>
       </div>
     </div>
@@ -1020,18 +1033,18 @@ footer {
             <div class="next-desc">DONE — 55/55 PASS · 8/8 pages · 23 screenshots · imagegen persona end-to-end PASS</div>
           </div>
         </div>
-        <div class="next-item">
-          <div class="next-num">01</div>
+        <div class="next-item" style="opacity:0.55">
+          <div class="next-num" style="background:rgba(16,185,129,.2);color:var(--green)">✓</div>
           <div>
-            <div class="next-label">Fix BUG-1: empty messages[] → 422 (currently 500)</div>
-            <div class="next-desc">Add input validation to mlx-openai-server or intercept in LiteLLM gateway. Low effort fix, improves API compliance.</div>
+            <div class="next-label" style="text-decoration:line-through">Fix BUG-1: empty messages[] → 422 (currently 500)</div>
+            <div class="next-desc">DONE 2026-08-09 — /api/chat validates empty messages[], returns 422. Tested via curl.</div>
           </div>
         </div>
-        <div class="next-item">
-          <div class="next-num">02</div>
+        <div class="next-item" style="opacity:0.55">
+          <div class="next-num" style="background:rgba(16,185,129,.2);color:var(--green)">✓</div>
           <div>
-            <div class="next-label">Video WARN: LTX-2.3 file size hardware limitation</div>
-            <div class="next-desc">Both Phase 1 and Phase 2 produced &lt;400KB videos on M-series. LTX q4 model uses low bitrate encoding by default. Not a bug — document as known constraint. WARN is acceptable.</div>
+            <div class="next-label" style="text-decoration:line-through">Video WARN: LTX-2.3 file size hardware limitation</div>
+            <div class="next-desc">DONE — Documented in README as known hardware constraint. LTX q4 on M-series produces compact MP4s — not a bug. WARN accepted.</div>
           </div>
         </div>
         <div class="next-item" style="opacity:0.55">
@@ -1041,11 +1054,25 @@ footer {
             <div class="next-desc">DONE — 8 fresh full-page screenshots taken via Playwright · README.md rewritten with all capabilities, 8 dashboard pages, agent training 16/16, architecture</div>
           </div>
         </div>
-        <div class="next-item">
-          <div class="next-num">03</div>
+        <div class="next-item" style="opacity:0.55">
+          <div class="next-num" style="background:rgba(16,185,129,.2);color:var(--green)">✓</div>
           <div>
-            <div class="next-label">Model quality upgrades when available</div>
-            <div class="next-desc">Qwen4-32B-A3B (replaces qwen36-35b). Qwen4-Coder-32B-A3B (replaces coder-next). LLM5-70B when MLX port available. Monitor HF mlx-community.</div>
+            <div class="next-label" style="text-decoration:line-through">TTS duplicate audio — AbortController fix</div>
+            <div class="next-desc">DONE 2026-08-09 — _ttsCtrl AbortController shared across autoSpeak/speakTxt. uuid filenames prevent concurrent backend collision.</div>
+          </div>
+        </div>
+        <div class="next-item" style="opacity:0.55">
+          <div class="next-num" style="background:rgba(16,185,129,.2);color:var(--green)">✓</div>
+          <div>
+            <div class="next-label" style="text-decoration:line-through">Service restart buttons on dashboard</div>
+            <div class="next-desc">DONE 2026-08-09 — ↺ button per service row → /api/service-restart → launchctl or docker restart. Colima boot plist fixed (force-stop before start).</div>
+          </div>
+        </div>
+        <div class="next-item" style="opacity:0.55">
+          <div class="next-num" style="background:rgba(16,185,129,.2);color:var(--green)">✓</div>
+          <div>
+            <div class="next-label" style="text-decoration:line-through">Model quality upgrades — Qwen3-Coder-30B-A3B added</div>
+            <div class="next-desc">DONE 2026-08-09 — Qwen3-Coder-30B-A3B-Instruct-4bit (17.2 GB MoE) added as qwen3-coder-30b. Qwen4 unreleased. Llama-5 (600B) too large for M-series. Monitor HF mlx-community for Qwen4.</div>
           </div>
         </div>
       </div>
