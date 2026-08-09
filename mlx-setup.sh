@@ -837,12 +837,14 @@ setup_colima_autostart() {
     local runner="$WORKDIR/run_colima.sh" cbin; cbin="$(command -v colima || echo /opt/homebrew/bin/colima)"
     mkdir -p "$HOME/Library/LaunchAgents" "$WORKDIR/logs"
     # Write run_colima.sh with absolute binary path — also restarts Docker containers
-    # (belt-and-suspenders alongside --restart unless-stopped on the containers)
+    # force-stop first to clear stale Lima sockets left from sleep/resume
     cat > "$runner" <<SHEOF
 #!/usr/bin/env bash
 export PATH="/opt/homebrew/bin:/usr/local/bin:\$PATH"
 CBIN="${cbin}"
-\$CBIN status >/dev/null 2>&1 || \$CBIN start --cpu ${COLIMA_CPU} --memory ${COLIMA_MEM} --disk ${COLIMA_DISK}
+\$CBIN stop --force 2>/dev/null || true
+sleep 2
+\$CBIN start --cpu ${COLIMA_CPU} --memory ${COLIMA_MEM} --disk ${COLIMA_DISK}
 # Wait for Docker daemon then restart UI containers
 for i in \$(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 1; done
 for c in open-webui searxng portainer; do docker start "\$c" >/dev/null 2>&1 || true; done
@@ -857,7 +859,7 @@ SHEOF
   <key>ProgramArguments</key><array>
     <string>/bin/bash</string>
     <string>-c</string>
-    <string>export PATH=/opt/homebrew/bin:/usr/local/bin:\$PATH; ${cbin} status &gt;/dev/null 2&gt;&amp;1 || ${cbin} start --cpu ${COLIMA_CPU} --memory ${COLIMA_MEM} --disk ${COLIMA_DISK}; for i in \$(seq 1 30); do docker info &gt;/dev/null 2&gt;&amp;1 &amp;&amp; break; sleep 1; done; for c in open-webui searxng portainer; do docker start \"\$c\" &gt;/dev/null 2&gt;&amp;1 || true; done</string>
+    <string>export PATH=/opt/homebrew/bin:/usr/local/bin:\$PATH; ${cbin} stop --force 2&gt;/dev/null || true; sleep 2; ${cbin} start --cpu ${COLIMA_CPU} --memory ${COLIMA_MEM} --disk ${COLIMA_DISK}; for i in \$(seq 1 30); do docker info &gt;/dev/null 2&gt;&amp;1 &amp;&amp; break; sleep 1; done; for c in open-webui searxng portainer; do docker start \"\$c\" &gt;/dev/null 2&gt;&amp;1 || true; done</string>
   </array>
   <key>RunAtLoad</key><true/>
   <key>StandardOutPath</key><string>$WORKDIR/logs/com.mlxstack.colima.log</string>
