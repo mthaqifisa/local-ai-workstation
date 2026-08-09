@@ -114,7 +114,7 @@ Every agent step streams to the dashboard's **Neural Activity** feed via SSE (`a
 ### Main Dashboard
 ![Main Dashboard](screenshots/dashboard-main.png)
 
-Three-column layout: **System Core** (service health, 10-model roster, quick dispatch) · **Neural Activity** (live SSE event feed + active agent tracker) · **Metrics** (6-sparkline panel: CPU, Memory with GB, Battery, Storage, Disk I/O, Network I/O). Sticky nav at top with all 8 pages one click away.
+Three-column layout: **System Core** (service health with ↺ per-service restart buttons, 10-model roster, quick dispatch) · **Neural Activity** (live SSE event feed + active agent tracker) · **Metrics** (6-sparkline panel: CPU, Memory with GB, Battery, Storage, Disk I/O, Network I/O). Sticky nav at top with all 8 pages one click away.
 
 ### Chat
 ![Chat](screenshots/dashboard-chat.png)
@@ -175,6 +175,22 @@ Chat on mobile — compact header (mode toggle + model select only), internal sc
 
 ---
 
+## Journey — from Telegram bot to full AI workstation
+
+The project started as a simple Telegram bot backed by one local model. The [Enhancement Lab](enhancement/index.html) tracks every milestone from that first message to the current state — 16 trained agents, a full media pipeline, and a production dashboard.
+
+**Timeline:**
+- **v1** — Telegram bot: one model, basic prompt/response
+- **v2** — Multi-persona agent: orchestrator delegates to coder, QA, writer sequentially
+- **v3** — Dashboard :8800: live service health, Neural Activity SSE feed, persona editor
+- **v4** — Elite agent training: all 16 personas benchmarked to Fable-5 / Devin / Kimi-K3 level
+- **v4.1** — Media module: Voice TTS (Kokoro), image gen (FLUX), img2img, video (LTX-2.3), vision (Qwen3-VL)
+- **v4.2** — Browser automation (Playwright 55/55), service restart buttons, TTS dedup fix, 10th model added
+
+**Enhancement Lab:** `enhancement/index.html` — open it locally to see the full test matrix, pass rates, timeline, and known issues. Current: **25/28 PASS · 2 WARN (video hardware limit) · 0 FAIL**.
+
+---
+
 ## Hardware target
 
 | Component | Spec |
@@ -200,11 +216,11 @@ All model sizes listed are peak MLX memory. The **on-demand loader** keeps only 
 | Fast Coder | mlx-community/Qwen3-Coder-30B-A3B-Instruct | ~17 GB | Lighter MoE coder, fits alongside orchestrator |
 | RAG Embeddings | mlx-community/Qwen3-Embedding-8B | ~5 GB | Vector search |
 | Vision / OCR | mlx-community/Qwen3-VL-8B | ~5.4 GB | SOTA small VLM |
-| Design / Vision | mlx-community/Gemma-4-12B | ~10 GB | Google Gemma 4, multimodal |
-| General Purpose | mlx-community/Gemma-4-31B | ~18 GB | Google Gemma 4, multimodal, larger |
+| Design / Vision | mlx-community/Gemma-4-12B | ~10 GB | Google Gemma 4 (text mode in production) |
+| General Purpose | mlx-community/Gemma-4-31B | ~18 GB | Google Gemma 4 (text mode in production), larger |
 | Image Gen | Tongyi-MAI/Z-Image-Turbo (mflux) | ~32.8 GB | Non-gated, ~15 s/512 px |
 
-All LLMs served with `on_demand: true`, `kv_bits: 8` (halved KV-cache), per-model context windows.
+All LLMs served with `on_demand: true` and per-model context windows. Core models use `kv_bits: 8` (halved KV-cache) for memory efficiency.
 
 ---
 
@@ -402,8 +418,9 @@ curl http://localhost:8800/api/video-job/abc12345
 | `orchestrator` | Qwen3.6-35B MoE | Full FastAPI + SQLite SDLC, 20/20 QA tests |
 | `researcher` | Qwen3.6-35B MoE | 7-source synthesis with citations |
 | `coder` | Qwen3-Coder-Next 80B | SWE-Bench-quality code + tests |
+| `dev` | Qwen3-Coder-Next 80B | Implementation + debugging loop |
 | `qa` | Qwen3.6-35B MoE | 17/18 edge-case test suite (94%) |
-| `writer` | Qwen3.6-27B | Long-form structured docs (93%) |
+| `writer` | Qwen3.6-35B MoE | Long-form structured docs (93%) |
 | `reasoner` | DeepSeek-R1-32B | Chain-of-thought math proof |
 | `deep_reasoner` | DeepSeek-R1-70B | BFT PBFT proof, n=10 f=3, verified |
 | `ba` | Qwen3.6-35B MoE | User stories + acceptance criteria (93%) |
@@ -412,7 +429,6 @@ curl http://localhost:8800/api/video-job/abc12345
 | `devops` | Qwen3.6-35B MoE | 307-line IaC runbook |
 | `architect` | Qwen3.6-35B MoE | C4 + ADRs + CAP analysis (94%) |
 | `designer` | Qwen3.6-35B MoE | Full design system spec (96%) |
-| `imagegen` | Z-Image-Turbo | FLUX prompt engineering, skyline 1.2MB PASS |
 | `general` | Qwen3.6-35B MoE | Tool-heavy diagnostic (92%) |
 | `thaqif_clone` | DeepSeek-R1-70B | Engineering advisory on M5 Pro architecture |
 
