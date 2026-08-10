@@ -2085,6 +2085,14 @@ a{color:var(--blue);text-decoration:none}
   background:rgba(239,68,68,.75);color:#fff;display:flex;align-items:center;justify-content:center;
   font-size:11px;cursor:pointer;opacity:0;transition:.2s;backdrop-filter:blur(4px)}
 .gal-item:hover .gal-dl,.gal-item:hover .gal-del{opacity:1}
+.info-btn{position:absolute;top:6px;left:34px;width:22px;height:22px;border-radius:50%;border:1px solid rgba(148,163,184,.3);
+  background:rgba(15,23,42,.7);color:rgba(148,163,184,.8);font-size:11px;cursor:pointer;opacity:0;
+  transition:.2s;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);z-index:5}
+.gal-item:hover .info-btn{opacity:1}
+#mediaInfo{position:fixed;z-index:9999;max-width:320px;background:#0f172a;
+  border:1px solid rgba(100,116,139,.35);border-radius:10px;padding:12px 14px;
+  font-family:var(--mono);font-size:11px;color:var(--text);line-height:1.7;
+  box-shadow:0 8px 24px rgba(0,0,0,.6);display:none;word-break:break-word;white-space:pre-wrap}
 /* lightbox */
 .lb{display:none;position:fixed;inset:0;z-index:999;background:rgba(2,8,23,.92);
   backdrop-filter:blur(12px);align-items:center;justify-content:center;padding:20px}
@@ -2103,6 +2111,7 @@ a{color:var(--blue);text-decoration:none}
   backdrop-filter:blur(8px);font-family:var(--sans)}
 .lb-btn:hover{background:rgba(255,255,255,.1)}
 </style></head><body>
+<div id="mediaInfo"></div>
 <!--NAV-->
 <div class="ig-wrap">
   <!-- LEFT: Controls -->
@@ -2252,6 +2261,21 @@ a{color:var(--blue);text-decoration:none}
 
 <script>
 const PROMPTS_KEY='law_img_prompts';
+function showMediaInfo(evt,text){
+  evt.stopPropagation();evt.preventDefault();
+  const pop=document.getElementById('mediaInfo');if(!pop)return;
+  if(pop.style.display!=='none'&&pop._src===evt.currentTarget){pop.style.display='none';return;}
+  pop._src=evt.currentTarget;
+  pop.textContent=text||'No prompt recorded.';
+  pop.style.display='block';
+  const r=evt.currentTarget.getBoundingClientRect();
+  const pw=pop.offsetWidth,ph=pop.offsetHeight;
+  let left=r.left,top=r.bottom+6;
+  if(left+pw>window.innerWidth-12)left=window.innerWidth-pw-12;
+  if(top+ph>window.innerHeight-12)top=r.top-ph-6;
+  pop.style.left=Math.max(8,left)+'px';pop.style.top=Math.max(8,top)+'px';
+}
+document.addEventListener('click',()=>{const p=document.getElementById('mediaInfo');if(p)p.style.display='none';});
 let curFile='',curPrompt='',curW=1024,curH=1024,selModel='qwen',igMode='gen',editFile=null,editStr=0.65;
 function setMode(m){
   igMode=m;
@@ -2445,7 +2469,8 @@ async function loadGallery(){
       el.innerHTML='<img src="'+u+'" loading="lazy"><div class="gal-overlay">'+
         (prompt?'<div class="gal-prompt">'+esc(prompt)+'</div>':'')+
         '</div><a class="gal-dl" href="'+u+'" download="'+f+'" onclick="event.stopPropagation()">⬇</a>'+
-        '<button class="gal-del" title="Delete from disk" onclick="delGalleryFile(event,\''+f+'\',\'image\')">🗑</button>';
+        '<button class="gal-del" title="Delete from disk" onclick="delGalleryFile(event,\''+f+'\',\'image\')">🗑</button>'+
+        '<button class="info-btn" title="View prompt" onclick="showMediaInfo(event,'+JSON.stringify(prompt||'No prompt recorded.')+')" >ⓘ</button>';
       el.onclick=()=>openLb(u,f);
       g.appendChild(el);
     });
@@ -2851,10 +2876,19 @@ video{width:100%;border-radius:14px;display:none;max-height:560px;background:#00
 .gal-del{position:absolute;bottom:4px;left:4px;background:rgba(239,68,68,.75);border:none;
   border-radius:5px;font-size:11px;padding:3px 7px;color:#fff;cursor:pointer;opacity:0;transition:.2s}
 .gal-item:hover .gal-dl,.gal-item:hover .gal-del{opacity:1}
+.info-btn{position:absolute;top:4px;left:4px;width:22px;height:22px;border-radius:50%;border:1px solid rgba(148,163,184,.3);
+  background:rgba(15,23,42,.7);color:rgba(148,163,184,.8);font-size:11px;cursor:pointer;opacity:0;
+  transition:.2s;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.gal-item:hover .info-btn{opacity:1}
+#mediaInfo{position:fixed;z-index:9999;max-width:320px;background:#0f172a;
+  border:1px solid rgba(100,116,139,.35);border-radius:10px;padding:12px 14px;
+  font-family:var(--mono);font-size:11px;color:var(--text);line-height:1.7;
+  box-shadow:0 8px 24px rgba(0,0,0,.6);display:none;word-break:break-word;white-space:pre-wrap}
 .install-note{background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.2);border-radius:10px;
   padding:14px;font-size:12px;line-height:1.7;color:var(--amber);font-family:var(--mono)}
 .install-note code{background:rgba(0,0,0,.3);padding:2px 6px;border-radius:4px;font-size:11px}
 </style></head><body>
+<div id="mediaInfo"></div>
 <!--NAV-->
 <div class="vw">
   <aside class="vc">
@@ -2951,6 +2985,22 @@ video{width:100%;border-radius:14px;display:none;max-height:560px;background:#00
 </div>
 <script>
 let vMode='t2v',selModel='ltx',imgFile=null,curVideoFile='',arW=16,arH=9;
+const VID_PROMPTS_KEY='law_vid_prompts';
+function saveVidPrompt(f,p){try{const m=JSON.parse(localStorage.getItem(VID_PROMPTS_KEY)||'{}');m[f]=p;localStorage.setItem(VID_PROMPTS_KEY,JSON.stringify(m));}catch(e){}}
+function getVidPrompt(f){try{return (JSON.parse(localStorage.getItem(VID_PROMPTS_KEY)||'{}'))[f]||'';}catch(e){return '';}}
+function showMediaInfo(evt,text){
+  evt.stopPropagation();evt.preventDefault();
+  const pop=document.getElementById('mediaInfo');if(!pop)return;
+  if(pop.style.display!=='none'&&pop._src===evt.currentTarget){pop.style.display='none';return;}
+  pop._src=evt.currentTarget;pop.textContent=text||'No prompt recorded.';
+  pop.style.display='block';
+  const r=evt.currentTarget.getBoundingClientRect(),pw=pop.offsetWidth,ph=pop.offsetHeight;
+  let left=r.left,top=r.bottom+6;
+  if(left+pw>window.innerWidth-12)left=window.innerWidth-pw-12;
+  if(top+ph>window.innerHeight-12)top=r.top-ph-6;
+  pop.style.left=Math.max(8,left)+'px';pop.style.top=Math.max(8,top)+'px';
+}
+document.addEventListener('click',()=>{const p=document.getElementById('mediaInfo');if(p)p.style.display='none';});
 let selEnc='mlx-community/gemma-3-12b-it-4bit';
 const MODEL_NOTES={'ltx':'LTX-2.3 · T2V+I2V+Audio · fast · ~21GB on first run','wan':'Wan2.2 5B · best motion quality · Apache 2.0 · ~10GB on first run'};
 const ENC_NOTES={'mlx-community/gemma-3-12b-it-4bit':'Gemma 3 12B 4-bit · ~8 GB · default (downloading)','mlx-community/gemma-4-12B-it-4bit':'Gemma 4 12B 4-bit · ~6.7 GB · multimodal · downloads on first use'};
@@ -3034,6 +3084,7 @@ async function generate(){
           document.getElementById('resPh').style.display='none';
           document.getElementById('vidStats').textContent=dur+'s · '+timeStr+' total';
           curVideoFile=jd.file;
+          saveVidPrompt(jd.file,prompt);
           st.textContent='✓ Done in '+timeStr;st.className='ig-status ok';
           btn.disabled=false;document.getElementById('prog').classList.remove('on');
           loadGallery();
@@ -3065,9 +3116,11 @@ async function loadGallery(){
     vids.forEach(f=>{
       const u='/api/video-file/'+f;
       const el=document.createElement('div');el.className='gal-item';
+      const vp=getVidPrompt(f);
       el.innerHTML='<video src="'+u+'" muted loop></video>'+
         '<a class="gal-dl" href="'+u+'" download="'+f+'" onclick="event.stopPropagation()">⬇</a>'+
-        '<button class="gal-del" title="Delete from disk" onclick="delGalleryFile(event,\''+f+'\',\'video\')">🗑</button>';
+        '<button class="gal-del" title="Delete from disk" onclick="delGalleryFile(event,\''+f+'\',\'video\')">🗑</button>'+
+        '<button class="info-btn" title="View prompt" onclick="showMediaInfo(event,'+JSON.stringify(vp||'No prompt recorded.')+')">ⓘ</button>';
       el.querySelector('video').onmouseover=function(){this.play();};
       el.querySelector('video').onmouseout=function(){this.pause();};
       el.onclick=()=>{document.getElementById('resultVid').src=u+'&t='+Date.now();document.getElementById('resultVid').style.display='block';document.getElementById('resPh').style.display='none';curVideoFile=f;};
@@ -3248,7 +3301,16 @@ a{color:var(--blue);text-decoration:none}
 .music-msg-hdr{font-family:var(--mono);font-size:10px;color:var(--muted);display:flex;align-items:center;gap:8px}
 .music-msg audio{width:100%;accent-color:var(--purple2);margin-top:4px}
 .music-msg-dl{font-size:11px;color:var(--blue)}
+.info-btn{background:rgba(100,116,139,.1);border:1px solid rgba(100,116,139,.25);border-radius:50%;
+  width:18px;height:18px;font-size:10px;color:var(--muted);cursor:pointer;padding:0;flex-shrink:0;
+  display:inline-flex;align-items:center;justify-content:center;transition:.15s}
+.info-btn:hover{background:rgba(100,116,139,.25);color:var(--text)}
+#mediaInfo{position:fixed;z-index:9999;max-width:320px;background:#0f172a;
+  border:1px solid rgba(100,116,139,.35);border-radius:10px;padding:12px 14px;
+  font-family:var(--mono);font-size:11px;color:var(--text);line-height:1.7;
+  box-shadow:0 8px 24px rgba(0,0,0,.6);display:none;word-break:break-word;white-space:pre-wrap}
 </style></head><body>
+<div id="mediaInfo"></div>
 <!--NAV-->
 <div class="aw">
   <div class="page-hdr">
@@ -3366,6 +3428,22 @@ a{color:var(--blue);text-decoration:none}
 </div>
 <script>
 let selVoice='af_sky',selFmt='wav';
+const AUD_PROMPTS_KEY='law_aud_prompts';
+function saveAudPrompt(f,p){try{const m=JSON.parse(localStorage.getItem(AUD_PROMPTS_KEY)||'{}');m[f]=p;localStorage.setItem(AUD_PROMPTS_KEY,JSON.stringify(m));}catch(e){}}
+function getAudPrompt(f){try{return (JSON.parse(localStorage.getItem(AUD_PROMPTS_KEY)||'{}'))[f]||'';}catch(e){return '';}}
+function showMediaInfo(evt,text){
+  evt.stopPropagation();evt.preventDefault();
+  const pop=document.getElementById('mediaInfo');if(!pop)return;
+  if(pop.style.display!=='none'&&pop._src===evt.currentTarget){pop.style.display='none';return;}
+  pop._src=evt.currentTarget;pop.textContent=text||'No prompt recorded.';
+  pop.style.display='block';
+  const r=evt.currentTarget.getBoundingClientRect(),pw=pop.offsetWidth,ph=pop.offsetHeight;
+  let left=r.left,top=r.bottom+6;
+  if(left+pw>window.innerWidth-12)left=window.innerWidth-pw-12;
+  if(top+ph>window.innerHeight-12)top=r.top-ph-6;
+  pop.style.left=Math.max(8,left)+'px';pop.style.top=Math.max(8,top)+'px';
+}
+document.addEventListener('click',()=>{const p=document.getElementById('mediaInfo');if(p)p.style.display='none';});
 function switchTab(name,btn){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
@@ -3392,6 +3470,7 @@ async function genTTS(){
     const d=await r.json();
     const elapsed=((Date.now()-t0)/1000).toFixed(1);
     if(r.ok){
+      saveAudPrompt(d.file,'[TTS] voice:'+selVoice+' speed:'+speed+'\n\n'+text);
       const pl=document.getElementById('ttsPlayer');
       pl.src='/api/audio-file/'+d.file+'?t='+Date.now();pl.style.display='block';
       pl.play().catch(()=>{});
@@ -3496,6 +3575,7 @@ function pollMusicJob(){
   },4000);
 }
 function addMusicCard(d){
+  saveAudPrompt(d.file,'[Music] '+d.prompt_short+(d.style?'\n\nStyle: '+d.style:'')+(d.lang?'\nLanguage: '+d.lang:''));
   const hist=document.getElementById('musicHistory');
   const hc=document.getElementById('musicHistCard');
   hc.style.display='';
@@ -3526,7 +3606,8 @@ async function loadGallery(){
       el.innerHTML=
         '<div style="display:flex;align-items:center;gap:8px">'+
           '<input type="checkbox" class="gal-check" onchange="_audToggle(this,\''+f+'\')" title="Select">'+
-          '<div class="gal-name" title="'+f+'">'+f+'</div>'+
+          '<div class="gal-name" title="'+f+'" style="flex:1;min-width:0">'+f+'</div>'+
+          '<button class="info-btn" title="View prompt" onclick="showMediaInfo(event,'+JSON.stringify(getAudPrompt(f)||'No prompt recorded.')+')">ⓘ</button>'+
         '</div>'+
         '<audio class="gal-audio" src="'+u+'" controls></audio>'+
         '<div class="gal-dl"><a href="'+u+'" download="'+f+'">⬇ Download</a>'+
