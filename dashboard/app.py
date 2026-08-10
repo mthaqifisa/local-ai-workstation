@@ -3311,7 +3311,35 @@ a{color:var(--blue);text-decoration:none}
     <div class="card">
       <div class="sec-lbl">PROMPT — describe the music in plain English</div>
       <textarea class="vq" id="musicPrompt" rows="3"
-        placeholder="e.g. create a hiphop song explaining quantum computing with energetic beats and rap lyrics&#10;e.g. relaxing jazz piano for late night coding sessions&#10;e.g. epic orchestral track for a sci-fi movie trailer"></textarea>
+        placeholder="e.g. Malaysia Negaraku national anthem&#10;e.g. relaxing jazz piano for late night coding sessions&#10;e.g. hip-hop song about machine learning with energetic beats"></textarea>
+      <div style="display:flex;gap:12px;align-items:center;margin-top:10px;flex-wrap:wrap">
+        <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:140px">
+          <label style="font-size:10px;font-family:var(--mono);color:var(--muted)">LANGUAGE (auto-detect or override)</label>
+          <select id="musicLang" style="background:rgba(10,22,40,.8);border:1px solid var(--bdr);border-radius:6px;
+            color:var(--text);font-family:var(--mono);font-size:11px;padding:5px 8px;cursor:pointer">
+            <option value="auto">Auto-detect</option>
+            <option value="en">English (en)</option>
+            <option value="ms">Malay / Bahasa (ms)</option>
+            <option value="zh">Chinese (zh)</option>
+            <option value="ar">Arabic (ar)</option>
+            <option value="de">German (de)</option>
+            <option value="es">Spanish (es)</option>
+            <option value="fr">French (fr)</option>
+            <option value="hi">Hindi (hi)</option>
+            <option value="id">Indonesian (id)</option>
+            <option value="it">Italian (it)</option>
+            <option value="ja">Japanese (ja)</option>
+            <option value="ko">Korean (ko)</option>
+            <option value="pt">Portuguese (pt)</option>
+            <option value="ru">Russian (ru)</option>
+            <option value="ta">Tamil (ta)</option>
+            <option value="tr">Turkish (tr)</option>
+          </select>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;font-family:var(--mono);color:var(--muted);padding-top:18px">
+          <input type="checkbox" id="musicInstrumental" style="accent-color:var(--purple)"> Instrumental (no vocals)
+        </label>
+      </div>
     </div>
     <div id="aceStatus" style="font-size:11px;font-family:var(--mono);color:var(--muted)">Checking ACE-Step…</div>
     <button class="gen-btn" id="musicBtn" onclick="generateMusic()">🎵 Generate Music</button>
@@ -3411,15 +3439,17 @@ async function generateMusic(){
     document.getElementById('musicStatus').className='st err';
     return;
   }
+  const lang=document.getElementById('musicLang').value;
+  const instrumental=document.getElementById('musicInstrumental').checked;
   const btn=document.getElementById('musicBtn');
   btn.disabled=true;
   document.getElementById('musicProg').classList.add('on');
-  document.getElementById('musicStatus').textContent='Agent is planning your music…';
+  document.getElementById('musicStatus').textContent='Orchestrator is planning your music…';
   document.getElementById('musicStatus').className='st';
   try{
     const r=await fetch('/api/music-generate',{method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({prompt})});
+      body:JSON.stringify({prompt,language:lang,instrumental})});
     const d=await r.json();
     if(!r.ok){
       document.getElementById('musicStatus').textContent=d.error||'Generation failed';
@@ -3458,7 +3488,8 @@ function pollMusicJob(){
         musicJobId=null;
       }else{
         const elapsed=d.elapsed||0;
-        document.getElementById('musicStatus').textContent='Generating… '+elapsed+'s elapsed';
+        const phase=d.phase==='planning'?'Planning with orchestrator…':'Generating audio…';
+        document.getElementById('musicStatus').textContent=phase+' '+elapsed+'s elapsed'+(d.style?' · '+d.style.substring(0,60):'');
         pollMusicJob();
       }
     }catch(e){pollMusicJob();}
@@ -3577,6 +3608,79 @@ def api_tts():
 _MUSIC_JOBS = {}
 _ACESTEP_URL = "http://127.0.0.1:7860"
 
+_MUSIC_SYSTEM_PROMPT = (
+    "/no_think\n"
+    "You are a music composition planner for ACE-Step, an AI music generator. "
+    "Convert the user's music request into a JSON object with exactly these keys:\n"
+    '- "style": ACE-Step style tags — genre, instruments, mood, tempo, era. Max 120 chars. '
+    'Example: "orchestral, national anthem, brass section, choir, majestic, patriotic, 4/4 time, C major"\n'
+    '- "lyrics": Full lyrics in the correct language (verse/chorus structure). '
+    'For known songs (national anthems, famous tracks) use the actual correct lyrics verbatim. '
+    'For original compositions write appropriate lyrics. Empty string "" if instrumental.\n'
+    '- "language": ISO 639-1 code — must be exactly one of: ar, bn, de, en, es, fr, hi, id, it, ja, ko, ms, nl, pl, pt, ro, ru, ta, th, tr, uk, vi, zh\n'
+    '- "instrumental": true only if explicitly no-vocals requested\n\n'
+    "Language detection: 'Negaraku'/'Malaysia national anthem' → ms, "
+    "'Kimigayo'/'Japan anthem' → ja, 'La Marseillaise' → fr. Default for originals: en.\n"
+    "Output ONLY the JSON object. No markdown fences, no explanation, no thinking."
+)
+
+def _plan_music(user_prompt, language_hint="auto", instrumental=False):
+    import re as _re
+    msgs = [{"role": "system", "content": _MUSIC_SYSTEM_PROMPT}]
+    q = user_prompt
+    if language_hint and language_hint != "auto":
+        q += f"\n\nUse language code '{language_hint}' and write lyrics in that language."
+    if instrumental:
+        q += "\n\nInstrumental only — no lyrics, no vocals."
+    msgs.append({"role": "user", "content": q})
+    try:
+        # Call mlx-openai-server directly (not gateway) — gateway strips </think> tags
+        r = requests.post(
+            f"http://127.0.0.1:{P_MLX}/v1/chat/completions",
+            json={"model": "qwen36-35b", "messages": msgs, "temperature": 0.3, "max_tokens": 3000},
+            timeout=120,
+        )
+        if r.status_code != 200:
+            return None
+        content = r.json()["choices"][0]["message"]["content"].strip()
+        # Qwen3 thinking models wrap CoT in <think>...</think> — use post-think content first
+        if "</think>" in content:
+            content = content.split("</think>", 1)[1].strip()
+        # Strip markdown code fences if present
+        m = _re.search(r'```(?:json)?\s*(\{.*?\})\s*```', content, _re.DOTALL)
+        if m:
+            json_str = m.group(1)
+        else:
+            # Find the last (outermost) JSON object in the content
+            last = None
+            for match in _re.finditer(r'\{', content):
+                depth, i = 0, match.start()
+                for j, ch in enumerate(content[i:]):
+                    depth += (ch == '{') - (ch == '}')
+                    if depth == 0:
+                        last = content[i:i+j+1]; break
+            json_str = last
+        if not json_str:
+            return None
+        d = json.loads(json_str)
+        _VALID_LANGS = {'ar','bn','de','en','es','fr','hi','id','it','ja','ko','ms','nl','pl','pt','ro','ru','ta','th','tr','uk','vi','zh'}
+        lang = d.get("language") or "en"
+        if lang not in _VALID_LANGS:
+            lang = language_hint if language_hint not in ("auto", "") else "en"
+        instr = d.get("instrumental")
+        if isinstance(instr, str):
+            instr = instr.lower() in ("true", "yes", "1")
+        else:
+            instr = bool(instr)
+        return (
+            (d.get("style") or "")[:150],
+            d.get("lyrics") or "",
+            lang,
+            instr or instrumental,
+        )
+    except Exception:
+        return None
+
 def _acestep_running():
     try:
         r = requests.get(f"{_ACESTEP_URL}/health", timeout=3)
@@ -3584,24 +3688,29 @@ def _acestep_running():
     except Exception:
         return False
 
-def _run_music_job(job_id, prompt):
+def _run_music_job(job_id, user_prompt, language_hint="auto", instrumental=False):
     import shutil
     try:
-        # /release_task on the Gradio-embedded API is synchronous — blocks until audio is done
-        # Use sample_query so ACE-Step's built-in LLM plans the style from plain English
+        _MUSIC_JOBS[job_id]["phase"] = "planning"
+        plan = _plan_music(user_prompt, language_hint, instrumental)
+        if plan:
+            style, lyrics, lang, instr = plan
+        else:
+            # Fallback if orchestrator is unavailable
+            style, lyrics, lang, instr = user_prompt[:120], "", (language_hint if language_hint != "auto" else "en"), instrumental
+
         payload = {
-            "sample_query": prompt,   # triggers ACE-Step's own music-planning LLM
+            "prompt": style,
+            "lyrics": "" if instr else lyrics,
+            "vocal_language": lang,
             "audio_duration": 60,
             "audio_format": "mp3",
         }
+        _MUSIC_JOBS[job_id].update({"phase": "generating", "style": style, "lang": lang})
         r = requests.post(f"{_ACESTEP_URL}/release_task", json=payload, timeout=600)
         if r.status_code != 200:
-            # LLM not initialized — fall back to raw prompt as caption
-            payload2 = {"prompt": prompt, "audio_duration": 60, "audio_format": "mp3"}
-            r = requests.post(f"{_ACESTEP_URL}/release_task", json=payload2, timeout=600)
-            if r.status_code != 200:
-                _MUSIC_JOBS[job_id].update({"status": "error", "error": r.text[:300]})
-                return
+            _MUSIC_JOBS[job_id].update({"status": "error", "error": r.text[:300]})
+            return
 
         resp = r.json().get("data", {})
         task_id = resp.get("task_id")
@@ -3637,12 +3746,12 @@ def _run_music_job(job_id, prompt):
         AUDIO_DIR.mkdir(parents=True, exist_ok=True)
         dest_name = f"music_{_uuid.uuid4().hex[:10]}.mp3"
         shutil.copy2(audio_path, str(AUDIO_DIR / dest_name))
-        caption = (result_list[0].get("prompt") or prompt)[:60]
-        lyrics = result_list[0].get("lyrics") or ""
+        caption = (result_list[0].get("prompt") or style or user_prompt)[:60]
+        lyrics_out = result_list[0].get("lyrics") or ""
         elapsed = int(_time.time() - _MUSIC_JOBS[job_id]["start"])
         _MUSIC_JOBS[job_id].update({
             "status": "done", "file": dest_name, "elapsed": elapsed,
-            "caption": caption, "lyrics": lyrics, "prompt_short": prompt[:50],
+            "caption": caption, "lyrics": lyrics_out, "prompt_short": user_prompt[:50],
         })
     except Exception as e:
         _MUSIC_JOBS[job_id].update({"status": "error", "error": str(e)[:300]})
@@ -3658,20 +3767,23 @@ def api_music_status():
 def api_music_generate():
     d = request.get_json(force=True, silent=True) or {}
     prompt = (d.get("prompt") or "").strip()
+    language_hint = (d.get("language") or "auto").strip()
+    instrumental = bool(d.get("instrumental", False))
     if not prompt: return jsonify({"error": "prompt required"}), 400
     if not _acestep_running():
         return jsonify({"error": "ACE-Step not running. Click Start in Music Studio."}), 503
     job_id = str(_uuid.uuid4())[:8]
-    _MUSIC_JOBS[job_id] = {"status": "running", "start": _time.time(), "error": None}
-    _th.Thread(target=_run_music_job, args=(job_id, prompt), daemon=True).start()
-    return jsonify({"job_id": job_id, "plan_summary": "ACE-Step is composing your track…"})
+    _MUSIC_JOBS[job_id] = {"status": "running", "phase": "planning", "start": _time.time(), "error": None}
+    _th.Thread(target=_run_music_job, args=(job_id, prompt, language_hint, instrumental), daemon=True).start()
+    return jsonify({"job_id": job_id, "plan_summary": "Orchestrator is planning your music…"})
 
 @app.route("/api/music-job/<job_id>")
 @require_auth
 def api_music_job(job_id):
     job = _MUSIC_JOBS.get(job_id)
     if not job: return jsonify({"status": "not_found"}), 404
-    return jsonify({**job, "elapsed": int(_time.time() - job["start"])})
+    out = {**job, "elapsed": int(_time.time() - job["start"])}
+    return jsonify(out)
 
 @app.route("/api/music-start", methods=["POST"])
 @require_auth
