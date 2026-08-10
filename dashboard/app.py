@@ -2470,7 +2470,7 @@ async function loadGallery(){
         (prompt?'<div class="gal-prompt">'+esc(prompt)+'</div>':'')+
         '</div><a class="gal-dl" href="'+u+'" download="'+f+'" onclick="event.stopPropagation()">⬇</a>'+
         '<button class="gal-del" title="Delete from disk" onclick="delGalleryFile(event,\''+f+'\',\'image\')">🗑</button>'+
-        '<button class="info-btn" title="View prompt" onclick="showMediaInfo(event,'+JSON.stringify(prompt||'No prompt recorded.')+')" >ⓘ</button>';
+        '<button class="info-btn" title="View prompt" data-prompt="'+esc(prompt||'No prompt recorded.').replace(/"/g,'&quot;')+'" onclick="showMediaInfo(event,this.dataset.prompt)">ⓘ</button>';
       el.onclick=()=>openLb(u,f);
       g.appendChild(el);
     });
@@ -2985,6 +2985,7 @@ video{width:100%;border-radius:14px;display:none;max-height:560px;background:#00
 </div>
 <script>
 let vMode='t2v',selModel='ltx',imgFile=null,curVideoFile='',arW=16,arH=9;
+function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 const VID_PROMPTS_KEY='law_vid_prompts';
 function saveVidPrompt(f,p){try{const m=JSON.parse(localStorage.getItem(VID_PROMPTS_KEY)||'{}');m[f]=p;localStorage.setItem(VID_PROMPTS_KEY,JSON.stringify(m));}catch(e){}}
 function getVidPrompt(f){try{return (JSON.parse(localStorage.getItem(VID_PROMPTS_KEY)||'{}'))[f]||'';}catch(e){return '';}}
@@ -3120,7 +3121,7 @@ async function loadGallery(){
       el.innerHTML='<video src="'+u+'" muted loop></video>'+
         '<a class="gal-dl" href="'+u+'" download="'+f+'" onclick="event.stopPropagation()">⬇</a>'+
         '<button class="gal-del" title="Delete from disk" onclick="delGalleryFile(event,\''+f+'\',\'video\')">🗑</button>'+
-        '<button class="info-btn" title="View prompt" onclick="showMediaInfo(event,'+JSON.stringify(vp||'No prompt recorded.')+')">ⓘ</button>';
+        '<button class="info-btn" title="View prompt" data-prompt="'+esc(vp||'No prompt recorded.').replace(/"/g,'&quot;')+'" onclick="showMediaInfo(event,this.dataset.prompt)">ⓘ</button>';
       el.querySelector('video').onmouseover=function(){this.play();};
       el.querySelector('video').onmouseout=function(){this.pause();};
       el.onclick=()=>{document.getElementById('resultVid').src=u+'&t='+Date.now();document.getElementById('resultVid').style.display='block';document.getElementById('resPh').style.display='none';curVideoFile=f;};
@@ -3607,7 +3608,7 @@ async function loadGallery(){
         '<div style="display:flex;align-items:center;gap:8px">'+
           '<input type="checkbox" class="gal-check" onchange="_audToggle(this,\''+f+'\')" title="Select">'+
           '<div class="gal-name" title="'+f+'" style="flex:1;min-width:0">'+f+'</div>'+
-          '<button class="info-btn" title="View prompt" onclick="showMediaInfo(event,'+JSON.stringify(getAudPrompt(f)||'No prompt recorded.')+')">ⓘ</button>'+
+          '<button class="info-btn" title="View prompt" data-prompt="'+esc(getAudPrompt(f)||'No prompt recorded.').replace(/"/g,'&quot;')+'" onclick="showMediaInfo(event,this.dataset.prompt)">ⓘ</button>'+
         '</div>'+
         '<audio class="gal-audio" src="'+u+'" controls></audio>'+
         '<div class="gal-dl"><a href="'+u+'" download="'+f+'">⬇ Download</a>'+
