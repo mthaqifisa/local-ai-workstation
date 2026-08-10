@@ -63,6 +63,7 @@ SERVICES = [
     ("Private search (SearXNG)", f"http://127.0.0.1:{P_SEARX}/",                  P_SEARX,   "Web results for RAG"),
     ("Tracing (Langfuse)",       f"http://127.0.0.1:{P_LF}/api/public/health",    P_LF,      "Optional observability"),
     ("Docker (Portainer)",       f"http://127.0.0.1:{P_PORTAINER}/api/status",    P_PORTAINER, "Docker image & container manager"),
+    ("Music Studio (ACE-Step)",  "http://127.0.0.1:7860/",                        "7860",    "Text-to-music generation"),
     ("Dashboard",                f"http://127.0.0.1:{P_DASH}/",                   P_DASH,    "This page"),
 ]
 
@@ -74,6 +75,7 @@ _SVC_RESTART = {
     "Private search (SearXNG)": {"kind": "docker",   "id": "searxng"},
     "Tracing (Langfuse)":       {"kind": "launchd",  "id": "com.mlxstack.langfuse"},
     "Docker (Portainer)":       {"kind": "docker",   "id": "portainer"},
+    "Music Studio (ACE-Step)":  {"kind": "launchd",  "id": "com.mlxstack.acestep"},
     "Dashboard":                {"kind": "launchd",  "id": "com.mlxstack.dashboard"},
 }
 
@@ -201,6 +203,17 @@ def api_metrics():
 
 ACTIVITY_DIR = WORKDIR / "activity"
 SSE_EVENTS_FILE = WORKDIR / "activity" / "events.jsonl"
+
+@app.route("/api/clear-cache", methods=["POST"])
+@require_auth
+def api_clear_cache():
+    _METRICS.clear()
+    try:
+        if SSE_EVENTS_FILE.exists():
+            SSE_EVENTS_FILE.write_text("")
+    except Exception:
+        pass
+    return jsonify({"ok": True})
 
 @app.route("/api/events/stream")
 @require_auth
@@ -588,6 +601,11 @@ canvas.spark{width:100%;height:24px;border-radius:4px;background:rgba(255,255,25
       <div class="ph-icon" style="background:rgba(16,185,129,.15)">◉</div>
       <span class="ph-title">NEURAL ACTIVITY</span>
       <span class="ph-badge live-b" id="feedStatus">● LIVE</span>
+      <button onclick="clearAllCache()" title="Clear neural activity feed and chat history"
+        style="margin-left:auto;padding:2px 9px;border-radius:5px;border:1px solid rgba(239,68,68,.3);
+        background:rgba(239,68,68,.07);color:#ef4444;font-size:10px;cursor:pointer;font-family:var(--mono);
+        transition:.15s" onmouseover="this.style.background='rgba(239,68,68,.18)'"
+        onmouseout="this.style.background='rgba(239,68,68,.07)'">✕ CLEAR</button>
     </div>
     <div style="padding-bottom:8px;border-bottom:1px solid var(--bdr)">
       <div class="stat-lbl" style="margin-bottom:6px">ACTIVE AGENTS</div>
@@ -755,6 +773,18 @@ function startSSE(){
   };
 }
 startSSE();
+
+async function clearAllCache(){
+  if(!confirm('Clear all neural activity and chat history?'))return;
+  try{await fetch('/api/clear-cache',{method:'POST'});}catch(e){}
+  feedItems=[];
+  feedEl.innerHTML='<div class="feed-idle">Cache cleared.</div>';
+  try{localStorage.removeItem(FEED_KEY);}catch(e){}
+  try{sessionStorage.removeItem('law_chat_v2');}catch(e){}
+  const st=document.getElementById('feedStatus');
+  st.textContent='● CLEARED';st.style.color='var(--red)';
+  setTimeout(()=>{st.textContent='● LIVE';st.style.color='';},2500);
+}
 
 // Metrics + sparklines
 function drawSpark(id,vals,color){
@@ -3180,16 +3210,13 @@ a{color:var(--blue);text-decoration:none}
 .gal-del-btn{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.25);border-radius:5px;
   font-size:10px;padding:2px 8px;color:#ef4444;cursor:pointer;transition:.15s}
 .gal-del-btn:hover{background:rgba(239,68,68,.25)}
-.music-genre-chips{display:flex;gap:5px;flex-wrap:wrap}
-.gc{padding:4px 10px;border-radius:12px;font-size:11px;cursor:pointer;border:1px solid var(--bdr);
-  color:var(--muted);transition:.15s;background:transparent;font-family:var(--sans)}
-.gc.active{border-color:var(--purple);background:rgba(124,58,237,.15);color:var(--purple2)}
-.gc:hover{border-color:var(--purple);color:var(--purple2)}
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:600px){.two-col{grid-template-columns:1fr}}
-.install-note{background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.2);border-radius:10px;
-  padding:14px;font-size:12px;line-height:1.7;color:var(--amber);font-family:var(--mono)}
-.install-note code{background:rgba(0,0,0,.3);padding:2px 6px;border-radius:4px;font-size:11px}
+.music-chat{display:flex;flex-direction:column;gap:12px;min-height:80px;max-height:420px;overflow-y:auto;padding:4px 0}
+.music-msg{display:flex;flex-direction:column;gap:6px;background:rgba(10,22,40,.7);border:1px solid var(--bdr);border-radius:10px;padding:14px}
+.music-msg-hdr{font-family:var(--mono);font-size:10px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.music-msg audio{width:100%;accent-color:var(--purple2);margin-top:4px}
+.music-msg-dl{font-size:11px;color:var(--blue)}
 </style></head><body>
 <!--NAV-->
 <div class="aw">
@@ -3246,41 +3273,18 @@ a{color:var(--blue);text-decoration:none}
 
   <!-- MUSIC TAB -->
   <div class="tab-pane" id="tab-music">
-    <div class="card">
-      <div class="sec-lbl">LYRICS / DESCRIPTION</div>
-      <textarea class="vq" id="musicText" placeholder="Verse 1:&#10;Walking down a city street at night&#10;Neon lights reflect on rain-soaked ground…&#10;&#10;Chorus:&#10;Feel the rhythm of the night&#10;Electric dreams in neon light…&#10;&#10;Tip: Use verse/chorus/bridge structure, or describe mood and theme." rows="8"></textarea>
+    <div class="card" id="musicHistCard" style="display:none">
+      <div class="sec-lbl">GENERATED TRACKS</div>
+      <div class="music-chat" id="musicHistory"></div>
     </div>
     <div class="card">
-      <div class="sec-lbl">GENRE</div>
-      <div class="music-genre-chips">
-        <button class="gc active" onclick="setGC(this)">Pop</button>
-        <button class="gc" onclick="setGC(this)">Jazz</button>
-        <button class="gc" onclick="setGC(this)">Electronic</button>
-        <button class="gc" onclick="setGC(this)">Hip-hop</button>
-        <button class="gc" onclick="setGC(this)">Rock</button>
-        <button class="gc" onclick="setGC(this)">Orchestral</button>
-        <button class="gc" onclick="setGC(this)">Ambient</button>
-        <button class="gc" onclick="setGC(this)">R&amp;B</button>
-      </div>
-      <div class="sec-lbl" style="margin-top:12px">MOOD</div>
-      <div class="music-genre-chips">
-        <button class="gc" onclick="setMood(this)">Uplifting</button>
-        <button class="gc active" onclick="setMood(this)">Melancholic</button>
-        <button class="gc" onclick="setMood(this)">Energetic</button>
-        <button class="gc" onclick="setMood(this)">Calm</button>
-        <button class="gc" onclick="setMood(this)">Romantic</button>
-        <button class="gc" onclick="setMood(this)">Epic</button>
-      </div>
+      <div class="sec-lbl">PROMPT — describe the music in plain English</div>
+      <textarea class="vq" id="musicPrompt" rows="3"
+        placeholder="e.g. create a hiphop song explaining quantum computing with energetic beats and rap lyrics&#10;e.g. relaxing jazz piano for late night coding sessions&#10;e.g. epic orchestral track for a sci-fi movie trailer"></textarea>
     </div>
-    <div class="install-note">
-      <strong>🎵 Music generation requires ACE-Step 1.5</strong> — the best Apple Silicon music model (Apache 2.0).<br>
-      <strong>Install:</strong> <code>git clone https://github.com/clockworksquirrel/ace-step-apple-silicon ~/ace-step && cd ~/ace-step && uv sync</code><br>
-      <strong>Launch:</strong> <code>cd ~/ace-step &amp;&amp; ./run_mac.sh</code> → opens at <a href="http://localhost:7860" target="_blank">localhost:7860</a><br>
-      Generates full songs with lyrics + vocals + instruments in 50+ languages on your M5 Pro 64 GB.
-    </div>
-    <div id="aceStatus" style="font-size:12px;font-family:var(--mono);margin-bottom:8px;color:var(--muted)">Checking ACE-Step status…</div>
-    <button class="gen-btn" id="musicBtn" onclick="openAceStep()">🎵 Open Music Studio (ACE-Step)</button>
-    <div class="prog" id="musicProg" style="display:none"><div class="pb"></div></div>
+    <div id="aceStatus" style="font-size:11px;font-family:var(--mono);color:var(--muted)">Checking ACE-Step…</div>
+    <button class="gen-btn" id="musicBtn" onclick="generateMusic()">🎵 Generate Music</button>
+    <div class="prog" id="musicProg"><div class="pb"></div></div>
     <div class="st" id="musicStatus"></div>
   </div>
 
@@ -3293,18 +3297,17 @@ a{color:var(--blue);text-decoration:none}
   </div>
 </div>
 <script>
-let selVoice='af_sky',selFmt='wav',selGenre='Pop',selMood='Melancholic';
+let selVoice='af_sky',selFmt='wav';
 function switchTab(name,btn){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById('tab-'+name).classList.add('active');
   if(name==='gallery')loadGallery();
+  if(name==='music')checkAceStep();
 }
 function setVoice(btn){selVoice=btn.dataset.voice;document.querySelectorAll('.vc').forEach(b=>b.classList.toggle('active',b===btn));}
 function setFmt(btn){selFmt=btn.dataset.fmt;document.querySelectorAll('[data-fmt]').forEach(b=>b.classList.toggle('active',b===btn));}
-function setGC(btn){selGenre=btn.textContent;document.querySelectorAll('.music-genre-chips .gc').forEach((b,i)=>{if(i<8)b.classList.toggle('active',b===btn);});}
-function setMood(btn){selMood=btn.textContent;document.querySelectorAll('.music-genre-chips .gc').forEach((b,i)=>{if(i>=8)b.classList.toggle('active',b===btn);});}
 async function genTTS(){
   const text=document.getElementById('ttsText').value.trim();
   const st=document.getElementById('ttsStatus');
@@ -3334,36 +3337,106 @@ async function genTTS(){
   }catch(e){st.textContent='⚠ '+e;st.className='st err';}
   btn.disabled=false;document.getElementById('ttsProg').classList.remove('on');
 }
-let aceRunning=false;
+let aceRunning=false,musicJobId=null,musicPollT=null;
 async function checkAceStep(){
   const el=document.getElementById('aceStatus');
-  const btn=document.getElementById('musicBtn');
   try{
-    const r=await fetch('http://localhost:7860/',{mode:'no-cors'});
-    aceRunning=true;
-    el.innerHTML='<span style="color:var(--green)">● ACE-Step running at localhost:7860</span> · <a href="http://localhost:7861" target="_blank" style="font-size:10px;color:var(--blue)">AI DJ chat →</a>';
-    btn.textContent='🎵 Open Music Studio →';
+    const r=await fetch('/api/music-status',{signal:AbortSignal.timeout(4000)});
+    const d=await r.json();
+    aceRunning=d.running;
+    if(d.running){
+      el.innerHTML='<span style="color:var(--green)">● ACE-Step ready</span> · <a href="http://localhost:7860" target="_blank" style="font-size:10px;color:var(--blue)">Open UI →</a>';
+    }else if(d.starting){
+      el.innerHTML='<span style="color:var(--blue)">⏳ ACE-Step starting…</span>';
+      setTimeout(checkAceStep,6000);
+    }else{
+      el.innerHTML='<span style="color:var(--amber)">● ACE-Step not running</span> · <button onclick="startAceStep()" style="font-size:10px;padding:2px 8px;border:1px solid var(--amber);background:transparent;color:var(--amber);border-radius:4px;cursor:pointer">▶ Start</button>';
+    }
   }catch(e){
-    aceRunning=false;
-    el.innerHTML='<span style="color:var(--amber)">● ACE-Step not running.</span> <button onclick="startAceStep()" style="font-size:10px;padding:2px 8px;border:1px solid var(--amber);background:transparent;color:var(--amber);border-radius:4px;cursor:pointer">▶ Start</button>';
-    btn.textContent='🎵 Launch ACE-Step (opens :7860)';
+    el.innerHTML='<span style="color:var(--muted)">● ACE-Step status unknown</span>';
   }
 }
 async function startAceStep(){
-  document.getElementById('aceStatus').innerHTML='<span style="color:var(--blue)">⏳ Starting ACE-Step… (first launch: ~5 GB model download)</span>';
+  document.getElementById('aceStatus').innerHTML='<span style="color:var(--blue)">⏳ Starting ACE-Step…</span>';
   try{
-    const r=await fetch('/api/music-start',{method:'POST'});
-    const d=await r.json();
-    if(d.ok){setTimeout(checkAceStep,8000);}
-    else{document.getElementById('aceStatus').innerHTML='<span style="color:var(--red)">✗ '+( d.error||'failed')+'</span>';}
-  }catch(e){document.getElementById('aceStatus').innerHTML='<span style="color:var(--red)">✗ '+e+'</span>';}
+    await fetch('/api/music-start',{method:'POST'});
+    setTimeout(checkAceStep,8000);
+  }catch(e){}
 }
-function openAceStep(){
-  if(aceRunning){
-    window.open('http://localhost:7860','_blank');
-  }else{
-    startAceStep();
+async function generateMusic(){
+  const prompt=document.getElementById('musicPrompt').value.trim();
+  if(!prompt)return;
+  if(!aceRunning){
+    document.getElementById('musicStatus').textContent='ACE-Step not running — click Start first';
+    document.getElementById('musicStatus').className='st err';
+    return;
   }
+  const btn=document.getElementById('musicBtn');
+  btn.disabled=true;
+  document.getElementById('musicProg').classList.add('on');
+  document.getElementById('musicStatus').textContent='Agent is planning your music…';
+  document.getElementById('musicStatus').className='st';
+  try{
+    const r=await fetch('/api/music-generate',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({prompt})});
+    const d=await r.json();
+    if(!r.ok){
+      document.getElementById('musicStatus').textContent=d.error||'Generation failed';
+      document.getElementById('musicStatus').className='st err';
+      btn.disabled=false;document.getElementById('musicProg').classList.remove('on');
+      return;
+    }
+    musicJobId=d.job_id;
+    document.getElementById('musicStatus').textContent='Generating music (2–5 min)… '+d.plan_summary;
+    pollMusicJob();
+  }catch(e){
+    document.getElementById('musicStatus').textContent='Error: '+e;
+    document.getElementById('musicStatus').className='st err';
+    btn.disabled=false;document.getElementById('musicProg').classList.remove('on');
+  }
+}
+function pollMusicJob(){
+  if(!musicJobId)return;
+  if(musicPollT)clearTimeout(musicPollT);
+  musicPollT=setTimeout(async()=>{
+    try{
+      const r=await fetch('/api/music-job/'+musicJobId);
+      const d=await r.json();
+      if(d.status==='done'){
+        document.getElementById('musicProg').classList.remove('on');
+        document.getElementById('musicBtn').disabled=false;
+        document.getElementById('musicStatus').textContent='Done in '+d.elapsed+'s';
+        document.getElementById('musicStatus').className='st ok';
+        addMusicCard(d);
+        musicJobId=null;
+      }else if(d.status==='error'){
+        document.getElementById('musicProg').classList.remove('on');
+        document.getElementById('musicBtn').disabled=false;
+        document.getElementById('musicStatus').textContent=d.error||'Generation failed';
+        document.getElementById('musicStatus').className='st err';
+        musicJobId=null;
+      }else{
+        const elapsed=d.elapsed||0;
+        document.getElementById('musicStatus').textContent='Generating… '+elapsed+'s elapsed';
+        pollMusicJob();
+      }
+    }catch(e){pollMusicJob();}
+  },4000);
+}
+function addMusicCard(d){
+  const hist=document.getElementById('musicHistory');
+  const hc=document.getElementById('musicHistCard');
+  hc.style.display='';
+  const card=document.createElement('div');card.className='music-msg';
+  const u='/api/audio-file/'+d.file;
+  card.innerHTML='<div class="music-msg-hdr"><span style="color:var(--purple2)">🎵 '+d.prompt_short+'</span><span style="color:var(--muted);margin-left:auto">'+d.elapsed+'s · '+d.caption+'</span></div>'+
+    '<audio controls src="'+u+'"></audio>'+
+    '<div class="music-msg-dl"><a href="'+u+'" download="'+d.file+'">⬇ Download</a>'+
+    (d.lyrics?'<span style="color:var(--muted);font-size:10px">Lyrics: '+d.lyrics.substring(0,60)+'…</span>':'')+'</div>';
+  hist.appendChild(card);
+  hist.scrollTop=hist.scrollHeight;
+  card.querySelector('audio').play().catch(()=>{});
 }
 checkAceStep();
 async function loadGallery(){
@@ -3419,10 +3492,104 @@ def api_tts():
     except subprocess.TimeoutExpired:
         return jsonify({"error": "TTS timed out (>5 min)"}), 504
 
-@app.route("/api/music", methods=["POST"])
+_MUSIC_JOBS = {}
+_ACESTEP_URL = "http://127.0.0.1:7860"
+
+def _acestep_running():
+    try:
+        r = requests.get(f"{_ACESTEP_URL}/health", timeout=3)
+        return r.status_code == 200
+    except Exception:
+        return False
+
+def _run_music_job(job_id, prompt):
+    import shutil
+    try:
+        # /release_task on the Gradio-embedded API is synchronous — blocks until audio is done
+        # Use sample_query so ACE-Step's built-in LLM plans the style from plain English
+        payload = {
+            "sample_query": prompt,   # triggers ACE-Step's own music-planning LLM
+            "audio_duration": 60,
+            "audio_format": "mp3",
+        }
+        r = requests.post(f"{_ACESTEP_URL}/release_task", json=payload, timeout=600)
+        if r.status_code != 200:
+            # LLM not initialized — fall back to raw prompt as caption
+            payload2 = {"prompt": prompt, "audio_duration": 60, "audio_format": "mp3"}
+            r = requests.post(f"{_ACESTEP_URL}/release_task", json=payload2, timeout=600)
+            if r.status_code != 200:
+                _MUSIC_JOBS[job_id].update({"status": "error", "error": r.text[:300]})
+                return
+
+        resp = r.json().get("data", {})
+        task_id = resp.get("task_id")
+        if not task_id:
+            _MUSIC_JOBS[job_id].update({"status": "error", "error": "No task_id in response"})
+            return
+
+        # Generation is already done — fetch stored result immediately
+        qr = requests.post(f"{_ACESTEP_URL}/query_result",
+                           json={"task_id_list": [task_id]}, timeout=15)
+        if qr.status_code != 200:
+            _MUSIC_JOBS[job_id].update({"status": "error", "error": "query_result failed"})
+            return
+
+        items = qr.json().get("data", [])
+        item = items[0] if items else {}
+        result_raw = item.get("result", "[]")
+        try:
+            result_list = json.loads(result_raw) if isinstance(result_raw, str) else result_raw
+        except Exception:
+            result_list = []
+
+        if not result_list or item.get("status", 0) != 1:
+            err = (result_list[0].get("error") if result_list else None) or "No audio returned"
+            _MUSIC_JOBS[job_id].update({"status": "error", "error": err})
+            return
+
+        audio_path = result_list[0].get("file", "")
+        if not audio_path or not Path(audio_path).exists():
+            _MUSIC_JOBS[job_id].update({"status": "error", "error": "Audio file not found on disk"})
+            return
+
+        AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+        dest_name = f"music_{_uuid.uuid4().hex[:10]}.mp3"
+        shutil.copy2(audio_path, str(AUDIO_DIR / dest_name))
+        caption = (result_list[0].get("prompt") or prompt)[:60]
+        lyrics = result_list[0].get("lyrics") or ""
+        elapsed = int(_time.time() - _MUSIC_JOBS[job_id]["start"])
+        _MUSIC_JOBS[job_id].update({
+            "status": "done", "file": dest_name, "elapsed": elapsed,
+            "caption": caption, "lyrics": lyrics, "prompt_short": prompt[:50],
+        })
+    except Exception as e:
+        _MUSIC_JOBS[job_id].update({"status": "error", "error": str(e)[:300]})
+
+@app.route("/api/music-status")
 @require_auth
-def api_music():
-    return jsonify({"error": "Music generation runs via ACE-Step Gradio UI at localhost:7860. Open Music Studio tab to launch."}), 501
+def api_music_status():
+    running = _acestep_running()
+    return jsonify({"running": running, "starting": False})
+
+@app.route("/api/music-generate", methods=["POST"])
+@require_auth
+def api_music_generate():
+    d = request.get_json(force=True, silent=True) or {}
+    prompt = (d.get("prompt") or "").strip()
+    if not prompt: return jsonify({"error": "prompt required"}), 400
+    if not _acestep_running():
+        return jsonify({"error": "ACE-Step not running. Click Start in Music Studio."}), 503
+    job_id = str(_uuid.uuid4())[:8]
+    _MUSIC_JOBS[job_id] = {"status": "running", "start": _time.time(), "error": None}
+    _th.Thread(target=_run_music_job, args=(job_id, prompt), daemon=True).start()
+    return jsonify({"job_id": job_id, "plan_summary": "ACE-Step is composing your track…"})
+
+@app.route("/api/music-job/<job_id>")
+@require_auth
+def api_music_job(job_id):
+    job = _MUSIC_JOBS.get(job_id)
+    if not job: return jsonify({"status": "not_found"}), 404
+    return jsonify({**job, "elapsed": int(_time.time() - job["start"])})
 
 @app.route("/api/music-start", methods=["POST"])
 @require_auth
@@ -3430,15 +3597,14 @@ def api_music_start():
     import subprocess as _sp
     ace_dir = Path.home() / "ace-step"
     if not ace_dir.exists():
-        return jsonify({"error": "~/ace-step not found. Run: git clone https://github.com/clockworksquirrel/ace-step-apple-silicon ~/ace-step && cd ~/ace-step && uv sync"}), 500
+        return jsonify({"error": "~/ace-step not found"}), 500
     plist = Path.home() / "Library" / "LaunchAgents" / "com.mlxstack.acestep.plist"
     if plist.exists():
-        r = _sp.run(["launchctl", "start", "com.mlxstack.acestep"], capture_output=True, text=True)
-        if r.returncode == 0:
-            return jsonify({"ok": True})
-    # Fallback: start directly
-    _sp.Popen(["/opt/homebrew/bin/uv", "run", "acestep", "--server-name", "0.0.0.0", "--port", "7860"],
-              cwd=str(ace_dir), stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+        _sp.run(["launchctl", "start", "com.mlxstack.acestep"], capture_output=True, text=True)
+    else:
+        _sp.Popen(["/opt/homebrew/bin/uv", "run", "acestep", "--server-name", "0.0.0.0",
+                   "--port", "7860", "--enable-api"],
+                  cwd=str(ace_dir), stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
     return jsonify({"ok": True})
 
 @app.route("/api/audio-file/<name>")
