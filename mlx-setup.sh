@@ -1000,6 +1000,7 @@ setup_acestep() {
     <string>acestep</string>
     <string>--server-name</string><string>0.0.0.0</string>
     <string>--port</string><string>7860</string>
+    <string>--enable-api</string>
   </array>
   <key>WorkingDirectory</key><string>$ACE_DIR</string>
   <key>RunAtLoad</key><false/>
