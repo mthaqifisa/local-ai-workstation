@@ -2696,6 +2696,33 @@ def api_delete_file():
     p.unlink()
     return jsonify({"ok": True})
 
+@app.route("/api/delete-files", methods=["POST"])
+@require_auth
+def api_delete_files():
+    data = request.json or {}
+    names = data.get("names") or []
+    kind = data.get("kind", "audio")
+    deleted, errors = 0, []
+    for name in names:
+        name = (name or "").strip()
+        if kind == "audio":
+            if not re.match(r"^[A-Za-z0-9._-]+\.(wav|mp3)$", name):
+                errors.append(name); continue
+            p = AUDIO_DIR / name
+        elif kind == "video":
+            if not re.match(r"^[A-Za-z0-9._-]+\.mp4$", name):
+                errors.append(name); continue
+            p = VIDEOS_DIR / name
+        else:
+            if not re.match(r"^[A-Za-z0-9._-]+\.png$", name):
+                errors.append(name); continue
+            p = IMAGES_DIR / name
+        try:
+            p.unlink(missing_ok=True); deleted += 1
+        except Exception as e:
+            errors.append(f"{name}: {e}")
+    return jsonify({"deleted": deleted, "errors": errors})
+
 @app.route("/imagine")
 @require_auth
 def imagine_page():
@@ -3210,6 +3237,10 @@ a{color:var(--blue);text-decoration:none}
 .gal-del-btn{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.25);border-radius:5px;
   font-size:10px;padding:2px 8px;color:#ef4444;cursor:pointer;transition:.15s}
 .gal-del-btn:hover{background:rgba(239,68,68,.25)}
+.gal-item.selected{border-color:var(--purple);background:rgba(124,58,237,.1)}
+.gal-check{accent-color:var(--purple);cursor:pointer;width:15px;height:15px;flex-shrink:0}
+.gal-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.gal-sel-count{font-family:var(--mono);font-size:10px;color:var(--muted)}
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:600px){.two-col{grid-template-columns:1fr}}
 .music-chat{display:flex;flex-direction:column;gap:12px;min-height:80px;max-height:420px;overflow-y:auto;padding:4px 0}
@@ -3291,7 +3322,16 @@ a{color:var(--blue);text-decoration:none}
   <!-- GALLERY TAB -->
   <div class="tab-pane" id="tab-gallery">
     <div class="card">
-      <div class="sec-lbl">AUDIO LIBRARY</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+        <div class="sec-lbl" style="margin-bottom:0">AUDIO LIBRARY</div>
+        <div class="gal-toolbar" id="audToolbar" style="display:none">
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;font-family:var(--mono);color:var(--muted)">
+            <input type="checkbox" id="selAllChk" onchange="selectAllAudio(this.checked)" style="accent-color:var(--purple)"> All
+          </label>
+          <span class="gal-sel-count" id="selCount">0 selected</span>
+          <button class="gal-del-btn" id="bulkDelBtn" onclick="bulkDeleteAudio()" disabled style="opacity:.4">🗑 Delete selected</button>
+        </div>
+      </div>
       <div class="gal-grid" id="audGallery"><div style="color:var(--muted);font-size:13px">Loading…</div></div>
     </div>
   </div>
@@ -3439,27 +3479,69 @@ function addMusicCard(d){
   card.querySelector('audio').play().catch(()=>{});
 }
 checkAceStep();
+let _audSel=new Set();
 async function loadGallery(){
+  _audSel.clear();_updateSelBar();
   try{
     const d=await(await fetch('/api/audios')).json();
     const g=document.getElementById('audGallery');g.innerHTML='';
-    if(!(d.files||[]).length){g.innerHTML='<div style="color:var(--muted);font-size:13px">No audio generated yet.</div>';return;}
-    (d.files||[]).forEach(f=>{
+    const files=d.files||[];
+    const tb=document.getElementById('audToolbar');
+    tb.style.display=files.length?'flex':'none';
+    if(!files.length){g.innerHTML='<div style="color:var(--muted);font-size:13px">No audio generated yet.</div>';return;}
+    files.forEach(f=>{
       const u='/api/audio-file/'+f;
-      const el=document.createElement('div');el.className='gal-item';
-      el.innerHTML='<div class="gal-name">'+f+'</div><audio class="gal-audio" src="'+u+'" controls></audio>'+
+      const el=document.createElement('div');el.className='gal-item';el.dataset.file=f;
+      el.innerHTML=
+        '<div style="display:flex;align-items:center;gap:8px">'+
+          '<input type="checkbox" class="gal-check" onchange="_audToggle(this,\''+f+'\')" title="Select">'+
+          '<div class="gal-name" title="'+f+'">'+f+'</div>'+
+        '</div>'+
+        '<audio class="gal-audio" src="'+u+'" controls></audio>'+
         '<div class="gal-dl"><a href="'+u+'" download="'+f+'">⬇ Download</a>'+
-        '<button class="gal-del-btn" onclick="delGalleryFile(event,\''+f+'\',\'audio\')">🗑 Delete</button></div>';
+        '<button class="gal-del-btn" onclick="delGalleryFile(event,\''+f+'\',\'audio\')">🗑</button></div>';
       g.appendChild(el);
     });
   }catch(e){}
 }
+function _audToggle(chk,f){
+  if(chk.checked)_audSel.add(f);else _audSel.delete(f);
+  const el=chk.closest('.gal-item');if(el)el.classList.toggle('selected',chk.checked);
+  _updateSelBar();
+}
+function selectAllAudio(on){
+  _audSel.clear();
+  document.querySelectorAll('#audGallery .gal-item').forEach(el=>{
+    const chk=el.querySelector('.gal-check');
+    if(chk){chk.checked=on;el.classList.toggle('selected',on);if(on)_audSel.add(el.dataset.file);}
+  });
+  _updateSelBar();
+}
+function _updateSelBar(){
+  const n=_audSel.size;
+  const btn=document.getElementById('bulkDelBtn');
+  const lbl=document.getElementById('selCount');
+  const allChk=document.getElementById('selAllChk');
+  if(btn){btn.disabled=n===0;btn.style.opacity=n?'1':'.4';}
+  if(lbl)lbl.textContent=n?n+' selected':'';
+  const total=document.querySelectorAll('#audGallery .gal-item').length;
+  if(allChk)allChk.indeterminate=n>0&&n<total,allChk.checked=total>0&&n===total;
+}
+async function bulkDeleteAudio(){
+  const files=[..._audSel];
+  if(!files.length)return;
+  if(!confirm('Delete '+files.length+' file'+(files.length>1?'s':'')+' permanently?'))return;
+  const r=await fetch('/api/delete-files',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({names:files,kind:'audio'})});
+  if(r.ok){_audSel.clear();loadGallery();}
+  else{try{const d=await r.json();alert('Delete failed: '+(d.error||'unknown'));}catch(e){alert('Delete failed');}}
+}
 async function delGalleryFile(ev,fname,kind){
   ev.stopPropagation();ev.preventDefault();
-  if(!confirm('Delete '+fname+' permanently from this machine?'))return;
+  if(!confirm('Delete '+fname+' permanently?'))return;
   const r=await fetch('/api/delete-file',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({name:fname,kind:kind})});
-  if(r.ok){loadGallery();}
+  if(r.ok){_audSel.delete(fname);loadGallery();}
   else{try{const d=await r.json();alert('Delete failed: '+(d.error||'unknown'));}catch(e){alert('Delete failed');}}
 }
 </script></body></html>"""
