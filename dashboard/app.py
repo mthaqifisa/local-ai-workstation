@@ -3429,6 +3429,7 @@ a{color:var(--blue);text-decoration:none}
 </div>
 <script>
 let selVoice='af_sky',selFmt='wav';
+function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 const AUD_PROMPTS_KEY='law_aud_prompts';
 function saveAudPrompt(f,p){try{const m=JSON.parse(localStorage.getItem(AUD_PROMPTS_KEY)||'{}');m[f]=p;localStorage.setItem(AUD_PROMPTS_KEY,JSON.stringify(m));}catch(e){}}
 function getAudPrompt(f){try{return (JSON.parse(localStorage.getItem(AUD_PROMPTS_KEY)||'{}'))[f]||'';}catch(e){return '';}}
