@@ -3310,6 +3310,17 @@ a{color:var(--blue);text-decoration:none}
   border:1px solid rgba(100,116,139,.35);border-radius:10px;padding:12px 14px;
   font-family:var(--mono);font-size:11px;color:var(--text);line-height:1.7;
   box-shadow:0 8px 24px rgba(0,0,0,.6);display:none;word-break:break-word;white-space:pre-wrap}
+.jam-params{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+@media(max-width:700px){.jam-params{grid-template-columns:1fr 1fr}}
+.jam-input{width:100%;padding:6px 10px;border-radius:6px;border:1px solid var(--bdr);
+  background:rgba(10,22,40,.8);color:var(--text);font:13px var(--sans);outline:none;transition:.2s;margin-top:6px}
+.jam-input:focus{border-color:var(--green);box-shadow:0 0 0 2px rgba(16,185,129,.12)}
+.jam-select{background:rgba(10,22,40,.8);border:1px solid var(--bdr);border-radius:6px;
+  color:var(--text);font-family:var(--mono);font-size:11px;padding:5px 8px;cursor:pointer;width:100%;margin-top:4px}
+.jam-player-card{border-color:rgba(124,58,237,.35)!important}
+.gal-rename-btn{background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:11px;
+  padding:0 3px;opacity:.6;transition:.15s;line-height:1;flex-shrink:0}
+.gal-rename-btn:hover{opacity:1;color:var(--blue)}
 </style></head><body>
 <div id="mediaInfo"></div>
 <!--NAV-->
@@ -3321,6 +3332,7 @@ a{color:var(--blue);text-decoration:none}
   <div class="tab-bar">
     <button class="tab active" onclick="switchTab('tts',this)">🗣 Text-to-Speech</button>
     <button class="tab" onclick="switchTab('music',this)">🎸 Music Studio</button>
+    <button class="tab" onclick="switchTab('jamming',this)">🎙 Jamming Studio</button>
     <button class="tab" onclick="switchTab('gallery',this)">📁 Library</button>
   </div>
 
@@ -3376,6 +3388,17 @@ a{color:var(--blue);text-decoration:none}
       <textarea class="vq" id="musicPrompt" rows="3"
         placeholder="e.g. Malaysia Negaraku national anthem&#10;e.g. relaxing jazz piano for late night coding sessions&#10;e.g. hip-hop song about machine learning with energetic beats"></textarea>
       <div style="display:flex;gap:12px;align-items:center;margin-top:10px;flex-wrap:wrap">
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:110px">
+          <label style="font-size:10px;font-family:var(--mono);color:var(--muted)">LENGTH</label>
+          <select id="musicLength" style="background:rgba(10,22,40,.8);border:1px solid var(--bdr);border-radius:6px;
+            color:var(--text);font-family:var(--mono);font-size:11px;padding:5px 8px;cursor:pointer">
+            <option value="30">30 seconds</option>
+            <option value="60" selected>1 minute</option>
+            <option value="120">2 minutes</option>
+            <option value="180">3 minutes</option>
+            <option value="300">5 minutes</option>
+          </select>
+        </div>
         <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:140px">
           <label style="font-size:10px;font-family:var(--mono);color:var(--muted)">LANGUAGE (auto-detect or override)</label>
           <select id="musicLang" style="background:rgba(10,22,40,.8);border:1px solid var(--bdr);border-radius:6px;
@@ -3426,6 +3449,117 @@ a{color:var(--blue);text-decoration:none}
       <div class="gal-grid" id="audGallery"><div style="color:var(--muted);font-size:13px">Loading…</div></div>
     </div>
   </div>
+
+  <!-- JAMMING STUDIO TAB -->
+  <div class="tab-pane" id="tab-jamming">
+    <div class="card">
+      <div class="sec-lbl">LYRICS</div>
+      <textarea class="vq" id="jamLyrics" rows="6"
+        placeholder="Paste or write your full lyrics here…&#10;Leave blank for instrumental or let ACE-Step generate its own."></textarea>
+    </div>
+    <div class="two-col">
+      <div class="card">
+        <div class="sec-lbl">GENRE — select multiple</div>
+        <div class="voice-chips" id="jamGenreChips">
+          <button class="vc" onclick="toggleJamChip(this)">Pop</button>
+          <button class="vc" onclick="toggleJamChip(this)">Rock</button>
+          <button class="vc" onclick="toggleJamChip(this)">Hip-Hop</button>
+          <button class="vc" onclick="toggleJamChip(this)">R&amp;B</button>
+          <button class="vc" onclick="toggleJamChip(this)">Jazz</button>
+          <button class="vc" onclick="toggleJamChip(this)">Electronic</button>
+          <button class="vc" onclick="toggleJamChip(this)">Classical</button>
+          <button class="vc" onclick="toggleJamChip(this)">Folk</button>
+          <button class="vc" onclick="toggleJamChip(this)">Malay Pop</button>
+          <button class="vc" onclick="toggleJamChip(this)">Indie</button>
+          <button class="vc" onclick="toggleJamChip(this)">Metal</button>
+          <button class="vc" onclick="toggleJamChip(this)">Country</button>
+        </div>
+        <input class="jam-input" id="jamGenreCustom" placeholder="Custom genre (e.g. Afrobeats, Bossa Nova)…">
+      </div>
+      <div class="card">
+        <div class="sec-lbl">INSTRUMENTS — select multiple</div>
+        <div class="voice-chips" id="jamInstrChips">
+          <button class="vc" onclick="toggleJamChip(this)">Guitar</button>
+          <button class="vc" onclick="toggleJamChip(this)">Piano</button>
+          <button class="vc" onclick="toggleJamChip(this)">Drums</button>
+          <button class="vc" onclick="toggleJamChip(this)">Bass</button>
+          <button class="vc" onclick="toggleJamChip(this)">Violin</button>
+          <button class="vc" onclick="toggleJamChip(this)">Synthesizer</button>
+          <button class="vc" onclick="toggleJamChip(this)">Trumpet</button>
+          <button class="vc" onclick="toggleJamChip(this)">Saxophone</button>
+          <button class="vc" onclick="toggleJamChip(this)">Strings</button>
+          <button class="vc" onclick="toggleJamChip(this)">Choir</button>
+        </div>
+        <input class="jam-input" id="jamInstrCustom" placeholder="Custom instrument (e.g. Sitar, Accordion)…">
+      </div>
+    </div>
+    <div class="card">
+      <div class="jam-params">
+        <div>
+          <div class="sec-lbl">LENGTH</div>
+          <select class="jam-select" id="jamLength">
+            <option value="30">30 seconds</option>
+            <option value="60" selected>1 minute</option>
+            <option value="120">2 minutes</option>
+            <option value="180">3 minutes</option>
+            <option value="300">5 minutes</option>
+          </select>
+        </div>
+        <div>
+          <div class="sec-lbl">LANGUAGE</div>
+          <select class="jam-select" id="jamLang">
+            <option value="en">English</option>
+            <option value="ms">Malay / Bahasa</option>
+            <option value="zh">Chinese</option>
+            <option value="ar">Arabic</option>
+            <option value="de">German</option>
+            <option value="es">Spanish</option>
+            <option value="fr">French</option>
+            <option value="hi">Hindi</option>
+            <option value="id">Indonesian</option>
+            <option value="it">Italian</option>
+            <option value="ja">Japanese</option>
+            <option value="ko">Korean</option>
+            <option value="pt">Portuguese</option>
+            <option value="ru">Russian</option>
+            <option value="ta">Tamil</option>
+            <option value="tr">Turkish</option>
+          </select>
+        </div>
+        <div>
+          <div class="sec-lbl">SLANG / STYLE</div>
+          <input class="jam-input" id="jamSlang" style="margin-top:4px" placeholder="e.g. AAVE, Manglish, Cockney…">
+        </div>
+        <div>
+          <div class="sec-lbl">SINGER TO MIMIC</div>
+          <input class="jam-input" id="jamSinger" style="margin-top:4px" placeholder="e.g. Eminem, Siti Nurhaliza…">
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="sec-lbl">CUSTOM PROMPT / ALTER</div>
+      <textarea class="vq" id="jamCustomPrompt" rows="2"
+        placeholder="Extra style tags or re-generation tweaks (blended with your selections above)…&#10;e.g. dark and cinematic, slow tempo, heavy reverb, melancholic mood"></textarea>
+    </div>
+    <div id="jamAceStatus" style="font-size:11px;font-family:var(--mono);color:var(--muted)">Checking ACE-Step…</div>
+    <button class="gen-btn" id="jamBtn" onclick="generateJam()">🎙 Generate Track</button>
+    <div class="prog" id="jamProg"><div class="pb"></div></div>
+    <div class="st" id="jamStatus"></div>
+    <div class="card jam-player-card" id="jamPlayerCard" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div class="sec-lbl" style="margin-bottom:0">CURRENT TRACK</div>
+        <div style="font-size:10px;font-family:var(--mono);color:var(--muted)" id="jamTrackInfo"></div>
+      </div>
+      <audio class="audio-player" id="jamPlayer" controls></audio>
+      <div style="display:flex;gap:10px;margin-top:12px;align-items:center;flex-wrap:wrap">
+        <a id="jamDownload" href="#" download style="font-size:12px;color:var(--blue)">⬇ Download</a>
+        <button id="jamSaveBtn" onclick="saveJamToLibrary()"
+          style="margin-left:auto;padding:8px 18px;border:none;border-radius:8px;cursor:pointer;
+            font:600 13px var(--sans);color:#fff;
+            background:linear-gradient(135deg,var(--purple),#6d28d9);transition:.2s">💾 Save to Library</button>
+      </div>
+    </div>
+  </div>
 </div>
 <script>
 let selVoice='af_sky',selFmt='wav';
@@ -3452,7 +3586,7 @@ function switchTab(name,btn){
   btn.classList.add('active');
   document.getElementById('tab-'+name).classList.add('active');
   if(name==='gallery')loadGallery();
-  if(name==='music')checkAceStep();
+  if(name==='music'||name==='jamming')checkAceStep();
 }
 function setVoice(btn){selVoice=btn.dataset.voice;document.querySelectorAll('.vc').forEach(b=>b.classList.toggle('active',b===btn));}
 function setFmt(btn){selFmt=btn.dataset.fmt;document.querySelectorAll('[data-fmt]').forEach(b=>b.classList.toggle('active',b===btn));}
@@ -3488,21 +3622,22 @@ async function genTTS(){
 }
 let aceRunning=false,musicJobId=null,musicPollT=null;
 async function checkAceStep(){
-  const el=document.getElementById('aceStatus');
+  const els=['aceStatus','jamAceStatus'].map(id=>document.getElementById(id)).filter(Boolean);
+  function setHtml(h){els.forEach(el=>el.innerHTML=h);}
   try{
     const r=await fetch('/api/music-status',{signal:AbortSignal.timeout(4000)});
     const d=await r.json();
     aceRunning=d.running;
     if(d.running){
-      el.innerHTML='<span style="color:var(--green)">● ACE-Step ready</span> · <a href="http://localhost:7860" target="_blank" style="font-size:10px;color:var(--blue)">Open UI →</a>';
+      setHtml('<span style="color:var(--green)">● ACE-Step ready</span> · <a href="http://localhost:7860" target="_blank" style="font-size:10px;color:var(--blue)">Open UI →</a>');
     }else if(d.starting){
-      el.innerHTML='<span style="color:var(--blue)">⏳ ACE-Step starting…</span>';
+      setHtml('<span style="color:var(--blue)">⏳ ACE-Step starting…</span>');
       setTimeout(checkAceStep,6000);
     }else{
-      el.innerHTML='<span style="color:var(--amber)">● ACE-Step not running</span> · <button onclick="startAceStep()" style="font-size:10px;padding:2px 8px;border:1px solid var(--amber);background:transparent;color:var(--amber);border-radius:4px;cursor:pointer">▶ Start</button>';
+      setHtml('<span style="color:var(--amber)">● ACE-Step not running</span> · <button onclick="startAceStep()" style="font-size:10px;padding:2px 8px;border:1px solid var(--amber);background:transparent;color:var(--amber);border-radius:4px;cursor:pointer">▶ Start</button>');
     }
   }catch(e){
-    el.innerHTML='<span style="color:var(--muted)">● ACE-Step status unknown</span>';
+    setHtml('<span style="color:var(--muted)">● ACE-Step status unknown</span>');
   }
 }
 async function startAceStep(){
@@ -3522,6 +3657,7 @@ async function generateMusic(){
   }
   const lang=document.getElementById('musicLang').value;
   const instrumental=document.getElementById('musicInstrumental').checked;
+  const length=parseInt(document.getElementById('musicLength').value)||60;
   const btn=document.getElementById('musicBtn');
   btn.disabled=true;
   document.getElementById('musicProg').classList.add('on');
@@ -3530,7 +3666,7 @@ async function generateMusic(){
   try{
     const r=await fetch('/api/music-generate',{method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({prompt,language:lang,instrumental})});
+      body:JSON.stringify({prompt,language:lang,instrumental,length_seconds:length})});
     const d=await r.json();
     if(!r.ok){
       document.getElementById('musicStatus').textContent=d.error||'Generation failed';
@@ -3592,6 +3728,140 @@ function addMusicCard(d){
   card.querySelector('audio').play().catch(()=>{});
 }
 checkAceStep();
+let _jamFile=null,_jamJobId=null,_jamPollT=null;
+function toggleJamChip(btn){btn.classList.toggle('active');}
+function _jamGenres(){
+  const chips=[...document.querySelectorAll('#jamGenreChips .vc.active')].map(b=>b.textContent.trim());
+  const custom=(document.getElementById('jamGenreCustom').value||'').trim();
+  if(custom)chips.push(custom);
+  return chips;
+}
+function _jamInstrs(){
+  const chips=[...document.querySelectorAll('#jamInstrChips .vc.active')].map(b=>b.textContent.trim());
+  const custom=(document.getElementById('jamInstrCustom').value||'').trim();
+  if(custom)chips.push(custom);
+  return chips;
+}
+async function generateJam(){
+  if(!aceRunning){
+    document.getElementById('jamStatus').textContent='ACE-Step not running — click Start first';
+    document.getElementById('jamStatus').className='st err';
+    return;
+  }
+  const genres=_jamGenres(),instruments=_jamInstrs();
+  const lyrics=(document.getElementById('jamLyrics').value||'').trim();
+  const length=parseInt(document.getElementById('jamLength').value)||60;
+  const lang=document.getElementById('jamLang').value||'en';
+  const slang=(document.getElementById('jamSlang').value||'').trim();
+  const singer=(document.getElementById('jamSinger').value||'').trim();
+  const custom=(document.getElementById('jamCustomPrompt').value||'').trim();
+  const btn=document.getElementById('jamBtn');
+  btn.disabled=true;
+  document.getElementById('jamProg').classList.add('on');
+  document.getElementById('jamStatus').textContent='Sending to ACE-Step…';
+  document.getElementById('jamStatus').className='st';
+  try{
+    const r=await fetch('/api/jamming-generate',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({genres,instruments,lyrics,length_seconds:length,language:lang,slang,singer,custom_prompt:custom})});
+    const d=await r.json();
+    if(!r.ok){
+      document.getElementById('jamStatus').textContent=d.error||'Generation failed';
+      document.getElementById('jamStatus').className='st err';
+      btn.disabled=false;document.getElementById('jamProg').classList.remove('on');
+      return;
+    }
+    _jamJobId=d.job_id;
+    document.getElementById('jamStatus').textContent='Generating track… (2–5 min depending on length)';
+    pollJamJob();
+  }catch(e){
+    document.getElementById('jamStatus').textContent='Error: '+e;
+    document.getElementById('jamStatus').className='st err';
+    btn.disabled=false;document.getElementById('jamProg').classList.remove('on');
+  }
+}
+function pollJamJob(){
+  if(!_jamJobId)return;
+  if(_jamPollT)clearTimeout(_jamPollT);
+  _jamPollT=setTimeout(async()=>{
+    try{
+      const r=await fetch('/api/music-job/'+_jamJobId);
+      const d=await r.json();
+      if(d.status==='done'){
+        document.getElementById('jamProg').classList.remove('on');
+        document.getElementById('jamBtn').disabled=false;
+        document.getElementById('jamStatus').textContent='Done in '+d.elapsed+'s — listen and iterate, or save to library';
+        document.getElementById('jamStatus').className='st ok';
+        _jamFile=d.file;
+        const singer=(document.getElementById('jamSinger').value||'').trim();
+        const custom=(document.getElementById('jamCustomPrompt').value||'').trim();
+        saveAudPrompt(d.file,'[Jam] genres:'+_jamGenres().join(',')+' singer:'+singer+'\n\n'+custom);
+        const pc=document.getElementById('jamPlayerCard');pc.style.display='';
+        const pl=document.getElementById('jamPlayer');
+        pl.src='/api/audio-file/'+d.file+'?t='+Date.now();pl.play().catch(()=>{});
+        const dl=document.getElementById('jamDownload');
+        dl.href='/api/audio-file/'+d.file;dl.download=d.file;
+        document.getElementById('jamTrackInfo').textContent=(d.style||'').substring(0,80)+(d.elapsed?' · '+d.elapsed+'s':'');
+        const sb=document.getElementById('jamSaveBtn');sb.textContent='💾 Save to Library';sb.disabled=false;
+        _jamJobId=null;
+      }else if(d.status==='error'){
+        document.getElementById('jamProg').classList.remove('on');
+        document.getElementById('jamBtn').disabled=false;
+        document.getElementById('jamStatus').textContent=d.error||'Generation failed';
+        document.getElementById('jamStatus').className='st err';
+        _jamJobId=null;
+      }else{
+        const elapsed=d.elapsed||0;
+        document.getElementById('jamStatus').textContent='Generating audio… '+elapsed+'s elapsed';
+        pollJamJob();
+      }
+    }catch(e){pollJamJob();}
+  },4000);
+}
+async function saveJamToLibrary(){
+  if(!_jamFile)return;
+  const ext=_jamFile.endsWith('.wav')?'.wav':'.mp3';
+  const base=_jamFile.replace(/\.(wav|mp3)$/,'');
+  const inp=prompt('Save to library as (filename without extension):',base);
+  if(!inp)return;
+  const clean=inp.trim().replace(/[^A-Za-z0-9._-]/g,'-').replace(/^-+|-+$/g,'')||base;
+  const newName=clean+ext;
+  if(newName===_jamFile){alert('Already saved as '+_jamFile);return;}
+  try{
+    const r=await fetch('/api/rename-audio',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({old_name:_jamFile,new_name:newName})});
+    const d=await r.json();
+    if(r.ok){
+      const oldPrompt=getAudPrompt(_jamFile);
+      if(oldPrompt)saveAudPrompt(newName,oldPrompt);
+      _jamFile=newName;
+      const sb=document.getElementById('jamSaveBtn');sb.textContent='✓ Saved as '+newName;sb.disabled=true;
+      const dl=document.getElementById('jamDownload');dl.href='/api/audio-file/'+newName;dl.download=newName;
+      document.getElementById('jamPlayer').src='/api/audio-file/'+newName+'?t='+Date.now();
+    }else{alert('Rename failed: '+(d.error||'unknown'));}
+  }catch(e){alert('Error: '+e);}
+}
+async function renameAudio(fname){
+  const ext=fname.endsWith('.wav')?'.wav':'.mp3';
+  const base=fname.replace(/\.(wav|mp3)$/,'');
+  const inp=prompt('Rename file (without extension):',base);
+  if(!inp||inp.trim()===base)return;
+  const clean=inp.trim().replace(/[^A-Za-z0-9._-]/g,'-').replace(/^-+|-+$/g,'')||base;
+  const newName=clean+ext;
+  if(newName===fname)return;
+  try{
+    const r=await fetch('/api/rename-audio',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({old_name:fname,new_name:newName})});
+    const d=await r.json();
+    if(r.ok){
+      const oldPrompt=getAudPrompt(fname);
+      if(oldPrompt)saveAudPrompt(newName,oldPrompt);
+      loadGallery();
+    }else{alert('Rename failed: '+(d.error||'unknown'));}
+  }catch(e){alert('Error: '+e);}
+}
 let _audSel=new Set();
 async function loadGallery(){
   _audSel.clear();_updateSelBar();
@@ -3609,6 +3879,7 @@ async function loadGallery(){
         '<div style="display:flex;align-items:center;gap:8px">'+
           '<input type="checkbox" class="gal-check" onchange="_audToggle(this,\''+f+'\')" title="Select">'+
           '<div class="gal-name" title="'+f+'" style="flex:1;min-width:0">'+f+'</div>'+
+          '<button class="gal-rename-btn" title="Rename file" onclick="renameAudio(\''+f+'\')">✏</button>'+
           '<button class="info-btn" title="View prompt" data-prompt="'+esc(getAudPrompt(f)||'No prompt recorded.').replace(/"/g,'&quot;')+'" onclick="showMediaInfo(event,this.dataset.prompt)">ⓘ</button>'+
         '</div>'+
         '<audio class="gal-audio" src="'+u+'" controls></audio>'+
@@ -3771,7 +4042,7 @@ def _acestep_running():
     except Exception:
         return False
 
-def _run_music_job(job_id, user_prompt, language_hint="auto", instrumental=False):
+def _run_music_job(job_id, user_prompt, language_hint="auto", instrumental=False, duration=60):
     import shutil
     try:
         _MUSIC_JOBS[job_id]["phase"] = "planning"
@@ -3786,7 +4057,7 @@ def _run_music_job(job_id, user_prompt, language_hint="auto", instrumental=False
             "prompt": style,
             "lyrics": "" if instr else lyrics,
             "vocal_language": lang,
-            "audio_duration": 60,
+            "audio_duration": duration,
             "audio_format": "mp3",
         }
         _MUSIC_JOBS[job_id].update({"phase": "generating", "style": style, "lang": lang})
@@ -3839,6 +4110,55 @@ def _run_music_job(job_id, user_prompt, language_hint="auto", instrumental=False
     except Exception as e:
         _MUSIC_JOBS[job_id].update({"status": "error", "error": str(e)[:300]})
 
+def _run_jam_job(job_id, style, lyrics, language, duration):
+    import shutil
+    try:
+        payload = {
+            "prompt": style,
+            "lyrics": lyrics,
+            "vocal_language": language,
+            "audio_duration": duration,
+            "audio_format": "mp3",
+        }
+        r = requests.post(f"{_ACESTEP_URL}/release_task", json=payload, timeout=600)
+        if r.status_code != 200:
+            _MUSIC_JOBS[job_id].update({"status": "error", "error": r.text[:300]})
+            return
+        resp = r.json().get("data", {})
+        task_id = resp.get("task_id")
+        if not task_id:
+            _MUSIC_JOBS[job_id].update({"status": "error", "error": "No task_id in response"})
+            return
+        qr = requests.post(f"{_ACESTEP_URL}/query_result",
+                           json={"task_id_list": [task_id]}, timeout=15)
+        if qr.status_code != 200:
+            _MUSIC_JOBS[job_id].update({"status": "error", "error": "query_result failed"})
+            return
+        items = qr.json().get("data", [])
+        item = items[0] if items else {}
+        result_raw = item.get("result", "[]")
+        try:
+            result_list = json.loads(result_raw) if isinstance(result_raw, str) else result_raw
+        except Exception:
+            result_list = []
+        if not result_list or item.get("status", 0) != 1:
+            err = (result_list[0].get("error") if result_list else None) or "No audio returned"
+            _MUSIC_JOBS[job_id].update({"status": "error", "error": err})
+            return
+        audio_path = result_list[0].get("file", "")
+        if not audio_path or not Path(audio_path).exists():
+            _MUSIC_JOBS[job_id].update({"status": "error", "error": "Audio file not found on disk"})
+            return
+        AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+        dest_name = f"jam_{_uuid.uuid4().hex[:10]}.mp3"
+        shutil.copy2(audio_path, str(AUDIO_DIR / dest_name))
+        elapsed = int(_time.time() - _MUSIC_JOBS[job_id]["start"])
+        _MUSIC_JOBS[job_id].update({
+            "status": "done", "file": dest_name, "elapsed": elapsed, "style": style,
+        })
+    except Exception as e:
+        _MUSIC_JOBS[job_id].update({"status": "error", "error": str(e)[:300]})
+
 @app.route("/api/music-status")
 @require_auth
 def api_music_status():
@@ -3852,12 +4172,16 @@ def api_music_generate():
     prompt = (d.get("prompt") or "").strip()
     language_hint = (d.get("language") or "auto").strip()
     instrumental = bool(d.get("instrumental", False))
+    try:
+        length_seconds = max(30, min(300, int(d.get("length_seconds") or 60)))
+    except Exception:
+        length_seconds = 60
     if not prompt: return jsonify({"error": "prompt required"}), 400
     if not _acestep_running():
         return jsonify({"error": "ACE-Step not running. Click Start in Music Studio."}), 503
     job_id = str(_uuid.uuid4())[:8]
     _MUSIC_JOBS[job_id] = {"status": "running", "phase": "planning", "start": _time.time(), "error": None}
-    _th.Thread(target=_run_music_job, args=(job_id, prompt, language_hint, instrumental), daemon=True).start()
+    _th.Thread(target=_run_music_job, args=(job_id, prompt, language_hint, instrumental, length_seconds), daemon=True).start()
     return jsonify({"job_id": job_id, "plan_summary": "Orchestrator is planning your music…"})
 
 @app.route("/api/music-job/<job_id>")
@@ -3883,6 +4207,55 @@ def api_music_start():
                    "--port", "7860", "--enable-api"],
                   cwd=str(ace_dir), stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
     return jsonify({"ok": True})
+
+@app.route("/api/jamming-generate", methods=["POST"])
+@require_auth
+def api_jamming_generate():
+    d = request.get_json(force=True, silent=True) or {}
+    genres = [str(g).strip() for g in (d.get("genres") or []) if str(g).strip()]
+    instruments = [str(i).strip() for i in (d.get("instruments") or []) if str(i).strip()]
+    lyrics = (d.get("lyrics") or "").strip()
+    try:
+        length_seconds = max(30, min(300, int(d.get("length_seconds") or 60)))
+    except Exception:
+        length_seconds = 60
+    language = (d.get("language") or "en").strip()
+    slang = (d.get("slang") or "").strip()
+    singer = (d.get("singer") or "").strip()
+    custom_prompt = (d.get("custom_prompt") or "").strip()
+    if not _acestep_running():
+        return jsonify({"error": "ACE-Step not running. Click Start in Music Studio."}), 503
+    parts = list(genres) + list(instruments)
+    if singer:
+        parts.append(f"vocals like {singer}, in the style of {singer}")
+    if slang:
+        parts.append(f"{slang} style")
+    if custom_prompt:
+        parts.append(custom_prompt)
+    style = ", ".join(parts)[:200] if parts else "pop, acoustic"
+    job_id = str(_uuid.uuid4())[:8]
+    _MUSIC_JOBS[job_id] = {"status": "running", "phase": "generating", "start": _time.time(), "error": None}
+    _th.Thread(target=_run_jam_job, args=(job_id, style, lyrics, language, length_seconds), daemon=True).start()
+    return jsonify({"job_id": job_id})
+
+@app.route("/api/rename-audio", methods=["POST"])
+@require_auth
+def api_rename_audio():
+    d = request.get_json(force=True, silent=True) or {}
+    old = (d.get("old_name") or "").strip()
+    new = (d.get("new_name") or "").strip()
+    if not re.match(r"^[A-Za-z0-9._-]+\.(wav|mp3)$", old):
+        return jsonify({"error": "invalid old name"}), 400
+    if not re.match(r"^[A-Za-z0-9._-]+\.(wav|mp3)$", new):
+        return jsonify({"error": "invalid name — use letters, numbers, hyphens only, keep .wav or .mp3 extension"}), 400
+    old_path = AUDIO_DIR / old
+    new_path = AUDIO_DIR / new
+    if not old_path.exists():
+        return jsonify({"error": "file not found"}), 404
+    if new_path.exists():
+        return jsonify({"error": "a file with that name already exists"}), 409
+    old_path.rename(new_path)
+    return jsonify({"ok": True, "new_name": new})
 
 @app.route("/api/audio-file/<name>")
 @require_auth
