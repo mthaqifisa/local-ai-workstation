@@ -25,8 +25,9 @@ Usage:
     mlx-agent --yes "..."                              # auto-approve (careful)
 """
 from __future__ import annotations
-import argparse, json, os, re, shlex, subprocess, sys, textwrap, datetime, time, base64, shutil
+import argparse, json, os, re, shlex, subprocess, sys, textwrap, datetime, time, base64, shutil, uuid
 from pathlib import Path
+from typing import Optional
 
 try:
     import requests
@@ -76,6 +77,290 @@ _MODEL_TEMPS: dict[str, float] = {
 }
 
 ALLOWED_ROOTS = [Path.home(), Path("/tmp"), WORKDIR, WORKSPACE, Path.cwd()]
+
+# =============================================================================
+#  .local-agent/  — per-project persistence standard (mirrors Claude Code's .claude/)
+#
+#  Structure inside any project directory:
+#    .local-agent/
+#    ├── AGENT.md          Project-specific instructions injected into system prompt
+#    ├── settings.json     Per-project config overrides (persona, model, etc.)
+#    ├── memory/           Persistent memories across sessions
+#    │   ├── MEMORY.md     Index (auto-loaded as context)
+#    │   └── <type>_<name>.md  Individual memory files
+#    ├── history.jsonl     Full task history for this project
+#    ├── sessions/         Session snapshots — resume after interruption
+#    └── tasks.json        Task tracking (in-progress, done, blocked)
+# =============================================================================
+
+AGENT_MD_TEMPLATE = """\
+# Agent Instructions
+
+This file is loaded automatically when the local agent runs in this project.
+Edit it to give the agent project-specific context, constraints, and preferences.
+
+## Project Overview
+<!-- One paragraph: what this project is, who it's for, what success looks like -->
+
+## Tech Stack
+<!-- Key technologies, frameworks, and versions in use -->
+
+## Agent Rules
+<!-- Project-specific rules: port numbers, file conventions, forbidden actions, etc. -->
+
+## Key Files & Paths
+<!-- Important files the agent should know about before touching anything -->
+
+## Memory Index
+<!-- The agent will populate .local-agent/memory/ automatically. -->
+"""
+
+_GLOBAL_LA_DIR = Path.home() / ".local-agent"  # global (cross-project) memory
+
+
+class LocalAgentManager:
+    """Manages the .local-agent/ folder for project-level persistence.
+
+    Searched starting from CWD, walking up — same discovery pattern as .git/.
+    Falls back to global ~/.local-agent/ when no project-level folder exists.
+    """
+
+    FOLDER_NAME = ".local-agent"
+
+    def __init__(self, start_dir: Optional[Path] = None):
+        self.project_dir: Optional[Path] = self._find_project_dir(start_dir or Path.cwd())
+        self.agent_dir: Optional[Path] = (
+            self.project_dir / self.FOLDER_NAME if self.project_dir else None
+        )
+
+    def _find_project_dir(self, start: Path) -> Optional[Path]:
+        d = start.resolve()
+        while True:
+            if (d / self.FOLDER_NAME).is_dir():
+                return d
+            parent = d.parent
+            if parent == d:
+                return None
+            d = parent
+
+    def exists(self) -> bool:
+        return self.agent_dir is not None and self.agent_dir.is_dir()
+
+    # ── initialisation ──────────────────────────────────────────────────────
+
+    def init(self, project_dir: Path) -> str:
+        """Create the .local-agent/ folder structure. Idempotent."""
+        self.project_dir = project_dir.resolve()
+        self.agent_dir = self.project_dir / self.FOLDER_NAME
+        self.agent_dir.mkdir(parents=True, exist_ok=True)
+        (self.agent_dir / "memory").mkdir(exist_ok=True)
+        (self.agent_dir / "sessions").mkdir(exist_ok=True)
+        (self.agent_dir / "plans").mkdir(exist_ok=True)
+
+        agent_md = self.agent_dir / "AGENT.md"
+        if not agent_md.exists():
+            agent_md.write_text(AGENT_MD_TEMPLATE)
+
+        settings_f = self.agent_dir / "settings.json"
+        if not settings_f.exists():
+            settings_f.write_text(json.dumps({
+                "persona": "orchestrator",
+                "model": None,
+                "notes": "Per-project agent config. null = inherit global defaults."
+            }, indent=2))
+
+        mem_index = self.agent_dir / "memory" / "MEMORY.md"
+        if not mem_index.exists():
+            mem_index.write_text("# Agent Memory Index\n\nNo memories yet.\n")
+
+        history_f = self.agent_dir / "history.jsonl"
+        if not history_f.exists():
+            history_f.touch()
+
+        tasks_f = self.agent_dir / "tasks.json"
+        if not tasks_f.exists():
+            tasks_f.write_text(json.dumps({"tasks": []}, indent=2))
+
+        return str(self.agent_dir)
+
+    # ── context injection ────────────────────────────────────────────────────
+
+    def load_context(self) -> str:
+        """Return AGENT.md + MEMORY.md index as a single context block."""
+        if not self.exists():
+            return ""
+        parts = []
+
+        agent_md = self.agent_dir / "AGENT.md"
+        if agent_md.exists():
+            content = agent_md.read_text().strip()
+            if content and content != AGENT_MD_TEMPLATE.strip():
+                parts.append(
+                    f"PROJECT AGENT INSTRUCTIONS (from .local-agent/AGENT.md):\n{content}"
+                )
+
+        mem_index = self.agent_dir / "memory" / "MEMORY.md"
+        if mem_index.exists():
+            content = mem_index.read_text().strip()
+            if content and "No memories yet" not in content:
+                parts.append(
+                    f"PROJECT MEMORY INDEX (from .local-agent/memory/MEMORY.md):\n{content}"
+                )
+
+        return "\n\n".join(parts)
+
+    def load_settings(self) -> dict:
+        """Load per-project settings.json overrides."""
+        if not self.exists():
+            return {}
+        settings_f = self.agent_dir / "settings.json"
+        if not settings_f.exists():
+            return {}
+        try:
+            return json.loads(settings_f.read_text())
+        except Exception:
+            return {}
+
+    # ── history ─────────────────────────────────────────────────────────────
+
+    def append_history(self, query: str, answer: str, persona: str, model: str):
+        if not self.exists():
+            return
+        entry = {
+            "ts": time.time(),
+            "ts_human": datetime.datetime.now().isoformat(),
+            "persona": persona,
+            "model": model,
+            "query": query[:500],
+            "answer_preview": (answer or "")[:300],
+        }
+        history_f = self.agent_dir / "history.jsonl"
+        with history_f.open("a") as f:
+            f.write(json.dumps(entry) + "\n")
+
+    def read_history(self, n: int = 10) -> str:
+        if not self.exists():
+            return "[no .local-agent/ in this project]"
+        history_f = self.agent_dir / "history.jsonl"
+        if not history_f.exists() or history_f.stat().st_size == 0:
+            return "[no history yet]"
+        lines = history_f.read_text().strip().splitlines()
+        recent = lines[-n:]
+        out = []
+        for ln in recent:
+            try:
+                e = json.loads(ln)
+                out.append(
+                    f"[{e.get('ts_human','?')[:19]}] {e.get('persona','?')} — "
+                    f"{e.get('query','')[:80]}"
+                )
+            except Exception:
+                pass
+        return "\n".join(out) or "[empty history]"
+
+    # ── session snapshots ────────────────────────────────────────────────────
+
+    def save_session(self, session_id: str, query: str, messages: list,
+                     partial_answer: str = ""):
+        if not self.exists():
+            return
+        snapshot = {
+            "session_id": session_id,
+            "ts": time.time(),
+            "ts_human": datetime.datetime.now().isoformat(),
+            "query": query,
+            "messages": messages[-30:],
+            "partial_answer": partial_answer,
+        }
+        sessions_dir = self.agent_dir / "sessions"
+        sessions_dir.mkdir(exist_ok=True)
+        (sessions_dir / f"{session_id}.json").write_text(json.dumps(snapshot, indent=2))
+
+    def load_last_session(self) -> Optional[dict]:
+        if not self.exists():
+            return None
+        sessions_dir = self.agent_dir / "sessions"
+        if not sessions_dir.exists():
+            return None
+        snapshots = sorted(
+            sessions_dir.glob("*.json"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        if not snapshots:
+            return None
+        try:
+            return json.loads(snapshots[0].read_text())
+        except Exception:
+            return None
+
+    # ── memory CRUD ──────────────────────────────────────────────────────────
+
+    def read_memory(self) -> str:
+        if not self.exists():
+            return "[no .local-agent/ found — run --init-project first]"
+        memory_dir = self.agent_dir / "memory"
+        files = sorted(f for f in memory_dir.glob("*.md") if f.name != "MEMORY.md")
+        if not files:
+            return "[no memory files yet]"
+        parts = [f"=== {f.name} ===\n{f.read_text()}" for f in files]
+        return "\n\n".join(parts)
+
+    def write_memory(self, name: str, content: str, memory_type: str = "project") -> str:
+        if not self.exists():
+            return "[no .local-agent/ — run --init-project first]"
+        memory_dir = self.agent_dir / "memory"
+        memory_dir.mkdir(exist_ok=True)
+
+        slug = re.sub(r"[^a-z0-9_-]", "_", name.lower().strip())[:40]
+        memory_type = memory_type if memory_type in ("user", "project", "feedback", "reference") \
+                      else "project"
+        filename = f"{memory_type}_{slug}.md"
+        filepath = memory_dir / filename
+
+        now = datetime.datetime.now().isoformat()
+        file_content = (
+            f"---\nname: {slug}\ndescription: {content[:120].replace(chr(10),' ')}\n"
+            f"metadata:\n  type: {memory_type}\n  updated: {now}\n---\n\n{content}\n"
+        )
+        filepath.write_text(file_content)
+        self._rebuild_memory_index(memory_dir)
+        return f"[memory saved: .local-agent/memory/{filename}]"
+
+    def forget_memory(self, name: str) -> str:
+        if not self.exists():
+            return "[no .local-agent/ found]"
+        memory_dir = self.agent_dir / "memory"
+        slug = re.sub(r"[^a-z0-9_-]", "_", name.lower().strip())[:40]
+        removed = []
+        for f in memory_dir.glob("*.md"):
+            if f.name != "MEMORY.md" and slug in f.stem:
+                f.unlink()
+                removed.append(f.name)
+        if not removed:
+            return f"[no memory matching '{name}']"
+        self._rebuild_memory_index(memory_dir)
+        return f"[removed: {', '.join(removed)}]"
+
+    def _rebuild_memory_index(self, memory_dir: Path):
+        files = sorted(f for f in memory_dir.glob("*.md") if f.name != "MEMORY.md")
+        entries = []
+        for f in files:
+            desc = ""
+            try:
+                for ln in f.read_text().splitlines():
+                    if ln.startswith("description:"):
+                        desc = ln.split(":", 1)[1].strip()[:100]
+                        break
+            except Exception:
+                pass
+            entries.append(f"- [{f.stem}]({f.name}) — {desc}")
+        index = "# Agent Memory Index\n\n" + ("\n".join(entries) if entries else "No memories yet.") + "\n"
+        (memory_dir / "MEMORY.md").write_text(index)
+
+
+# Global LocalAgentManager — initialised once in main(); tools close over it.
+_LA: Optional[LocalAgentManager] = None
 
 SAFE_COMMANDS = {
     "df","du","ls","cat","head","tail","wc","grep","egrep","find","stat","file",
@@ -1537,6 +1822,42 @@ def t_propose_capability(need: str, kind: str = "package", commands=None,
         outs.append(f"[verify {'OK — capability ready' if rc==0 else 'FAILED (installed ≠ working)'}] {vout[:500]}")
     return "\n".join(outs)
 
+# =============================================================================
+#  .local-agent/ memory tools — persistent knowledge across sessions
+# =============================================================================
+
+def t_remember_fact(name: str, content: str, memory_type: str = "project") -> str:
+    """Write a persistent memory to .local-agent/memory/ for future sessions."""
+    if _LA is None or not _LA.exists():
+        return "[no .local-agent/ in this project — run: ./mlx-setup.sh --init-project]"
+    return _LA.write_memory(name, content, memory_type)
+
+def t_forget_fact(name: str) -> str:
+    """Remove a persistent memory from .local-agent/memory/."""
+    if _LA is None or not _LA.exists():
+        return "[no .local-agent/ found in this project]"
+    return _LA.forget_memory(name)
+
+def t_read_agent_memory() -> str:
+    """Read ALL persistent memory files from .local-agent/memory/."""
+    if _LA is None or not _LA.exists():
+        return "[no .local-agent/ found in this project]"
+    return _LA.read_memory()
+
+def t_read_agent_history(n: int = 10) -> str:
+    """Read the last N task entries from this project's .local-agent/history.jsonl."""
+    if _LA is None or not _LA.exists():
+        return "[no .local-agent/ found in this project]"
+    return _LA.read_history(n)
+
+def t_save_session_snapshot(note: str = "") -> str:
+    """Explicitly snapshot the current session to .local-agent/sessions/ for resumability."""
+    if _LA is None or not _LA.exists():
+        return "[no .local-agent/ found — snapshot skipped]"
+    sid = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    _LA.save_session(sid, note or "manual snapshot", [], note)
+    return f"[session snapshot saved: .local-agent/sessions/{sid}.json]"
+
 TOOLS = {
     "run_shell":  (t_run_shell,  "Run a shell command on the host and return its output. Read-only commands "
                                  "run automatically; others ask the user first."),
@@ -1614,6 +1935,28 @@ TOOLS = {
         "Returns the subagent's final answer plus a short trace of the tools it used. "
         "Spawn ONE AT A TIME — wait for each to finish before spawning the next. "
         "Pass COMPLETE context in every spawn — file paths, prior results, exact requirements."),
+    # ── .local-agent/ memory tools ──────────────────────────────────────────
+    "remember_fact": (t_remember_fact,
+        "Persist a fact, decision, or preference to .local-agent/memory/ so it survives "
+        "across sessions. Use when you learn something about this project that future runs "
+        "should know: tech constraints, user preferences, bug workarounds, key decisions. "
+        "Args: name (slug, e.g. 'api-port'), content (full text), "
+        "memory_type ('project'|'user'|'feedback'|'reference', default 'project'). "
+        "The memory index is auto-injected into every future session's system prompt."),
+    "forget_fact": (t_forget_fact,
+        "Remove a memory from .local-agent/memory/ by its name slug. "
+        "Use when a fact becomes stale or wrong. Args: name (slug used when remembering)."),
+    "read_agent_memory": (t_read_agent_memory,
+        "Read ALL persistent memory files from .local-agent/memory/. "
+        "Use this at the start of a task to recall what was learned in prior sessions "
+        "beyond the MEMORY.md index already in your system prompt."),
+    "read_agent_history": (t_read_agent_history,
+        "Read recent task history from .local-agent/history.jsonl. "
+        "Shows the last N task queries and their personas. Useful for understanding "
+        "what work has been done in this project. Args: n (default 10)."),
+    "save_session_snapshot": (t_save_session_snapshot,
+        "Save a named snapshot to .local-agent/sessions/ for manual resumability. "
+        "Useful before a long risky operation. Args: note (description of current state)."),
 }
 
 def schema(name, props, req):
@@ -1668,6 +2011,23 @@ ALL_SCHEMAS = {
         "persona":{"type":"string","description":"registry persona to delegate to (researcher, coder, dev, deep_reasoner, reasoner, qa, writer, designer, ba, general)"},
         "task":{"type":"string","description":"the sub-task for that specialist; include ALL concrete context (facts, code, prior results) needed — do not make the specialist re-research what you already know"},
     }, ["persona","task"]),
+    # ── .local-agent/ memory & session tools ────────────────────────────────
+    "remember_fact": schema("remember_fact", {
+        "name":        {"type":"string","description":"short slug, e.g. 'api-port' or 'preferred-stack'"},
+        "content":     {"type":"string","description":"full text of the fact/decision/preference to remember"},
+        "memory_type": {"type":"string","enum":["project","user","feedback","reference"],
+                        "description":"project=project facts, user=user preferences, feedback=agent behavior rules, reference=external pointers"},
+    }, ["name","content"]),
+    "forget_fact": schema("forget_fact", {
+        "name": {"type":"string","description":"slug used when the memory was saved"},
+    }, ["name"]),
+    "read_agent_memory": schema("read_agent_memory", {}, []),
+    "read_agent_history": schema("read_agent_history", {
+        "n": {"type":"integer","description":"number of recent entries to return (default 10)"},
+    }, []),
+    "save_session_snapshot": schema("save_session_snapshot", {
+        "note": {"type":"string","description":"description of current state or why you are snapshotting"},
+    }, []),
 }
 
 def tools_for(persona: dict) -> tuple:
@@ -2026,8 +2386,39 @@ def _preflight_restart_inference(persona_name: str) -> None:
             pass
     print(c("[preflight] warning: inference server did not respond within 90s, proceeding anyway", "yellow"))
 
+def cmd_init_project(target_dir: str = "") -> None:
+    """Create .local-agent/ structure in the given directory (default: CWD)."""
+    d = Path(target_dir).expanduser().resolve() if target_dir else Path.cwd()
+    if not d.exists():
+        print(c(f"error: '{d}' does not exist", "red")); return
+    la = LocalAgentManager.__new__(LocalAgentManager)
+    la.project_dir = None; la.agent_dir = None
+    agent_dir = la.init(d)
+    print(c(f"  ✓  .local-agent/ initialised at {agent_dir}", "green"))
+    print(c("  Edit .local-agent/AGENT.md to add project-specific agent instructions.", "dim"))
+    print(c("  Memory, history, and sessions will be stored here automatically.", "dim"))
+
+
+def cmd_show_memory() -> None:
+    """Print the current project's memory to stdout."""
+    la = LocalAgentManager()
+    if not la.exists():
+        print(c("[no .local-agent/ found — run --init-project first]", "yellow")); return
+    print(c(f"Project memory ({la.agent_dir}/memory/):", "cyan"))
+    print(la.read_memory())
+
+
+def cmd_show_history(n: int = 20) -> None:
+    """Print the last N history entries for the current project."""
+    la = LocalAgentManager()
+    if not la.exists():
+        print(c("[no .local-agent/ found]", "yellow")); return
+    print(c(f"Recent task history ({la.agent_dir}/history.jsonl):", "cyan"))
+    print(la.read_history(n))
+
+
 def main():
-    global AUTO_YES
+    global AUTO_YES, _LA, BASE_SYSTEM
     ap = argparse.ArgumentParser(description="Persona-aware local MLX tool-executor")
     ap.add_argument("query", nargs="*", help="your task (omit for interactive REPL)")
     ap.add_argument("--persona", default="general", help="persona to run as (see --list-personas)")
@@ -2037,6 +2428,15 @@ def main():
     ap.add_argument("--add-persona", action="store_true")
     ap.add_argument("--edit-persona", metavar="NAME")
     ap.add_argument("--remove-persona", metavar="NAME")
+    # .local-agent/ commands
+    ap.add_argument("--init-project", metavar="DIR", nargs="?", const="",
+                    help="Create .local-agent/ in DIR (default: CWD)")
+    ap.add_argument("--show-memory", action="store_true",
+                    help="Print this project's persistent memory and exit")
+    ap.add_argument("--show-history", action="store_true",
+                    help="Print this project's recent task history and exit")
+    ap.add_argument("--resume", action="store_true",
+                    help="Load the last session snapshot and continue from it")
     args = ap.parse_args()
     AUTO_YES = args.yes
 
@@ -2044,7 +2444,44 @@ def main():
     if args.add_persona:   return cmd_add_persona()
     if args.edit_persona:  return cmd_edit_persona(args.edit_persona)
     if args.remove_persona:return cmd_remove_persona(args.remove_persona)
+    if args.init_project is not None: return cmd_init_project(args.init_project)
+    if args.show_memory:   return cmd_show_memory()
+    if args.show_history:  return cmd_show_history()
 
+    # ── Initialise .local-agent/ ───────────────────────────────────────────
+    _LA = LocalAgentManager()
+    project_context = ""
+    resume_history: list = []
+
+    if _LA.exists():
+        project_context = _LA.load_context()
+        if project_context:
+            # Append project context to BASE_SYSTEM so ALL personas see it
+            BASE_SYSTEM = BASE_SYSTEM + (
+                "\n\n─── Project Context (from .local-agent/) ───\n" + project_context
+            )
+            print(c(f"  [.local-agent] loaded context from {_LA.agent_dir}", "dim"))
+
+        # Per-project settings overrides
+        proj_settings = _LA.load_settings()
+        if proj_settings.get("persona") and not any(a.startswith("--persona") for a in sys.argv[1:]):
+            args.persona = proj_settings["persona"]
+
+        # --resume: load last session messages as prior history
+        if args.resume:
+            snap = _LA.load_last_session()
+            if snap:
+                resume_history = snap.get("messages", [])
+                print(c(f"  [.local-agent] resuming session from {snap.get('ts_human','?')[:19]}", "cyan"))
+                if snap.get("query"):
+                    print(c(f"  prior task: {snap['query'][:120]}", "dim"))
+            else:
+                print(c("  [.local-agent] no saved session found — starting fresh", "yellow"))
+    else:
+        if args.resume:
+            print(c("  [.local-agent] no .local-agent/ found — run --init-project first", "yellow"))
+
+    # ── Persona resolution ─────────────────────────────────────────────────
     personas = load_personas()
     persona = personas.get(args.persona)
     if persona is None:
@@ -2056,11 +2493,20 @@ def main():
         _preflight_restart_inference(args.persona)
 
     banner = (c("mlx-agent","bold") + c(f"  persona={args.persona}  model={persona.get('model')}  "
-              f"gateway={GATEWAY}","dim"))
+              f"gateway={GATEWAY}", "dim"))
+    if _LA.exists():
+        banner += c(f"  project={_LA.project_dir.name}", "dim")
+
+    def _run_and_log(query: str) -> str:
+        answer = run_agent(query, persona, history=resume_history)
+        if _LA.exists():
+            _LA.append_history(query, answer, args.persona, persona.get("model",""))
+        return answer
+
     if args.query:
         print(banner)
-        try: print("\n" + _fmt(run_agent(" ".join(args.query), persona)))
-        except requests.HTTPError as e: print(c(f"gateway error: {e} — is :4000 up?","red"))
+        try: print("\n" + _fmt(_run_and_log(" ".join(args.query))))
+        except requests.HTTPError as e: print(c(f"gateway error: {e} — is :8000 up?","red"))
         return
     print(banner + c("   (type 'exit' to quit)","dim"))
     while True:
@@ -2068,8 +2514,8 @@ def main():
         except (EOFError, KeyboardInterrupt): print(); break
         if q.lower() in ("exit","quit","q"): break
         if not q: continue
-        try: print("\n" + _fmt(run_agent(q, persona)))
-        except requests.HTTPError as e: print(c(f"gateway error: {e} — is :4000 up? (./mlx-setup.sh --status)","red"))
+        try: print("\n" + _fmt(_run_and_log(q)))
+        except requests.HTTPError as e: print(c(f"gateway error: {e} — is :8000 up? (./mlx-setup.sh --status)","red"))
         except Exception as e: print(c(f"error: {e}","red"))
 
 if __name__ == "__main__":

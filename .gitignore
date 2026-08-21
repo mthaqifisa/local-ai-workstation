@@ -39,4 +39,5 @@ MLX-AI/
 *.swo
 
 .claude/
+.local-agent/
 LinkedIn_humble_brag/

@@ -83,6 +83,7 @@ VISION_MODELS=(
 OPTIONAL_MODELS=(
   "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit|lighter coding model (30B MoE, ~15 GB)|OPT|~15 GB"
   "mlx-community/Devstral-Small-2-4bit|alt coder (Mistral 24B, 256K ctx)|OPT|~14 GB"
+  "richardyoung/Kimi-K2-Instruct-0905-MLX-4bit|Kimi K2.6 alternate coder (1T params/32B active, SWE-Bench top, 262K ctx)|OPT|~42 GB"
 )
 
 # ───────────────────────────────── LOGGING ────────────────────────────────────
@@ -206,7 +207,7 @@ setup_python() {
     # server back to 1.3.12 (single-model, no --config) — which is the bug we hit.
     log "installing MLX + serving stack (this pulls a lot on first run)..."
     uv pip install --python "$VENV/bin/python" \
-        "mlx-openai-server>=1.8" \
+        "mlx-openai-server>=1.8.1" \
         "transformers>=5.0.0" \
         "mlx-vlm>=0.5.0" \
         "huggingface_hub" \
@@ -8436,8 +8437,83 @@ Usage: $0 [OPTION]
   --telegram-service  Install the Telegram bridge as a launchd service (runs on login)
   --image "TEXT"  Generate an image locally with FLUX (mflux)
   --vision <image> "<prompt>" [model]   Ask a vision model about an image (direct mlx_vlm; OCR, image Q&A)
+  --init-project [DIR]  Create .local-agent/ in DIR (default: CWD) — persistent memory, history,
+                         sessions, and agent instructions for this project. Same standard as
+                         Claude Code's .claude/ so the agent can resume after any interruption.
   --help          This message
 USG
+}
+
+# =============================================================================
+#  --init-project  — create .local-agent/ folder standard for a project dir
+# =============================================================================
+cmd_init_project() {
+    local dir="${1:-$(pwd)}"
+    dir="$(cd "$dir" 2>/dev/null && pwd)" || { err "Directory not found: $1"; exit 1; }
+    local la_dir="$dir/.local-agent"
+
+    log ".local-agent/ initialisation for $dir"
+
+    mkdir -p "$la_dir/memory" "$la_dir/sessions" "$la_dir/plans"
+
+    # AGENT.md — project-specific instructions injected into every agent run
+    if [ ! -f "$la_dir/AGENT.md" ]; then
+        cat > "$la_dir/AGENT.md" <<'AGENTMD'
+# Agent Instructions
+
+This file is loaded automatically when the local agent runs in this project.
+Edit it to give the agent project-specific context, constraints, and preferences.
+
+## Project Overview
+<!-- One paragraph: what this project is, who it's for, what success looks like -->
+
+## Tech Stack
+<!-- Key technologies, frameworks, and versions in use -->
+
+## Agent Rules
+<!-- Project-specific rules: port numbers, file conventions, forbidden actions, etc. -->
+
+## Key Files & Paths
+<!-- Important files the agent should know about before touching anything -->
+AGENTMD
+        ok "created AGENT.md"
+    else ok "AGENT.md already exists — skipped"; fi
+
+    # settings.json — per-project config overrides
+    if [ ! -f "$la_dir/settings.json" ]; then
+        cat > "$la_dir/settings.json" <<'SETTINGSEOF'
+{
+  "persona": "orchestrator",
+  "model": null,
+  "notes": "Per-project agent config. null values inherit global defaults."
+}
+SETTINGSEOF
+        ok "created settings.json"
+    else ok "settings.json already exists — skipped"; fi
+
+    # memory/MEMORY.md — index of persistent memory files
+    if [ ! -f "$la_dir/memory/MEMORY.md" ]; then
+        printf '# Agent Memory Index\n\nNo memories yet.\n' > "$la_dir/memory/MEMORY.md"
+        ok "created memory/MEMORY.md"
+    else ok "memory/MEMORY.md already exists — skipped"; fi
+
+    # history.jsonl — task history log
+    [ -f "$la_dir/history.jsonl" ] || { touch "$la_dir/history.jsonl"; ok "created history.jsonl"; }
+
+    # tasks.json — task tracking
+    if [ ! -f "$la_dir/tasks.json" ]; then
+        printf '{"tasks": []}\n' > "$la_dir/tasks.json"
+        ok "created tasks.json"
+    fi
+
+    hr
+    ok ".local-agent/ ready at $la_dir"
+    warn "Next steps:"
+    printf "  1. Edit %s/AGENT.md to describe this project\n" "$la_dir"
+    printf "  2. Run agents with:  mlx-agent --persona orchestrator \"your task\"\n"
+    printf "  3. Agents remember facts with: remember_fact tool → persisted in memory/\n"
+    printf "  4. Resume after interruption: mlx-agent --resume\n"
+    printf "  5. View memory: mlx-agent --show-memory\n"
 }
 
 case "${1:---help}" in
@@ -8494,6 +8570,7 @@ case "${1:---help}" in
     --telegram)         cmd_telegram ;;
     --telegram-service) cmd_telegram_service ;;
     --image)   shift; do_image "$@" ;;
+    --init-project) shift; cmd_init_project "$@" ;;
     --help|-h) print_help ;;
     *) echo "Unknown option: $1"; print_help; exit 2 ;;
 esac
