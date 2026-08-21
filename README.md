@@ -99,9 +99,9 @@ User: "build a wordcount CLI: code + tests + README"
   → unloads
   → Coder writes code   (Qwen3-Coder-Next 80B, ~42 GB)
   → unloads
-  → QA writes tests     (Qwen3.6-27B,  ~28 GB)
+  → QA writes tests     (Qwen3.8-27B,  ~16 GB)
   → unloads
-  → Writer writes docs  (Qwen3.6-27B)
+  → Writer writes docs  (Qwen3.8-27B)
   → Orchestrator reports back
 ```
 
@@ -209,9 +209,7 @@ All model sizes listed are peak MLX memory. The **on-demand loader** keeps only 
 | Role | Model | Size | Notes |
 |---|---|---|---|
 | Orchestrator / Researcher / BA | unsloth/Qwen3.6-35B-A3B MoE | ~20 GB | 3.3B active params, tool calls, CoT |
-| Writer / QA | mlx-community/Qwen3.6-27B 8-bit | ~28 GB | Dense, stable long output |
-| Fast Reasoner | mlx-community/DeepSeek-R1-Distill-Qwen-32B | ~18 GB | `<think>` CoT, MIT license |
-| Deep Reasoner | mlx-community/DeepSeek-R1-Distill-Llama-70B | ~37 GB | Best for hard math / planning |
+| Writer / QA / Reasoner | mlx-community/Qwen3.8-27B 4-bit | ~16 GB | Dense, 262K ctx, built-in thinking mode |
 | Best Coder | mlx-community/Qwen3-Coder-Next (80B MoE) | ~42 GB | SWE-Bench #1, tool calls |
 | Fast Coder | mlx-community/Qwen3-Coder-30B-A3B-Instruct | ~17 GB | Lighter MoE coder, fits alongside orchestrator |
 | RAG Embeddings | mlx-community/Qwen3-Embedding-8B | ~5 GB | Vector search |
@@ -283,7 +281,7 @@ Prompts for `DASHBOARD_PASSWORD`, `TELEGRAM_BOT_TOKEN`, and `TELEGRAM_USER_ID`. 
 ### Pull heavy models (optional, ~79 GB extra)
 
 ```bash
-./mlx-setup.sh --pull-heavy   # Qwen3-Coder-Next 80B + DeepSeek-R1-70B
+./mlx-setup.sh --pull-heavy   # Qwen3-Coder-Next 80B
 ```
 
 ---
@@ -419,18 +417,18 @@ curl http://localhost:8800/api/video-job/abc12345
 | `researcher` | Qwen3.6-35B MoE | 7-source synthesis with citations |
 | `coder` | Qwen3-Coder-Next 80B | SWE-Bench-quality code + tests |
 | `dev` | Qwen3-Coder-Next 80B | Implementation + debugging loop |
-| `qa` | Qwen3.6-35B MoE | 17/18 edge-case test suite (94%) |
-| `writer` | Qwen3.6-35B MoE | Long-form structured docs (93%) |
-| `reasoner` | DeepSeek-R1-32B | Chain-of-thought math proof |
-| `deep_reasoner` | DeepSeek-R1-70B | BFT PBFT proof, n=10 f=3, verified |
+| `qa` | Qwen3.8-27B 4-bit | 17/18 edge-case test suite (94%) |
+| `writer` | Qwen3.8-27B 4-bit | Long-form structured docs (93%) |
+| `reasoner` | Qwen3.8-27B (thinking mode) | Chain-of-thought math proof |
+| `deep_reasoner` | Qwen3.8-27B (extended thinking) | Multi-approach, backtracking, verified proofs |
 | `ba` | Qwen3.6-35B MoE | User stories + acceptance criteria (93%) |
 | `security` | Qwen3.6-35B MoE | STRIDE + OWASP pentest guidance (98%) |
 | `data` | Qwen3.6-35B MoE | EDA → model → evaluation pipeline |
 | `devops` | Qwen3.6-35B MoE | 307-line IaC runbook |
 | `architect` | Qwen3.6-35B MoE | C4 + ADRs + CAP analysis (94%) |
 | `designer` | Qwen3.6-35B MoE | Full design system spec (96%) |
-| `general` | Qwen3.6-35B MoE | Tool-heavy diagnostic (92%) |
-| `thaqif_clone` | DeepSeek-R1-70B | Engineering advisory on M5 Pro architecture |
+| `general` | Qwen3.8-27B | Tool-heavy diagnostic (92%) |
+| `thaqif_clone` | Qwen3.8-27B | Engineering advisory on M5 Pro architecture |
 
 ---
 
@@ -447,7 +445,7 @@ vision          designer
 security        data          devops        architect
 imagegen        thaqif-clone
 embed
-# bare model names also work: qwen36-35b, deepseek-r1-32b, etc.
+# bare model names also work: qwen36-35b, qwen38-27b, qwen3-coder-next, etc.
 ```
 
 ---
@@ -532,7 +530,6 @@ tail -50 ~/.mlx-ai-workstation/logs/mlx-telegram.log
 | Model family | License |
 |---|---|
 | Qwen (all) | Apache 2.0 |
-| DeepSeek-R1 Distill | MIT |
 | Gemma-4 | Google Gemma Terms of Use |
 | Z-Image Turbo | Tongyi Qianwen License (commercial OK) |
 

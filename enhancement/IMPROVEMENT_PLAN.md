@@ -27,7 +27,7 @@ The prompts are generic — not tuned to each model's actual strengths:
 - `qwen3.6-35b` (orchestrator): Good at planning, weak at long context
 - `qwen3-coder-next` (coder): Good at code, weak at edge cases
 - `deepseek-r1-70b` (reasoner): Excellent at reasoning, verbose
-- `qwen3.6-27b` (general/qa/writer): Weakest model — needs narrow scope + examples
+- `qwen3.8-27b` (general/qa/writer): Dense 27B, 4-bit — upgraded from Qwen3.6-27B
 
 ### 6. No Evaluation Framework
 No benchmark suite to measure improvement over time.

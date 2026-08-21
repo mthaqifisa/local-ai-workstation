@@ -64,7 +64,7 @@ INSTALL_LANGFUSE="${INSTALL_LANGFUSE:-0}"   # set 1 to add Langfuse tracing (hea
 # Format: "hf_repo|role_label|CORE|approx_disk"
 CORE_MODELS=(
   "unsloth/Qwen3.6-35B-A3B-UD-MLX-4bit|orchestrator + researcher + BA (MoE 3B active)|CORE|~20 GB"
-  "mlx-community/Qwen3.6-27B-8bit|writer + QA, dense model (stable for long output)|CORE|~29 GB"
+  "mlx-community/Qwen3.8-27B-4bit|writer + QA — Qwen3.8 dense 4-bit (262K ctx, coexists w/ 35B)|CORE|~16 GB"
   "mlx-community/DeepSeek-R1-Distill-Qwen-32B-4bit|fast reasoner (32B, MIT, <think> CoT)|CORE|~18 GB"
   "mlx-community/Qwen3-Embedding-8B-4bit-DWQ|RAG embeddings|CORE|~5 GB"
 )
@@ -483,9 +483,9 @@ models:
     on_demand: true
     on_demand_idle_timeout: 600
 
-  # ── Writer / QA (Qwen3.6-27B dense 8-bit, ~28 GB) ──
-  - model_path: mlx-community/Qwen3.6-27B-8bit
-    served_model_name: qwen36-27b
+  # ── Writer / QA (Qwen3.8-27B dense 4-bit, ~16 GB — coexists with 35B MoE) ──
+  - model_path: mlx-community/Qwen3.8-27B-4bit
+    served_model_name: qwen38-27b
     model_type: lm
     enable_auto_tool_choice: true
     tool_call_parser: qwen3_coder
@@ -685,12 +685,12 @@ model_list:
     litellm_params: { model: "openai/qwen3-coder-30b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
   - model_name: "dev:qwen3-coder-30b"
     litellm_params: { model: "openai/qwen3-coder-30b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
-  - model_name: "coder:qwen3.6-27b"
-    litellm_params: { model: "openai/qwen36-27b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
-  - model_name: "writer:qwen3.6-27b"
-    litellm_params: { model: "openai/qwen36-27b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
-  - model_name: "qa:qwen3.6-27b"
-    litellm_params: { model: "openai/qwen36-27b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
+  - model_name: "coder:qwen3.8-27b"
+    litellm_params: { model: "openai/qwen38-27b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
+  - model_name: "writer:qwen3.8-27b"
+    litellm_params: { model: "openai/qwen38-27b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
+  - model_name: "qa:qwen3.8-27b"
+    litellm_params: { model: "openai/qwen38-27b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
   - model_name: "reasoner:deepseek-r1-32b"
     litellm_params: { model: "openai/deepseek-r1-32b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
   - model_name: "reasoner:deepseek-r1-70b"
@@ -708,8 +708,8 @@ model_list:
   # ── Bare names (backward compat — direct model access by name) ──
   - model_name: "qwen36-35b"
     litellm_params: { model: "openai/qwen36-35b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
-  - model_name: "qwen36-27b"
-    litellm_params: { model: "openai/qwen36-27b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
+  - model_name: "qwen38-27b"
+    litellm_params: { model: "openai/qwen38-27b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
   - model_name: "deepseek-r1-32b"
     litellm_params: { model: "openai/deepseek-r1-32b", api_base: "http://127.0.0.1:${PORT_MLX}/v1", api_key: "not-needed" }
   - model_name: "deepseek-r1-70b"
@@ -1394,9 +1394,9 @@ _SVC_RESTART = {
 # Role → served model, for the demo model table.
 ROLES = [
     ("Orchestrator", "qwen36-35b",   "Reads the task, routes work to the right sub-model."),
-    ("Coder",        "qwen36-27b",   "Writes & edits code (dense 27B, 8-bit for accuracy)."),
-    ("Reasoner / QA","qwen36-27b",   "Plans, reviews, designs tests (thinking mode)."),
-    ("Vision / OCR", "qwen36-27b",  "Reads images, PDFs, charts, screenshots (multimodal 27B)."),
+    ("Coder",        "qwen38-27b",   "Writes & edits code (dense 27B, 4-bit — coexists with 35B)."),
+    ("Reasoner / QA","qwen38-27b",   "Plans, reviews, designs tests (thinking mode)."),
+    ("Vision / OCR", "qwen38-27b",  "Reads images, PDFs, charts, screenshots (multimodal 27B)."),
     ("Embeddings",   "qwen3-embed",  "Turns documents into vectors for RAG."),
 ]
 
@@ -5978,16 +5978,37 @@ DEFAULT_PERSONAS = {
             "STEP 4 — SYNTHESIZE:\n"
             "Produce a final summary for the user: what was built/delivered, where files are, "
             "any known issues, and next steps. End with the list of all files created.\n\n"
+            "CONFIRMATION GATE (mandatory — never skip):\n"
+            "NEVER say 'done', 'complete', 'finished', or 'task complete' on your own. "
+            "Before closing any task, you MUST:\n"
+            "  1. State the specific evidence you observed (actual output, curl result, file sizes, test counts)\n"
+            "  2. Give the user an exact command or URL they can run RIGHT NOW to verify themselves\n"
+            "  3. End with: 'Please confirm this looks correct on your end before I close the task.'\n"
+            "If you have no execution evidence — only code you wrote or steps you followed — you are NOT done. "
+            "Run the verification first, then apply this gate.\n\n"
+            "DELEGATION MANDATE (read this first):\n"
+            "You are a PROJECT LEAD, not an implementer. Your job is to delegate, verify, and synthesize.\n"
+            "ALWAYS spawn a specialist for: any code (coder/dev), any research (researcher), "
+            "any testing (qa), any writing (writer), any design (designer), any data/ML (data), "
+            "any infra (devops), any security audit (security), any system design (architect).\n"
+            "ONLY answer yourself for: a simple one-sentence factual question, or routing/coordination decisions.\n"
+            "If you catch yourself writing code, researching, or implementing — STOP and spawn instead.\n\n"
             "RULES:\n"
             "- Spawn subagents ONE AT A TIME — sequential, not parallel\n"
             "- Pass FULL context in every spawn — no vague briefs\n"
+            "- PORT SAFETY: port 8000 = MLX inference server (RESERVED). "
+            "Always brief coder/dev subagents to use port 9000 for apps.\n"
             "- Standard pipeline for software: ba (if requirements unclear) → researcher (if tech unclear) "
             "→ architect (if complex) → coder → qa → writer\n"
             "- Max 12 subagents per top-level task\n"
-            "- Simple tasks (single lookup, quick question): answer yourself — no spawn\n"
             "- Never end on a raw tool result — always synthesize\n"
             "- If a subagent fails or returns empty: diagnose why, fix the brief, re-spawn once\n"
-            "- If the deliverable is a FILE: it must be WRITTEN TO DISK, not printed in chat"
+            "- If the deliverable is a FILE: it must be WRITTEN TO DISK, not printed in chat\n\n"
+            "STEP 3 — VERIFY (extended):\n"
+            "  After any rename/upgrade task by coder: grep the repo for the new identifier inside "
+            "RETIRED_*, DEPRECATED_*, LEGACY_*, or migration_* structures. If the NEW name is inside "
+            "those structures, that is a bug — those lists must hold the OLD name as the migration trigger. "
+            "Spawn coder to fix it before declaring done."
         ),
     },
 
@@ -6008,6 +6029,10 @@ DEFAULT_PERSONAS = {
             "If asked to build something, build it and verify it works. "
             "If asked to explain something, explain it precisely with examples. "
             "If asked for a recommendation, give one with clear reasoning — not 'it depends'.\n\n"
+            "CONFIRMATION GATE: For any task that produces an output (file, app, config, result) — "
+            "never say 'done'. Instead: state the specific evidence you observed, give the user "
+            "one exact command or path they can verify themselves, and end with "
+            "'Please confirm this looks correct on your end.'\n\n"
             "RESPONSE STYLE: concise and direct. No padding, no re-stating the question, "
             "no excessive caveats. Lead with the answer."
         ),
@@ -6094,7 +6119,15 @@ DEFAULT_PERSONAS = {
             "- If a build fails: fix it. Do not workaround by removing the test.\n"
             "- If you can't fix a bug after 3 attempts: document it with exact error output in BUGS.md\n"
             "- Security: no hardcoded secrets, no SQL string concatenation, validate all inputs\n"
-            "- Save progress to disk after each phase in case of timeout"
+            "- Save progress to disk after each phase in case of timeout\n"
+            "- CONFIRMATION GATE: Never say 'done' or 'complete' unilaterally. After Phase 4, "
+            "state the evidence you have, give the user one command they can run to verify (e.g. "
+            "`curl http://localhost:9000/health` or `ls -lh <file>`), and end with "
+            "'Please confirm this works on your end.'\n"
+            "- RENAME RULE: When renaming an identifier across a codebase, audit each occurrence before replacing it. "
+            "Sets/dicts/lists named RETIRED_*, DEPRECATED_*, LEGACY_*, migration_*, or old_* must keep the OLD name — "
+            "their whole purpose is to trigger auto-migration away from that name. Never put the new name inside them. "
+            "After the rename, grep for remaining old-name hits and confirm each remaining one is intentional."
         ),
     },
 
@@ -6116,7 +6149,12 @@ DEFAULT_PERSONAS = {
             "RULES:\n"
             "- Never claim 'done' without showing compile output and a real execution result\n"
             "- If it breaks something else, fix that too before reporting done\n"
-            "- Keep changes minimal and focused — no scope creep"
+            "- Keep changes minimal and focused — no scope creep\n"
+            "- CONFIRMATION GATE: After step 6, state your evidence and give the user one command "
+            "to verify themselves. End with 'Please confirm this works on your end.'\n"
+            "- RENAME RULE: Sets/dicts named RETIRED_*, DEPRECATED_*, LEGACY_*, migration_*, or old_* must keep "
+            "the OLD name — that's the migration trigger. Never put the new name inside them. "
+            "After any rename, grep for remaining old-name hits and confirm each remaining one is intentional."
         ),
     },
 
@@ -6159,8 +6197,22 @@ DEFAULT_PERSONAS = {
             "  ~/MLX-AI/<project>/QA-REPORT.md — running results table\n"
             "  ~/MLX-AI/<project>/BUGS.md — each bug: title, steps, actual vs expected, severity\n"
             "Do NOT wait until the end — write after each section.\n\n"
+            "SELF-CRITIQUE (before final report):\n"
+            "  □ Every PASS has a curl command + actual HTTP response pasted\n"
+            "  □ Every FAIL has the actual error output (not 'it should work')\n"
+            "  □ Security basics (SQL injection, XSS, unauth access) were actually run\n"
+            "  □ QA-REPORT.md and BUGS.md are written to disk (confirmed with ls)\n"
+            "  □ Go/no-go recommendation is clear and justified\n"
+            "  □ RENAME CHECK (if task involved a rename): grep for the OLD name. Verify: "
+            "(a) it still appears inside any RETIRED_*/DEPRECATED_*/LEGACY_*/migration_* structure (correct — that's the migration trigger), "
+            "and (b) it's gone from all active config/model definitions (correct — replaced). "
+            "If the old name is absent from the retirement list, flag it as a bug.\n"
+            "  If any item is missing: run the missing test and update the report before responding.\n\n"
             "FINAL REPORT: summary table (test name | result | evidence), bug count by severity, "
-            "go/no-go recommendation with clear reasoning."
+            "go/no-go recommendation with clear reasoning.\n\n"
+            "CONFIRMATION GATE: After the final report, give the user one command they can run "
+            "to spot-check themselves (e.g. `curl -s http://localhost:9000/health`). "
+            "End with: 'Please confirm the results look correct on your end before I close this.'"
         ),
     },
 
@@ -6287,7 +6339,7 @@ DEFAULT_PERSONAS = {
 
     "writer": {
         "description": "Technical writer — exec summary first, structured long-form, write_docx for formal docs.",
-        "model": "orchestrator:qwen3.6-35b",
+        "model": "writer:qwen3.8-27b",
         "allowed_tools": "all",
         "system_prompt": (
             "You are a professional technical writer. You produce polished, structured documents "
@@ -7206,7 +7258,7 @@ def _resolve_model(m: str) -> str:
     served = _served_models()
     if served and m in served:
         return m
-    cand = m.split(":")[-1].replace(".", "")        # 'coder:qwen3.6-27b' -> 'qwen36-27b'
+    cand = m.split(":")[-1].replace(".", "")        # 'coder:qwen3.8-27b' -> 'qwen38-27b'
     if not served or cand in served:
         return cand
     for s in served:                                 # last resort: loose match
@@ -7330,7 +7382,7 @@ def run_agent(query: str, persona: dict, depth: int = 0, spawn_ctx: dict = None,
                 if _looks_degenerate(ans):
                     ans = ("[the model fell into a repetition loop instead of answering — this usually "
                            "means it's too weak at tool-calling for this task. Try /reset and rephrase, "
-                           "or switch the persona to the dense qwen3.6-27b coder (MoE models loop here). "
+                           "or switch the persona to the dense qwen3.8-27b coder (MoE models loop here). "
                            "You can also raise MLX_AGENT_FREQ_PENALTY.]")
                 # Live-stream the answer to front-ends (e.g. Telegram) ONLY at the top
                 # level and ONLY now that generation is safely complete — never during
@@ -7354,7 +7406,7 @@ def run_agent(query: str, persona: dict, depth: int = 0, spawn_ctx: dict = None,
                 if repeats >= LOOP_GUARD:
                     return (f"[stopped: the model repeated the identical tool call {repeats+1}× without "
                             "making progress — it's stuck. Try rephrasing the task, or switch to a dense "
-                            "model like qwen3.6-27b (MoE models tend to loop on tool chains). "
+                            "model like qwen3.8-27b (MoE models tend to loop on tool chains). "
                             "Disable this guard with MLX_AGENT_LOOP_GUARD=0.]")
             messages.append({"role":"assistant","content":msg.get("content") or "","tool_calls":tool_calls})
             for tc in tool_calls:
