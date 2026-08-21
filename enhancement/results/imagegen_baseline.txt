@@ -1,0 +1,36 @@
+mlx-agent  persona=general  model=qwen36-27b  gateway=http://localhost:8000/v1
+  → run_shell(command='ls ~/.cache/huggingface/hub/models--Tongyi-MAI--Z-Image-Turbo/snapshots/')
+  $ ls ~/.cache/huggingface/hub/models--Tongyi-MAI--Z-Image-Turbo/snapshots/
+  → run_shell(command='mflux-generate-z-image-turbo \\\n  --model ~/.cache/huggingface/hub/models--Tongyi-MAI--Z-Image-Turbo/snapshots/f332072aa78be7aecdf3ee76d5c247082da564a6 \\\n  --prompt "futuristic AI workstation neon blue cyberpunk" \\\n  --steps 4 \\\n  --width 512 \\\n  --height 512 \\\n  --output ~/MLX-AI/test_image.png')
+  $ mflux-generate-z-image-turbo \
+  --model ~/.cache/huggingface/hub/models--Tongyi-MAI--Z-Image-Turbo/snapshots/f332072aa78be7aecdf3ee76d5c247082da564a6 \
+  --prompt "futuristic AI workstation neon blue cyberpunk" \
+  --steps 4 \
+  --width 512 \
+  --height 512 \
+  --output ~/MLX-AI/test_image.png
+  → run_shell(command='ls -la ~/MLX-AI/test_image.png')
+  $ ls -la ~/MLX-AI/test_image.png
+  → see_image(image_path='~/MLX-AI/test_image.png', question='Describe this image in detail')
+  👁  see_image(/Users/thaqifisa/MLX-AI/test_image.png · mlx-community/Qwen3-VL-8B-Instruct-4bit)
+
+## Results
+
+**Exact command used:**
+```bash
+mflux-generate-z-image-turbo \
+  --model ~/.cache/huggingface/hub/models--Tongyi-MAI--Z-Image-Turbo/snapshots/f332072aa78be7aecdf3ee76d5c247082da564a6 \
+  --prompt "futuristic AI workstation neon blue cyberpunk" \
+  --steps 4 \
+  --width 512 \
+  --height 512 \
+  --output ~/MLX-AI/test_image.png
+```
+
+**Output file:** ✅ Created successfully
+- **Path:** `/Users/thaqifisa/MLX-AI/test_image.png`
+- **Size:** 348 KB (348,366 bytes)
+- **Peak MLX memory:** 26.82 GB
+- **Generation time:** ~13 seconds (4 steps)
+
+The image is a well-rendered cyberpunk-style futuristic AI workstation with dual monitors, neon blue lighting, and a high-tech command center aesthetic — exactly matching the prompt.

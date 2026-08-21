@@ -1,0 +1,20 @@
+mlx-agent  persona=writer  model=writer:qwen3.6-27b  gateway=http://localhost:8000/v1
+  → web_search(query='MLX vs PyTorch MPS vs CoreML performance benchmark Apple Silicon M-series 2024 2025')
+  → web_search(query='MLX inference speed tokens per second Apple Silicon benchmark LLM')
+  → web_search(query='PyTorch MPS vs CoreML performance comparison Apple Silicon M4')
+  → web_fetch(url='https://towardsdatascience.com/how-fast-is-mlx-a-comprehensive-benchmark-on-8-apple-silicon-chips-and-4-cuda-gpus-378a0ae356a0/')
+  → web_fetch(url='https://modelpiper.com/blog/local-llm-benchmarks-apple-silicon')
+  → web_fetch(url='https://metalcloud.space/blog/mlx-vs-pytorch-comparison/')
+  → web_search(query='CoreML inference performance benchmark tokens per second Apple Silicon 2024 2025')
+  → web_search(query='MLX quantization support 4bit 8bit INT4 comparison PyTorch CoreML')
+  → web_search(query='CoreML vs MLX vs PyTorch MPS memory efficiency power consumption Apple Silicon')
+  → web_fetch(url='https://machinelearning.apple.com/research/core-ml-on-device-llama')
+  → web_fetch(url='https://arxiv.org/pdf/2511.05502')
+  → web_search(query='"comparative study" MLX MLC-LLM Ollama llama.cpp Apple Silicon benchmark 2025')
+  → web_search(query='CoreML Llama 8B tokens per second M1 Max M2 M3 benchmark 2024 2025')
+  → web_fetch(url='https://medium.com/@michael.hannecke/choosing-an-on-device-llm-runtime-on-apple-silicon-a-decision-framework-beyond-benchmarks-2449067b8b67')
+  → web_fetch(url='https://www.sitepoint.com/local-llms-apple-silicon-mac-2026/')
+  → web_fetch(url='https://huggingface.co/papers/2511.05502')
+  → run_shell(command='mkdir -p ~/MLX-AI/mlx-comparison-report')
+  $ mkdir -p ~/MLX-AI/mlx-comparison-report
+gateway error: 500 Server Error: Internal Server Error for url: http://localhost:8000/v1/chat/completions — is :4000 up?

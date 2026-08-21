@@ -1,0 +1,2 @@
+mlx-agent  persona=thaqif-clone  model=reasoner:deepseek-r1-70b  gateway=http://localhost:8000/v1
+gateway error: 500 Server Error: Internal Server Error for url: http://localhost:8000/v1/chat/completions — is :4000 up?

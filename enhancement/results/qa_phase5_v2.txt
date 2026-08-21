@@ -1,0 +1,324 @@
+mlx-agent  persona=qa  model=qa:qwen3.6-27b  gateway=http://localhost:8000/v1
+  → run_shell(command='curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health 2>/dev/null; echo " MLX"; curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/ 2>/dev/null; echo " LiteLLM"; curl -s -o /dev/null -w "%{http_code}" http://localhost:8800/ 2>/dev/null; echo " Dashboard"')
+  $ curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health 2>/dev/null; echo " MLX"; curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/ 2>/dev/null; echo " LiteLLM"; curl -s -o /dev/null -w "%{http_code}" http://localhost:8800/ 2>/dev/null; echo " Dashboard"
+  → run_shell(command='curl -s http://localhost:8000/v1/models 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "FAILED to fetch models"')
+  $ curl -s http://localhost:8000/v1/models 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "FAILED to fetch models"
+  → run_shell(command='curl -s http://localhost:4000/v1/models 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "FAILED to fetch LiteLLM models"')
+  $ curl -s http://localhost:4000/v1/models 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "FAILED to fetch LiteLLM models"
+  → run_shell(command='echo "=== TEST 1a: MLX Happy Path Chat Completion ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}\\nTIME:%{time_total}s" \\\n  -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "gemma4-12b",\n    "messages": [{"role": "user", "content": "Say hello in exactly 5 words."}],\n    "max_tokens": 30\n  }\' 2>/dev/null')
+  $ echo "=== TEST 1a: MLX Happy Path Chat Completion ==="
+curl -s -w "\nHTTP_CODE:%{http_code}\nTIME:%{time_total}s" \
+  -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gemma4-12b",
+    "messages": [{"role": "user", "content": "Say hello in exactly 5 words."}],
+    "max_tokens": 30
+  }' 2>/dev/null
+  → run_shell(command='echo "=== TEST 1b: LiteLLM Happy Path Chat Completion ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}\\nTIME:%{time_total}s" \\\n  -X POST http://localhost:4000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "gemma4-12b",\n    "messages": [{"role": "user", "content": "Say hello in exactly 5 words."}],\n    "max_tokens": 30\n  }\' 2>/dev/null')
+  $ echo "=== TEST 1b: LiteLLM Happy Path Chat Completion ==="
+curl -s -w "\nHTTP_CODE:%{http_code}\nTIME:%{time_total}s" \
+  -X POST http://localhost:4000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gemma4-12b",
+    "messages": [{"role": "user", "content": "Say hello in exactly 5 words."}],
+    "max_tokens": 30
+  }' 2>/dev/null
+  → run_shell(command='echo "=== TEST 1c: MLX Happy Path - qwen3-coder-next ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}\\nTIME:%{time_total}s" \\\n  -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen3-coder-next",\n    "messages": [{"role": "user", "content": "Say hello in exactly 5 words."}],\n    "max_tokens": 30\n  }\' 2>/dev/null')
+  $ echo "=== TEST 1c: MLX Happy Path - qwen3-coder-next ==="
+curl -s -w "\nHTTP_CODE:%{http_code}\nTIME:%{time_total}s" \
+  -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3-coder-next",
+    "messages": [{"role": "user", "content": "Say hello in exactly 5 words."}],
+    "max_tokens": 30
+  }' 2>/dev/null
+  → run_shell(command='echo "=== TEST 1d: MLX Happy Path - qwen36-35b ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}\\nTIME:%{time_total}s" \\\n  -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen36-35b",\n    "messages": [{"role": "user", "content": "Say hello in exactly 5 words."}],\n    "max_tokens": 30\n  }\' 2>/dev/null')
+  $ echo "=== TEST 1d: MLX Happy Path - qwen36-35b ==="
+curl -s -w "\nHTTP_CODE:%{http_code}\nTIME:%{time_total}s" \
+  -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen36-35b",
+    "messages": [{"role": "user", "content": "Say hello in exactly 5 words."}],
+    "max_tokens": 30
+  }' 2>/dev/null
+  → run_shell(command='echo "=== TEST 1e: LiteLLM Happy Path - qwen3-coder-next ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}\\nTIME:%{time_total}s" \\\n  -X POST http://localhost:4000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen3-coder-next",\n    "messages": [{"role": "user", "content": "Say hello in exactly 5 words."}],\n    "max_tokens": 30\n  }\' 2>/dev/null')
+  $ echo "=== TEST 1e: LiteLLM Happy Path - qwen3-coder-next ==="
+curl -s -w "\nHTTP_CODE:%{http_code}\nTIME:%{time_total}s" \
+  -X POST http://localhost:4000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3-coder-next",
+    "messages": [{"role": "user", "content": "Say hello in exactly 5 words."}],
+    "max_tokens": 30
+  }' 2>/dev/null
+  → run_shell(command='echo "=== TEST 2a: MLX Error - Invalid Model Name ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}" \\\n  -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "nonexistent-model-xyz",\n    "messages": [{"role": "user", "content": "hello"}]\n  }\' 2>/dev/null')
+  $ echo "=== TEST 2a: MLX Error - Invalid Model Name ==="
+curl -s -w "\nHTTP_CODE:%{http_code}" \
+  -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "nonexistent-model-xyz",
+    "messages": [{"role": "user", "content": "hello"}]
+  }' 2>/dev/null
+  → run_shell(command='echo "=== TEST 2b: MLX Error - Empty Messages ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}" \\\n  -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen3-coder-next",\n    "messages": []\n  }\' 2>/dev/null')
+  $ echo "=== TEST 2b: MLX Error - Empty Messages ==="
+curl -s -w "\nHTTP_CODE:%{http_code}" \
+  -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3-coder-next",
+    "messages": []
+  }' 2>/dev/null
+  → run_shell(command='echo "=== TEST 2c: MLX Error - Missing Messages Field ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}" \\\n  -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen3-coder-next"\n  }\' 2>/dev/null')
+  $ echo "=== TEST 2c: MLX Error - Missing Messages Field ==="
+curl -s -w "\nHTTP_CODE:%{http_code}" \
+  -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3-coder-next"
+  }' 2>/dev/null
+  → run_shell(command='echo "=== TEST 2d: MLX Error - Missing Model Field ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}" \\\n  -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "messages": [{"role": "user", "content": "hello"}]\n  }\' 2>/dev/null')
+  $ echo "=== TEST 2d: MLX Error - Missing Model Field ==="
+curl -s -w "\nHTTP_CODE:%{http_code}" \
+  -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [{"role": "user", "content": "hello"}]
+  }' 2>/dev/null
+  → run_shell(command='echo "=== TEST 3a: MLX Streaming ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}" \\\n  -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen3-coder-next",\n    "messages": [{"role": "user", "content": "Count from 1 to 3."}],\n    "max_tokens": 30,\n    "stream": true\n  }\' 2>/dev/null | head -c 1500')
+  $ echo "=== TEST 3a: MLX Streaming ==="
+curl -s -w "\nHTTP_CODE:%{http_code}" \
+  -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3-coder-next",
+    "messages": [{"role": "user", "content": "Count from 1 to 3."}],
+    "max_tokens": 30,
+    "stream": true
+  }' 2>/dev/null | head -c 1500
+  → run_shell(command='echo "=== TEST 3b: LiteLLM Streaming ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}" \\\n  -X POST http://localhost:4000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen3-coder-next",\n    "messages": [{"role": "user", "content": "Count from 1 to 3."}],\n    "max_tokens": 30,\n    "stream": true\n  }\' 2>/dev/null | head -c 1500')
+  $ echo "=== TEST 3b: LiteLLM Streaming ==="
+curl -s -w "\nHTTP_CODE:%{http_code}" \
+  -X POST http://localhost:4000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3-coder-next",
+    "messages": [{"role": "user", "content": "Count from 1 to 3."}],
+    "max_tokens": 30,
+    "stream": true
+  }' 2>/dev/null | head -c 1500
+  → run_shell(command='echo "=== TEST 4a: MLX Edge - Long Prompt (1000 chars) ==="\nLONG_PROMPT=$(python3 -c "print(\'A\' * 1000)")\ncurl -s -w "\\nHTTP_CODE:%{http_code}\\nTIME:%{time_total}s" \\\n  -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d "{\n    \\"model\\": \\"qwen3-coder-next\\",\n    \\"messages\\": [{\\"role\\": \\"user\\", \\"content\\": \\"$LONG_PROMPT\\"}],\n    \\"max_tokens\\": 20\n  }" 2>/dev/null')
+  $ echo "=== TEST 4a: MLX Edge - Long Prompt (1000 chars) ==="
+LONG_PROMPT=$(python3 -c "print('A' * 1000)")
+curl -s -w "\nHTTP_CODE:%{http_code}\nTIME:%{time_total}s" \
+  -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"model\": \"qwen3-coder-next\",
+    \"messages\": [{\"role\": \"user\", \"content\": \"$LONG_PROMPT\"}],
+    \"max_tokens\": 20
+  }" 2>/dev/null
+  → run_shell(command='echo "=== TEST 4b: MLX Edge - Unicode/Emoji ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}" \\\n  -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen3-coder-next",\n    "messages": [{"role": "user", "content": "What do these emojis mean? 🚀🤖🔥🎉"}],\n    "max_tokens": 30\n  }\' 2>/dev/null')
+  $ echo "=== TEST 4b: MLX Edge - Unicode/Emoji ==="
+curl -s -w "\nHTTP_CODE:%{http_code}" \
+  -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3-coder-next",
+    "messages": [{"role": "user", "content": "What do these emojis mean? 🚀🤖🔥🎉"}],
+    "max_tokens": 30
+  }' 2>/dev/null
+  → run_shell(command='echo "=== TEST 4c: MLX Edge - max_tokens=0 ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}" \\\n  -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen3-coder-next",\n    "messages": [{"role": "user", "content": "hello"}],\n    "max_tokens": 0\n  }\' 2>/dev/null')
+  $ echo "=== TEST 4c: MLX Edge - max_tokens=0 ==="
+curl -s -w "\nHTTP_CODE:%{http_code}" \
+  -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3-coder-next",
+    "messages": [{"role": "user", "content": "hello"}],
+    "max_tokens": 0
+  }' 2>/dev/null
+  → run_shell(command='echo "=== TEST 2e: LiteLLM Error - Invalid Model ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}" \\\n  -X POST http://localhost:4000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "nonexistent-model-xyz",\n    "messages": [{"role": "user", "content": "hello"}]\n  }\' 2>/dev/null')
+  $ echo "=== TEST 2e: LiteLLM Error - Invalid Model ==="
+curl -s -w "\nHTTP_CODE:%{http_code}" \
+  -X POST http://localhost:4000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "nonexistent-model-xyz",
+    "messages": [{"role": "user", "content": "hello"}]
+  }' 2>/dev/null
+  → run_shell(command='echo "=== TEST 2f: LiteLLM Error - Empty Messages ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}" \\\n  -X POST http://localhost:4000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen3-coder-next",\n    "messages": []\n  }\' 2>/dev/null')
+  $ echo "=== TEST 2f: LiteLLM Error - Empty Messages ==="
+curl -s -w "\nHTTP_CODE:%{http_code}" \
+  -X POST http://localhost:4000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3-coder-next",
+    "messages": []
+  }' 2>/dev/null
+  → run_shell(command='echo "=== TEST 5a: MLX Security - SQL Injection ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}" \\\n  -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen3-coder-next",\n    "messages": [{"role": "user", "content": "SELECT * FROM users; DROP TABLE users; --"}],\n    "max_tokens": 20\n  }\' 2>/dev/null')
+  $ echo "=== TEST 5a: MLX Security - SQL Injection ==="
+curl -s -w "\nHTTP_CODE:%{http_code}" \
+  -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3-coder-next",
+    "messages": [{"role": "user", "content": "SELECT * FROM users; DROP TABLE users; --"}],
+    "max_tokens": 20
+  }' 2>/dev/null
+  → run_shell(command='echo "=== TEST 5b: MLX Security - XSS Payload ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}" \\\n  -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen3-coder-next",\n    "messages": [{"role": "user", "content": "<script>document.cookie=\'\'</script><img src=x onerror=alert(1)>"}],\n    "max_tokens": 20\n  }\' 2>/dev/null')
+  $ echo "=== TEST 5b: MLX Security - XSS Payload ==="
+curl -s -w "\nHTTP_CODE:%{http_code}" \
+  -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3-coder-next",
+    "messages": [{"role": "user", "content": "<script>document.cookie=''</script><img src=x onerror=alert(1)>"}],
+    "max_tokens": 20
+  }' 2>/dev/null
+  → run_shell(command='echo "=== TEST 5c: LiteLLM Security - SQL Injection ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}" \\\n  -X POST http://localhost:4000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen3-coder-next",\n    "messages": [{"role": "user", "content": "SELECT * FROM users; DROP TABLE users; --"}],\n    "max_tokens": 20\n  }\' 2>/dev/null')
+  $ echo "=== TEST 5c: LiteLLM Security - SQL Injection ==="
+curl -s -w "\nHTTP_CODE:%{http_code}" \
+  -X POST http://localhost:4000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3-coder-next",
+    "messages": [{"role": "user", "content": "SELECT * FROM users; DROP TABLE users; --"}],
+    "max_tokens": 20
+  }' 2>/dev/null
+  → run_shell(command='echo "=== TEST 5d: LiteLLM Security - XSS Payload ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}" \\\n  -X POST http://localhost:4000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen3-coder-next",\n    "messages": [{"role": "user", "content": "<script>document.cookie=\'\'</script><img src=x onerror=alert(1)>"}],\n    "max_tokens": 20\n  }\' 2>/dev/null')
+  $ echo "=== TEST 5d: LiteLLM Security - XSS Payload ==="
+curl -s -w "\nHTTP_CODE:%{http_code}" \
+  -X POST http://localhost:4000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3-coder-next",
+    "messages": [{"role": "user", "content": "<script>document.cookie=''</script><img src=x onerror=alert(1)>"}],
+    "max_tokens": 20
+  }' 2>/dev/null
+  → run_shell(command='echo "=== TEST 6a: MLX Performance - 5x /v1/models ==="\nfor i in 1 2 3 4 5; do\n  curl -s -o /dev/null -w "Request $i: %{time_total}s\\n" http://localhost:8000/v1/models\ndone')
+  $ echo "=== TEST 6a: MLX Performance - 5x /v1/models ==="
+for i in 1 2 3 4 5; do
+  curl -s -o /dev/null -w "Request $i: %{time_total}s\n" http://localhost:8000/v1/models
+done
+  → run_shell(command='echo "=== TEST 6b: LiteLLM Performance - 5x /v1/models ==="\nfor i in 1 2 3 4 5; do\n  curl -s -o /dev/null -w "Request $i: %{time_total}s\\n" http://localhost:4000/v1/models\ndone')
+  $ echo "=== TEST 6b: LiteLLM Performance - 5x /v1/models ==="
+for i in 1 2 3 4 5; do
+  curl -s -o /dev/null -w "Request $i: %{time_total}s\n" http://localhost:4000/v1/models
+done
+  → run_shell(command='echo "=== TEST 7: Dashboard Health Check ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}\\nTIME:%{time_total}s" http://localhost:8800/ 2>/dev/null | head -c 500')
+  $ echo "=== TEST 7: Dashboard Health Check ==="
+curl -s -w "\nHTTP_CODE:%{http_code}\nTIME:%{time_total}s" http://localhost:8800/ 2>/dev/null | head -c 500
+  → run_shell(command='echo "=== TEST 8: MLX Edge - max_tokens=1 ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}" \\\n  -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen3-coder-next",\n    "messages": [{"role": "user", "content": "Write a long essay about the history of computing."}],\n    "max_tokens": 1\n  }\' 2>/dev/null')
+  $ echo "=== TEST 8: MLX Edge - max_tokens=1 ==="
+curl -s -w "\nHTTP_CODE:%{http_code}" \
+  -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3-coder-next",
+    "messages": [{"role": "user", "content": "Write a long essay about the history of computing."}],
+    "max_tokens": 1
+  }' 2>/dev/null
+  → run_shell(command='echo "=== TEST 9: MLX Edge - temperature=0 (deterministic) ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}" \\\n  -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen3-coder-next",\n    "messages": [{"role": "user", "content": "What is 2+2?"}],\n    "max_tokens": 10,\n    "temperature": 0\n  }\' 2>/dev/null')
+  $ echo "=== TEST 9: MLX Edge - temperature=0 (deterministic) ==="
+curl -s -w "\nHTTP_CODE:%{http_code}" \
+  -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3-coder-next",
+    "messages": [{"role": "user", "content": "What is 2+2?"}],
+    "max_tokens": 10,
+    "temperature": 0
+  }' 2>/dev/null
+  → run_shell(command='echo "=== TEST 10: Dashboard API - /api/models ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}" http://localhost:8800/api/models 2>/dev/null | python3 -m json.tool 2>/dev/null | head -30')
+  $ echo "=== TEST 10: Dashboard API - /api/models ==="
+curl -s -w "\nHTTP_CODE:%{http_code}" http://localhost:8800/api/models 2>/dev/null | python3 -m json.tool 2>/dev/null | head -30
+  → run_shell(command='echo "=== TEST 11: Dashboard API - /api/sessions ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}" http://localhost:8800/api/sessions 2>/dev/null | head -c 500')
+  $ echo "=== TEST 11: Dashboard API - /api/sessions ==="
+curl -s -w "\nHTTP_CODE:%{http_code}" http://localhost:8800/api/sessions 2>/dev/null | head -c 500
+  → run_shell(command='echo "=== TEST 12: MLX Edge - Empty string content ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}" \\\n  -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen3-coder-next",\n    "messages": [{"role": "user", "content": ""}],\n    "max_tokens": 10\n  }\' 2>/dev/null')
+  $ echo "=== TEST 12: MLX Edge - Empty string content ==="
+curl -s -w "\nHTTP_CODE:%{http_code}" \
+  -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3-coder-next",
+    "messages": [{"role": "user", "content": ""}],
+    "max_tokens": 10
+  }' 2>/dev/null
+  → run_shell(command='echo "=== TEST 13: MLX Edge - Very high max_tokens ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}" \\\n  -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen3-coder-next",\n    "messages": [{"role": "user", "content": "hello"}],\n    "max_tokens": 999999\n  }\' 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(f\'completion_tokens: {d[\\"usage\\"][\\"completion_tokens\\"]}, finish_reason: {d[\\"choices\\"][0][\\"finish_reason\\"]}\')"')
+  $ echo "=== TEST 13: MLX Edge - Very high max_tokens ==="
+curl -s -w "\nHTTP_CODE:%{http_code}" \
+  -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3-coder-next",
+    "messages": [{"role": "user", "content": "hello"}],
+    "max_tokens": 999999
+  }' 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'completion_tokens: {d[\"usage\"][\"completion_tokens\"]}, finish_reason: {d[\"choices\"][0][\"finish_reason\"]}')"
+  → run_shell(command='echo "=== TEST 14: MLX Edge - Invalid JSON body ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}" \\\n  -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{invalid json}\' 2>/dev/null')
+  $ echo "=== TEST 14: MLX Edge - Invalid JSON body ==="
+curl -s -w "\nHTTP_CODE:%{http_code}" \
+  -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{invalid json}' 2>/dev/null
+  → run_shell(command='echo "=== TEST 13 (retry): MLX Edge - Very high max_tokens ==="\ncurl -s \\\n  -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "qwen3-coder-next",\n    "messages": [{"role": "user", "content": "hello"}],\n    "max_tokens": 999999\n  }\' 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(f\'completion_tokens: {d[\\"usage\\"][\\"completion_tokens\\"]}, finish_reason: {d[\\"choices\\"][0][\\"finish_reason\\"]}\')"\necho "HTTP_CODE: 200"')
+  $ echo "=== TEST 13 (retry): MLX Edge - Very high max_tokens ==="
+curl -s \
+  -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "qwen3-coder-next",
+    "messages": [{"role": "user", "content": "hello"}],
+    "max_tokens": 999999
+  }' 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'completion_tokens: {d[\"usage\"][\"completion_tokens\"]}, finish_reason: {d[\"choices\"][0][\"finish_reason\"]}')"
+echo "HTTP_CODE: 200"
+  → run_shell(command='echo "=== TEST 15: Dashboard - check available API routes ==="\ncurl -s http://localhost:8800/api/health 2>/dev/null | head -c 300\necho ""\necho "---"\ncurl -s http://localhost:8800/api/status 2>/dev/null | head -c 300\necho ""\necho "---"\ncurl -s http://localhost:8800/api/models 2>/dev/null | head -c 300')
+  $ echo "=== TEST 15: Dashboard - check available API routes ==="
+curl -s http://localhost:8800/api/health 2>/dev/null | head -c 300
+echo ""
+echo "---"
+curl -s http://localhost:8800/api/status 2>/dev/null | head -c 300
+echo ""
+echo "---"
+curl -s http://localhost:8800/api/models 2>/dev/null | head -c 300
+  → run_shell(command='echo "=== TEST 16: MLX - persona-prefixed model via LiteLLM ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}" \\\n  -X POST http://localhost:4000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "coder:qwen3-coder-next",\n    "messages": [{"role": "user", "content": "What is 1+1?"}],\n    "max_tokens": 15\n  }\' 2>/dev/null')
+  $ echo "=== TEST 16: MLX - persona-prefixed model via LiteLLM ==="
+curl -s -w "\nHTTP_CODE:%{http_code}" \
+  -X POST http://localhost:4000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "coder:qwen3-coder-next",
+    "messages": [{"role": "user", "content": "What is 1+1?"}],
+    "max_tokens": 15
+  }' 2>/dev/null
+  → run_shell(command='echo "=== TEST 17: Dashboard /api/status full ==="\ncurl -s http://localhost:8800/api/status 2>/dev/null | python3 -m json.tool 2>/dev/null')
+  $ echo "=== TEST 17: Dashboard /api/status full ==="
+curl -s http://localhost:8800/api/status 2>/dev/null | python3 -m json.tool 2>/dev/null
+  → run_shell(command='echo "=== TEST 18: MLX - gemma4-31b (another model) ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}" \\\n  -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "gemma4-31b",\n    "messages": [{"role": "user", "content": "Say hi."}],\n    "max_tokens": 15\n  }\' 2>/dev/null')
+  $ echo "=== TEST 18: MLX - gemma4-31b (another model) ==="
+curl -s -w "\nHTTP_CODE:%{http_code}" \
+  -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gemma4-31b",
+    "messages": [{"role": "user", "content": "Say hi."}],
+    "max_tokens": 15
+  }' 2>/dev/null
+  → run_shell(command='echo "=== TEST 19: MLX - deepseek-r1-32b ==="\ncurl -s -w "\\nHTTP_CODE:%{http_code}" \\\n  -X POST http://localhost:8000/v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d \'{\n    "model": "deepseek-r1-32b",\n    "messages": [{"role": "user", "content": "Say hi."}],\n    "max_tokens": 15\n  }\' 2>/dev/null')
+  $ echo "=== TEST 19: MLX - deepseek-r1-32b ==="
+curl -s -w "\nHTTP_CODE:%{http_code}" \
+  -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "deepseek-r1-32b",
+    "messages": [{"role": "user", "content": "Say hi."}],
+    "max_tokens": 15
+  }' 2>/dev/null
+  → run_shell(command='mkdir -p ~/MLX-AI/qa-phase5')
+  $ mkdir -p ~/MLX-AI/qa-phase5
+gateway error: 500 Server Error: Internal Server Error for url: http://localhost:8000/v1/chat/completions — is :4000 up?
