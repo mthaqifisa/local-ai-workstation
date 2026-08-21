@@ -81,10 +81,10 @@ _SVC_RESTART = {
 
 # Role → served model, for the demo model table.
 ROLES = [
-    ("Orchestrator", "qwen36-35b",   "Reads the task, routes work to the right sub-model."),
-    ("Coder",        "qwen36-27b",   "Writes & edits code (dense 27B, 8-bit for accuracy)."),
-    ("Reasoner / QA","qwen36-27b",   "Plans, reviews, designs tests (thinking mode)."),
-    ("Vision / OCR", "qwen36-27b",  "Reads images, PDFs, charts, screenshots (multimodal 27B)."),
+    ("Orchestrator", "qwen38-27b",   "Reads the task, routes work to the right sub-model."),
+    ("Coder",        "qwen3-coder-next", "Writes & edits code (80B MoE, 4-bit)."),
+    ("Reasoner / QA","qwen38-27b",   "Plans, reviews, designs tests (thinking mode, 262K ctx)."),
+    ("Vision / OCR", "qwen3-vl-8b",  "Reads images, PDFs, charts, screenshots (multimodal 8B)."),
     ("Embeddings",   "qwen3-embed",  "Turns documents into vectors for RAG."),
 ]
 
@@ -2461,16 +2461,17 @@ async function loadGallery(){
     const d=await(await j('/api/images')).json();
     const g=document.getElementById('gallery');g.innerHTML='';
     const imgs=d.images||[];
+    const srvPrompts=d.prompts||{};
     document.getElementById('galCount').textContent=imgs.length;
     imgs.forEach(f=>{
       const u='/api/image-file/'+f;
-      const prompt=getPrompt(f)||'';
+      const prompt=srvPrompts[f]||getPrompt(f)||'';
       const el=document.createElement('div');el.className='gal-item';
       el.innerHTML='<img src="'+u+'" loading="lazy"><div class="gal-overlay">'+
         (prompt?'<div class="gal-prompt">'+esc(prompt)+'</div>':'')+
         '</div><a class="gal-dl" href="'+u+'" download="'+f+'" onclick="event.stopPropagation()">⬇</a>'+
         '<button class="gal-del" title="Delete from disk" onclick="delGalleryFile(event,\''+f+'\',\'image\')">🗑</button>'+
-        '<button class="info-btn" title="View prompt" data-prompt="'+esc(prompt||'No prompt recorded.').replace(/"/g,'&quot;')+'" onclick="showMediaInfo(event,this.dataset.prompt)">ⓘ</button>';
+        (function(){const _t='📁 ~/MLX-AI/documents/images/'+f+'\n\n📝 '+(prompt||'No prompt recorded.');return '<button class="info-btn" title="View info" data-prompt="'+esc(_t).replace(/"/g,'&quot;')+'" onclick="showMediaInfo(event,this.dataset.prompt)">ⓘ</button>';})();
       el.onclick=()=>openLb(u,f);
       g.appendChild(el);
     });
@@ -2651,6 +2652,25 @@ def api_agent_chat():
             yield json.dumps({"type": typ, "text": text}) + "\n"
     return Response(gen(), mimetype="application/x-ndjson")
 
+# ── prompt metadata helpers ───────────────────────────────────────────────────
+def _save_media_prompt(directory, filename, prompt):
+    """Persist prompt to per-directory prompts.json sidecar."""
+    db_path = Path(directory) / "prompts.json"
+    try:
+        db = json.loads(db_path.read_text()) if db_path.exists() else {}
+        db[filename] = prompt
+        db_path.write_text(json.dumps(db, ensure_ascii=False))
+    except Exception:
+        pass
+
+def _load_media_prompts(directory):
+    """Return {filename: prompt} dict from per-directory prompts.json."""
+    db_path = Path(directory) / "prompts.json"
+    try:
+        return json.loads(db_path.read_text()) if db_path.exists() else {}
+    except Exception:
+        return {}
+
 # ── image generation (mflux / FLUX, via the tested wrapper) ─────────────────
 from flask import send_file
 IMAGES_DIR = Path(os.environ.get("MLX_IMAGES_DIR", str(Path.home() / "MLX-AI" / "documents" / "images")))
@@ -2685,7 +2705,18 @@ def api_imagine():
     if r.returncode != 0 or not os.path.exists(out):
         err = (r.stderr or r.stdout or "generation failed").strip()[-800:]
         return jsonify({"error": err}), 500
-    return jsonify({"file": os.path.basename(out)})
+    fname = os.path.basename(out)
+    # Embed prompt in PNG tEXt chunk and sidecar DB
+    try:
+        from PIL import Image, PngImagePlugin
+        img = Image.open(out)
+        meta = PngImagePlugin.PngInfo()
+        meta.add_text("prompt", prompt)
+        img.save(out, pnginfo=meta)
+    except Exception:
+        pass
+    _save_media_prompt(IMAGES_DIR, fname, prompt)
+    return jsonify({"file": fname})
 
 @app.route("/api/image-file/<name>")
 @require_auth
@@ -2698,9 +2729,21 @@ def api_image_file(name):
 @app.route("/api/images")
 @require_auth
 def api_images():
-    if not IMAGES_DIR.exists(): return jsonify({"images": []})
+    if not IMAGES_DIR.exists(): return jsonify({"images": [], "prompts": {}})
     files = sorted((f.name for f in IMAGES_DIR.glob("*.png")), reverse=True)[:24]
-    return jsonify({"images": files})
+    prompts = _load_media_prompts(IMAGES_DIR)
+    # Also try reading from PNG tEXt for files missing from the sidecar
+    for f in files:
+        if f not in prompts:
+            try:
+                from PIL import Image
+                img = Image.open(str(IMAGES_DIR / f))
+                p = img.text.get("prompt", "")
+                if p:
+                    prompts[f] = p
+            except Exception:
+                pass
+    return jsonify({"images": files, "prompts": prompts})
 
 @app.route("/api/delete-file", methods=["POST"])
 @require_auth
@@ -2869,7 +2912,7 @@ video{width:100%;border-radius:14px;display:none;max-height:560px;background:#00
 .gal-item{border-radius:8px;overflow:hidden;cursor:pointer;border:1px solid var(--bdr);
   aspect-ratio:16/9;background:var(--surf);transition:.2s;position:relative}
 .gal-item:hover{border-color:var(--bdrbrt);transform:scale(1.02)}
-.gal-item video{width:100%;height:100%;object-fit:cover}
+.gal-item video{width:100%;height:100%;object-fit:cover;display:block}
 .gal-dl{position:absolute;bottom:4px;right:4px;background:rgba(2,8,23,.75);
   border-radius:5px;font-size:11px;padding:3px 7px;color:var(--text);text-decoration:none;
   opacity:0;transition:.2s}
@@ -3083,6 +3126,7 @@ async function generate(){
           vid.src='/api/video-file/'+jd.file+'?t='+Date.now();
           vid.style.display='block';
           document.getElementById('resPh').style.display='none';
+          vid.load();vid.play().catch(()=>{});
           document.getElementById('vidStats').textContent=dur+'s · '+timeStr+' total';
           curVideoFile=jd.file;
           saveVidPrompt(jd.file,prompt);
@@ -3114,17 +3158,28 @@ async function loadGallery(){
     const d=await(await fetch('/api/videos')).json();
     const g=document.getElementById('gallery');g.innerHTML='';
     const vids=d.videos||[];document.getElementById('galCnt').textContent=vids.length;
+    const srvPrompts=d.prompts||{};
     vids.forEach(f=>{
       const u='/api/video-file/'+f;
       const el=document.createElement('div');el.className='gal-item';
-      const vp=getVidPrompt(f);
-      el.innerHTML='<video src="'+u+'" muted loop></video>'+
+      const vp=srvPrompts[f]||getVidPrompt(f)||'';
+      const _vInfoText='📁 ~/MLX-AI/documents/videos/'+f+'\n\n📝 '+(vp||'No prompt recorded.');
+      el.innerHTML='<video src="'+u+'" muted loop preload="metadata"></video>'+
         '<a class="gal-dl" href="'+u+'" download="'+f+'" onclick="event.stopPropagation()">⬇</a>'+
         '<button class="gal-del" title="Delete from disk" onclick="delGalleryFile(event,\''+f+'\',\'video\')">🗑</button>'+
-        '<button class="info-btn" title="View prompt" data-prompt="'+esc(vp||'No prompt recorded.').replace(/"/g,'&quot;')+'" onclick="showMediaInfo(event,this.dataset.prompt)">ⓘ</button>';
-      el.querySelector('video').onmouseover=function(){this.play();};
-      el.querySelector('video').onmouseout=function(){this.pause();};
-      el.onclick=()=>{document.getElementById('resultVid').src=u+'&t='+Date.now();document.getElementById('resultVid').style.display='block';document.getElementById('resPh').style.display='none';curVideoFile=f;};
+        '<button class="info-btn" title="View info" data-prompt="'+esc(_vInfoText).replace(/"/g,'&quot;')+'" onclick="showMediaInfo(event,this.dataset.prompt)">ⓘ</button>';
+      const tv=el.querySelector('video');
+      tv.addEventListener('loadedmetadata',function(){this.currentTime=0.1;},{once:true});
+      tv.onmouseover=function(){this.play();};
+      tv.onmouseout=function(){this.pause();this.currentTime=0.1;};
+      el.onclick=(e)=>{
+        if(e.target.tagName==='BUTTON'||e.target.tagName==='A')return;
+        const rv=document.getElementById('resultVid');
+        rv.src=u+'&t='+Date.now();rv.style.display='block';
+        document.getElementById('resPh').style.display='none';curVideoFile=f;
+        rv.addEventListener('canplay',function h(){rv.removeEventListener('canplay',h);rv.play().catch(()=>{});},{once:true});
+        rv.load();
+      };
       g.appendChild(el);
     });
   }catch(e){}
@@ -3150,7 +3205,9 @@ def _run_video_job(job_id, cmd, out, src_path):
             err = (r.stderr or r.stdout or "generation failed").strip()[-800:]
             _VIDEO_JOBS[job_id].update({"status": "error", "error": err[-400:]})
         else:
-            _VIDEO_JOBS[job_id].update({"status": "done", "file": os.path.basename(out)})
+            fname = os.path.basename(out)
+            _VIDEO_JOBS[job_id].update({"status": "done", "file": fname})
+            _save_media_prompt(VIDEOS_DIR, fname, _VIDEO_JOBS[job_id].get("prompt", ""))
     except subprocess.TimeoutExpired:
         _VIDEO_JOBS[job_id].update({"status": "error", "error": "Timed out after 2 hours"})
     except Exception as e:
@@ -3212,14 +3269,33 @@ def api_video_file(name):
     if not re.match(r"^[A-Za-z0-9._-]+\.mp4$", name): return ("bad name", 400)
     p = VIDEOS_DIR / name
     if not p.exists(): return ("not found", 404)
-    return send_file(str(p), mimetype="video/mp4")
+    file_size = p.stat().st_size
+    range_header = request.headers.get("Range")
+    if range_header:
+        m = re.search(r"bytes=(\d+)-(\d*)", range_header)
+        if m:
+            byte_start = int(m.group(1))
+            byte_end   = int(m.group(2)) if m.group(2) else file_size - 1
+            byte_end   = min(byte_end, file_size - 1)
+            length     = byte_end - byte_start + 1
+            with open(p, "rb") as f:
+                f.seek(byte_start)
+                data = f.read(length)
+            resp = Response(data, status=206, mimetype="video/mp4")
+            resp.headers["Content-Range"]  = f"bytes {byte_start}-{byte_end}/{file_size}"
+            resp.headers["Accept-Ranges"]  = "bytes"
+            resp.headers["Content-Length"] = str(length)
+            return resp
+    resp = send_file(str(p), mimetype="video/mp4")
+    resp.headers["Accept-Ranges"] = "bytes"
+    return resp
 
 @app.route("/api/videos")
 @require_auth
 def api_videos():
-    if not VIDEOS_DIR.exists(): return jsonify({"videos": []})
+    if not VIDEOS_DIR.exists(): return jsonify({"videos": [], "prompts": {}})
     files = sorted((f.name for f in VIDEOS_DIR.glob("*.mp4")), reverse=True)[:20]
-    return jsonify({"videos": files})
+    return jsonify({"videos": files, "prompts": _load_media_prompts(VIDEOS_DIR)})
 
 @app.route("/video")
 @require_auth
@@ -3869,18 +3945,20 @@ async function loadGallery(){
     const d=await(await fetch('/api/audios')).json();
     const g=document.getElementById('audGallery');g.innerHTML='';
     const files=d.files||[];
+    const srvAudPrompts=d.prompts||{};
     const tb=document.getElementById('audToolbar');
     tb.style.display=files.length?'flex':'none';
     if(!files.length){g.innerHTML='<div style="color:var(--muted);font-size:13px">No audio generated yet.</div>';return;}
     files.forEach(f=>{
       const u='/api/audio-file/'+f;
       const el=document.createElement('div');el.className='gal-item';el.dataset.file=f;
+      const _ap=srvAudPrompts[f]||getAudPrompt(f)||'';
       el.innerHTML=
         '<div style="display:flex;align-items:center;gap:8px">'+
           '<input type="checkbox" class="gal-check" onchange="_audToggle(this,\''+f+'\')" title="Select">'+
           '<div class="gal-name" title="'+f+'" style="flex:1;min-width:0">'+f+'</div>'+
           '<button class="gal-rename-btn" title="Rename file" onclick="renameAudio(\''+f+'\')">✏</button>'+
-          '<button class="info-btn" title="View prompt" data-prompt="'+esc(getAudPrompt(f)||'No prompt recorded.').replace(/"/g,'&quot;')+'" onclick="showMediaInfo(event,this.dataset.prompt)">ⓘ</button>'+
+          (function(){const _t='📁 ~/MLX-AI/documents/audio/'+f+'\n\n📝 '+(_ap||'No prompt recorded.');return '<button class="info-btn" title="View info" data-prompt="'+esc(_t).replace(/"/g,'&quot;')+'" onclick="showMediaInfo(event,this.dataset.prompt)">ⓘ</button>';})()+
         '</div>'+
         '<audio class="gal-audio" src="'+u+'" controls></audio>'+
         '<div class="gal-dl"><a href="'+u+'" download="'+f+'">⬇ Download</a>'+
@@ -3991,7 +4069,7 @@ def _plan_music(user_prompt, language_hint="auto", instrumental=False):
         # Call mlx-openai-server directly (not gateway) — gateway strips </think> tags
         r = requests.post(
             f"http://127.0.0.1:{P_MLX}/v1/chat/completions",
-            json={"model": "qwen36-35b", "messages": msgs, "temperature": 0.3, "max_tokens": 3000},
+            json={"model": "qwen38-27b", "messages": msgs, "temperature": 0.3, "max_tokens": 3000},
             timeout=120,
         )
         if r.status_code != 200:
@@ -4107,12 +4185,19 @@ def _run_music_job(job_id, user_prompt, language_hint="auto", instrumental=False
             "status": "done", "file": dest_name, "elapsed": elapsed,
             "caption": caption, "lyrics": lyrics_out, "prompt_short": user_prompt[:50],
         })
+        _save_media_prompt(AUDIO_DIR, dest_name, user_prompt)
     except Exception as e:
         _MUSIC_JOBS[job_id].update({"status": "error", "error": str(e)[:300]})
 
 def _run_jam_job(job_id, style, lyrics, language, duration):
     import shutil
     try:
+        # Auto-generate lyrics when none provided (avoids pure instrumental output)
+        if not lyrics:
+            _MUSIC_JOBS[job_id]["phase"] = "writing lyrics"
+            plan = _plan_music(style, language, instrumental=False)
+            if plan:
+                _style, lyrics, language, _instr = plan
         payload = {
             "prompt": style,
             "lyrics": lyrics,
@@ -4156,6 +4241,7 @@ def _run_jam_job(job_id, style, lyrics, language, duration):
         _MUSIC_JOBS[job_id].update({
             "status": "done", "file": dest_name, "elapsed": elapsed, "style": style,
         })
+        _save_media_prompt(AUDIO_DIR, dest_name, style)
     except Exception as e:
         _MUSIC_JOBS[job_id].update({"status": "error", "error": str(e)[:300]})
 
@@ -4269,9 +4355,10 @@ def api_audio_file(name):
 @app.route("/api/audios")
 @require_auth
 def api_audios():
-    if not AUDIO_DIR.exists(): return jsonify({"files": []})
-    files = sorted((f.name for f in AUDIO_DIR.iterdir() if f.suffix in (".wav", ".mp3")), reverse=True)[:30]
-    return jsonify({"files": files})
+    if not AUDIO_DIR.exists(): return jsonify({"files": [], "prompts": {}})
+    files = sorted((f.name for f in AUDIO_DIR.iterdir()
+                    if f.suffix in (".wav", ".mp3") and not f.name.startswith("prompts")), reverse=True)[:30]
+    return jsonify({"files": files, "prompts": _load_media_prompts(AUDIO_DIR)})
 
 @app.route("/audio")
 @require_auth

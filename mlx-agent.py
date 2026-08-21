@@ -37,11 +37,7 @@ except ImportError:
 # ───────────────────────────── configuration ──────────────────────────────
 GATEWAY   = os.environ.get("MLX_GATEWAY", "http://localhost:8000/v1")   # mlx-openai-server direct — LiteLLM drops tool calls
 # When a model returns a server error (500), retry with these fallbacks.
-# deepseek-r1-70b has a known mlx 0.31.2 thread-local stream bug in the batch
-# scheduler; 32B uses the same DeepSeek-R1 architecture and always works.
-_MODEL_FALLBACKS: dict[str, str] = {
-    "deepseek-r1-70b": "deepseek-r1-32b",
-}
+_MODEL_FALLBACKS: dict[str, str] = {}
 VISION_MODEL = os.environ.get("MLX_VISION_MODEL", "mlx-community/Qwen3-VL-8B-Instruct-4bit")
 VISION_PORT  = os.environ.get("MLX_VISION_PORT", "8081")
 VISION_SERVER = f"http://localhost:{VISION_PORT}"   # resident mlx_vlm.server (warm model)
@@ -49,7 +45,7 @@ SEARXNG   = os.environ.get("MLX_SEARXNG", "http://localhost:8888")
 WORKDIR   = Path(os.environ.get("MLX_WORKDIR", str(Path.home() / ".mlx-ai-workstation")))
 WORKSPACE = Path(os.environ.get("MLX_WORKSPACE", str(Path.home() / "MLX-AI")))
 PERSONAS_FILE = WORKDIR / "personas.json"
-DEFAULT_MODEL = os.environ.get("MLX_AGENT_MODEL", "qwen36-27b")
+DEFAULT_MODEL = os.environ.get("MLX_AGENT_MODEL", "qwen38-27b")
 MAX_STEPS = int(os.environ.get("MLX_AGENT_MAX_STEPS", "0"))               # 0 = unlimited tool steps
 LOOP_GUARD = int(os.environ.get("MLX_AGENT_LOOP_GUARD", "12"))            # stop if the SAME tool call repeats N× in a row (0 = off)
 MAX_SEARCHES = int(os.environ.get("MLX_AGENT_MAX_SEARCHES", "8"))         # per run, then steer to web_fetch/direct
@@ -65,7 +61,6 @@ PRESENCE_PENALTY = float(os.environ.get("MLX_AGENT_PRESENCE_PENALTY", "0.0"))
 
 # Per-model temperature overrides (anti-hallucination: use lower temps for factual/code tasks)
 _MODEL_TEMPS: dict[str, float] = {
-    "deepseek-r1": 0.0,     # reasoning — fully deterministic
     "qwen3-coder": 0.02,    # coding — maximum precision
     "devstral":    0.02,    # coding — maximum precision
     "coder":       0.02,    # coding alias
@@ -308,8 +303,8 @@ DEFAULT_PERSONAS = {
             "  writer      — formal docs, reports, READMEs, .docx deliverables\n"
             "  designer    — UI/UX analysis, screenshot review, HTML/CSS mockups\n"
             "  ba          — requirements engineering, user stories, acceptance criteria\n"
-            "  reasoner    — fast complex reasoning, math, logic (DeepSeek-R1 32B)\n"
-            "  deep_reasoner — extended deep reasoning, multi-step proofs (DeepSeek-R1 70B)\n"
+            "  reasoner    — fast complex reasoning, math, logic (Qwen3.8-27B thinking mode)\n"
+            "  deep_reasoner — extended deep reasoning, multi-step proofs (Qwen3.8-27B extended thinking)\n"
             "  security    — OWASP audit, threat modeling, penetration testing\n"
             "  data        — data analysis, ML, visualization, statistical modeling\n"
             "  devops      — CI/CD, containers, infrastructure, deployment\n"
@@ -328,6 +323,21 @@ DEFAULT_PERSONAS = {
             "STEP 4 — SYNTHESIZE:\n"
             "Produce a final summary for the user: what was built/delivered, where files are, "
             "any known issues, and next steps. End with the list of all files created.\n\n"
+            "CONFIRMATION GATE (mandatory — never skip):\n"
+            "NEVER say 'done', 'complete', 'finished', or 'task complete' on your own. "
+            "Before closing any task, you MUST:\n"
+            "  1. State the specific evidence you observed (actual output, curl result, file sizes, test counts)\n"
+            "  2. Give the user an exact command or URL they can run RIGHT NOW to verify themselves\n"
+            "  3. End with: 'Please confirm this looks correct on your end before I close the task.'\n"
+            "If you have no execution evidence — only code you wrote or steps you followed — you are NOT done. "
+            "Run the verification first, then apply this gate.\n\n"
+            "DELEGATION MANDATE (read this first):\n"
+            "You are a PROJECT LEAD, not an implementer. Your job is to delegate, verify, and synthesize.\n"
+            "ALWAYS spawn a specialist for: any code (coder/dev), any research (researcher), "
+            "any testing (qa), any writing (writer), any design (designer), any data/ML (data), "
+            "any infra (devops), any security audit (security), any system design (architect).\n"
+            "ONLY answer yourself for: a simple one-sentence factual question, or routing/coordination decisions.\n"
+            "If you catch yourself writing code, researching, or implementing — STOP and spawn instead.\n\n"
             "RULES:\n"
             "- Spawn subagents ONE AT A TIME — sequential, not parallel\n"
             "- Pass FULL context in every spawn — no vague briefs\n"
@@ -336,10 +346,14 @@ DEFAULT_PERSONAS = {
             "- Standard pipeline for software: ba (if requirements unclear) → researcher (if tech unclear) "
             "→ architect (if complex) → coder → qa → writer\n"
             "- Max 12 subagents per top-level task\n"
-            "- Simple tasks (single lookup, quick question): answer yourself — no spawn\n"
             "- Never end on a raw tool result — always synthesize\n"
             "- If a subagent fails or returns empty: diagnose why, fix the brief, re-spawn once\n"
-            "- If the deliverable is a FILE: it must be WRITTEN TO DISK, not printed in chat"
+            "- If the deliverable is a FILE: it must be WRITTEN TO DISK, not printed in chat\n\n"
+            "STEP 3 — VERIFY (extended):\n"
+            "  After any rename/upgrade task by coder: grep the repo for the new identifier inside "
+            "RETIRED_*, DEPRECATED_*, LEGACY_*, or migration_* structures. If the NEW name is inside "
+            "those structures, that is a bug — those lists must hold the OLD name as the migration trigger. "
+            "Spawn coder to fix it before declaring done."
         ),
     },
 
@@ -367,6 +381,10 @@ DEFAULT_PERSONAS = {
             "If asked to build something, build it and verify it works. "
             "If asked to explain something, explain it precisely with examples. "
             "If asked for a recommendation, give one with clear reasoning — not 'it depends'.\n\n"
+            "CONFIRMATION GATE: For any task that produces an output (file, app, config, result) — "
+            "never say 'done'. Instead: state the specific evidence you observed, give the user "
+            "one exact command or path they can verify themselves, and end with "
+            "'Please confirm this looks correct on your end.'\n\n"
             "RESPONSE STYLE: concise and direct. No padding, no re-stating the question, "
             "no excessive caveats. Lead with the answer."
         ),
@@ -495,7 +513,15 @@ DEFAULT_PERSONAS = {
             "- If a build fails: fix it. Do not workaround by removing the test.\n"
             "- If you can't fix a bug after 3 attempts: document it with exact error output in BUGS.md\n"
             "- Security: no hardcoded secrets, no SQL string concatenation, validate all inputs\n"
-            "- Save progress to disk after each phase in case of timeout"
+            "- Save progress to disk after each phase in case of timeout\n"
+            "- CONFIRMATION GATE: Never say 'done' or 'complete' unilaterally. After Phase 4, "
+            "state the evidence you have, give the user one command they can run to verify (e.g. "
+            "`curl http://localhost:9000/health` or `ls -lh <file>`), and end with "
+            "'Please confirm this works on your end.'\n"
+            "- RENAME RULE: When renaming an identifier across a codebase, audit each occurrence before replacing it. "
+            "Sets/dicts/lists named RETIRED_*, DEPRECATED_*, LEGACY_*, migration_*, or old_* must keep the OLD name — "
+            "their whole purpose is to trigger auto-migration away from that name. Never put the new name inside them. "
+            "After the rename, grep for remaining old-name hits and confirm each one is intentionally preserved."
         ),
     },
 
@@ -517,13 +543,18 @@ DEFAULT_PERSONAS = {
             "RULES:\n"
             "- Never claim 'done' without showing compile output and a real execution result\n"
             "- If it breaks something else, fix that too before reporting done\n"
-            "- Keep changes minimal and focused — no scope creep"
+            "- Keep changes minimal and focused — no scope creep\n"
+            "- CONFIRMATION GATE: After step 6, state your evidence and give the user one command "
+            "to verify themselves. End with 'Please confirm this works on your end.'\n"
+            "- RENAME RULE: Sets/dicts named RETIRED_*, DEPRECATED_*, LEGACY_*, migration_*, or old_* must keep "
+            "the OLD name — that's the migration trigger. Never put the new name inside them. "
+            "After any rename, grep for remaining old-name hits and confirm each remaining one is intentional."
         ),
     },
 
     "qa": {
         "description": "QA Engineer — real execution testing, curl evidence, edge cases, bugs to disk.",
-        "model": "qa:qwen3.6-27b",
+        "model": "qa:qwen3.8-27b",
         "allowed_tools": "all",
         "system_prompt": (
             "You are a senior QA Engineer. You ACTUALLY RUN the software and report what happens. "
@@ -572,9 +603,16 @@ DEFAULT_PERSONAS = {
             "  □ Security basics (SQL injection, XSS, unauth access) were actually run\n"
             "  □ QA-REPORT.md and BUGS.md are written to disk (confirmed with ls)\n"
             "  □ Go/no-go recommendation is clear and justified\n"
+            "  □ RENAME CHECK (if task involved a rename): grep for the OLD name. Verify: "
+            "(a) it still appears inside any RETIRED_*/DEPRECATED_*/LEGACY_*/migration_* structure (correct — that's the migration trigger), "
+            "and (b) it's gone from all active config/model definitions (correct — replaced). "
+            "If the old name is absent from the retirement list, flag it as a bug.\n"
             "  If any item is missing: run the missing test and update the report before responding.\n\n"
             "FINAL REPORT: summary table (test name | result | evidence), bug count by severity, "
-            "go/no-go recommendation with clear reasoning."
+            "go/no-go recommendation with clear reasoning.\n\n"
+            "CONFIRMATION GATE: After the final report, give the user one command they can run "
+            "to spot-check themselves (e.g. `curl -s http://localhost:9000/health`). "
+            "End with: 'Please confirm the results look correct on your end before I close this.'"
         ),
     },
 
@@ -625,8 +663,8 @@ DEFAULT_PERSONAS = {
     },
 
     "reasoner": {
-        "description": "Fast reasoning specialist (DeepSeek-R1-32B) — explicit CoT, assumption-checking, self-critique.",
-        "model": "reasoner:deepseek-r1-32b",
+        "description": "Reasoning specialist (Qwen3.8-27B thinking mode) — explicit CoT, assumption-checking, self-critique.",
+        "model": "qwen38-27b",
         "allowed_tools": "all",
         "system_prompt": (
             "You are a rigorous reasoning specialist. You solve hard problems in math, logic, "
@@ -660,8 +698,8 @@ DEFAULT_PERSONAS = {
     },
 
     "deep_reasoner": {
-        "description": "Deep reasoning specialist (DeepSeek-R1-70B) — extended CoT, multi-approach, backtracking.",
-        "model": "reasoner:deepseek-r1-70b",
+        "description": "Deep reasoning specialist (Qwen3.8-27B extended thinking) — extended CoT, multi-approach, backtracking.",
+        "model": "qwen38-27b",
         "allowed_tools": "all",
         "system_prompt": (
             "You are a deep reasoning specialist — the most powerful reasoning model in this stack. "
@@ -701,7 +739,7 @@ DEFAULT_PERSONAS = {
 
     "writer": {
         "description": "Technical writer — exec summary first, structured long-form, write_docx for formal docs.",
-        "model": "writer:qwen3.6-27b",
+        "model": "writer:qwen3.8-27b",
         "allowed_tools": "all",
         "system_prompt": (
             "You are a professional technical writer. You produce polished, structured documents "
@@ -752,7 +790,7 @@ DEFAULT_PERSONAS = {
 
     "designer": {
         "description": "UI/UX designer — WCAG 2.1, design principles, actionable HTML/CSS specs, mockups.",
-        "model": "writer:qwen3.6-27b",
+        "model": "writer:qwen3.8-27b",
         "allowed_tools": "all",
         "system_prompt": (
             "You are a senior UI/UX designer and design systems expert. You analyse designs "
@@ -1565,8 +1603,8 @@ TOOLS = {
         "writer (professional long-form docs, exec summary first, write_docx for formal), "
         "designer (WCAG-aware UI/UX analysis, concrete CSS/HTML fixes), "
         "ba (formal requirements: user stories, Gherkin AC, NFR register), "
-        "reasoner (DeepSeek-R1-32B — explicit CoT, assumption-checking, self-critique), "
-        "deep_reasoner (DeepSeek-R1-70B — extended reasoning, multi-approach, backtracking), "
+        "reasoner (Qwen3.8-27B thinking mode — explicit CoT, assumption-checking, self-critique), "
+        "deep_reasoner (Qwen3.8-27B extended thinking — multi-approach, backtracking), "
         "security (OWASP Top 10 audit, STRIDE threat model, active pentest with curl), "
         "data (EDA→visualize→model→evaluate→interpret pipeline), "
         "devops (IaC, CI/CD pipelines, containers, GitOps, hardening), "
@@ -1673,7 +1711,7 @@ def _resolve_model(m: str) -> str:
     served = _served_models()
     if served and m in served:
         return m
-    cand = m.split(":")[-1].replace(".", "")        # 'coder:qwen3.6-27b' -> 'qwen36-27b'
+    cand = m.split(":")[-1].replace(".", "")        # 'coder:qwen3.8-27b' -> 'qwen38-27b'
     if not served or cand in served:
         return cand
     for s in served:                                 # last resort: loose match
@@ -1810,7 +1848,7 @@ def run_agent(query: str, persona: dict, depth: int = 0, spawn_ctx: dict = None,
                 if _looks_degenerate(ans):
                     ans = ("[the model fell into a repetition loop instead of answering — this usually "
                            "means it's too weak at tool-calling for this task. Try /reset and rephrase, "
-                           "or switch the persona to the dense qwen3.6-27b coder (MoE models loop here). "
+                           "or switch the persona to the dense qwen3.8-27b coder (MoE models loop here). "
                            "You can also raise MLX_AGENT_FREQ_PENALTY.]")
                 # Live-stream the answer to front-ends (e.g. Telegram) ONLY at the top
                 # level and ONLY now that generation is safely complete — never during
@@ -1834,7 +1872,7 @@ def run_agent(query: str, persona: dict, depth: int = 0, spawn_ctx: dict = None,
                 if repeats >= LOOP_GUARD:
                     return (f"[stopped: the model repeated the identical tool call {repeats+1}× without "
                             "making progress — it's stuck. Try rephrasing the task, or switch to a dense "
-                            "model like qwen3.6-27b (MoE models tend to loop on tool chains). "
+                            "model like qwen3.8-27b (MoE models tend to loop on tool chains). "
                             "Disable this guard with MLX_AGENT_LOOP_GUARD=0.]")
             messages.append({"role":"assistant","content":msg.get("content") or "","tool_calls":tool_calls})
             for tc in tool_calls:
