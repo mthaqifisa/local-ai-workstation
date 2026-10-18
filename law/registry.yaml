@@ -1,0 +1,339 @@
+# =============================================================================
+#  Local AI Workstation v2 — SINGLE SOURCE OF TRUTH
+#
+#  Every other config (model server, gateway, dashboard roles, personas,
+#  `law models`) is GENERATED from this file. Never edit generated files.
+#  Your own additions go in ~/.law/config/models.user.yaml (same schema, merged
+#  on top; an entry with the same id overrides only the fields you give).
+#  Easiest way to add/remove your own models: `law add-model` / `law remove-model`.
+#
+#  verified:  true  = repo id confirmed on Hugging Face (law status --models)
+#  download:  auto   = always installed (missing → downloaded on every run)
+#             manual = only if you run `law pull <id>`; kept if already present
+#  Removing a model from this file removes its download on the next run
+#  (only if this installer downloaded it — your own downloads are never touched).
+# =============================================================================
+schema: 1
+
+machine:
+  # One large model in RAM at a time. Weights above this are REFUSED.
+  # 64 GB − ~18 GB (macOS + KV cache + one small media/aux model) ≈ 46 GB.
+  max_weights_gb: 46
+  reserve_gb: 18
+
+network:
+  # SECURITY: the gateway + dashboard have NO AUTH and the dashboard can dispatch agent jobs that run
+  # ANY shell command. 127.0.0.1 = reachable only from THIS Mac (safe default). Change to 0.0.0.0 ONLY on
+  # a network you fully trust (home LAN / VPN) — on 0.0.0.0 anyone who can reach the port can run commands.
+  bind_host: 127.0.0.1
+
+# ── job runner (one job, one model at a time) ─────────────────────────────
+runtime:
+  worker:
+    max_attempts: 3               # a failed job is retried twice, then reported (long builds deserve
+                                  #   another go at a transient failure; agent jobs also self-continue
+                                  #   via runtime.agent.auto_resume and resume from the saved state)
+    idle_unload_s: 900            # unload the model after 15 min with no jobs
+    load_timeout_s: 1800          # max time for a model to load
+    first_token_timeout_s: 1800   # max wait for the first token (long prompts)
+    idle_token_timeout_s: 600     # max gap between tokens before the job is retried
+    default_max_tokens: 16384
+    max_interruptions: 3          # a job interrupted this often (crash/restart) is failed, not retried
+    ram_wait_s: 120               # how long a model load waits for RAM to free up
+  watchdog:
+    interval_s: 15                # how often it checks
+    heartbeat_stale_s: 90         # worker silent this long → restart it
+    stall_s: null                 # job without progress this long → restart (null = timeouts + 300 s)
+    gateway_failures: 3           # failed /health checks in a row → restart the gateway
+    cooldown_s: 120               # never restart the same service twice within this time
+    wake_gap_s: 60                # a gap between checks > interval_s + this = the Mac slept (or the
+                                  #   watchdog stalled); every heartbeat only looks stale because time
+                                  #   jumped, so restarts are held off instead of firing
+    wake_grace_s: 120             # after such a jump, suppress staleness restarts this long so the
+                                  #   worker / Telegram bot / gateway can check in again on their own
+  gateway:
+    progress: true                # show "Loading model…" lines in the chat's thinking area
+    # Requests WITH tools (OpenCode, Claude Code, …): fetch the model's whole reply instead of
+    # streaming it, recover tool calls written as text, then stream the result to the client.
+    # Tool calls are parsed more reliably this way; the reply appears all at once.
+    tools_whole_reply: true
+    # Anthropic API (/v1/messages, used by Claude Code & co.): which persona or model id
+    # answers a given Anthropic model name. First rule whose text appears in the
+    # requested name wins; "*" = everything else. Exact persona / model ids always work.
+    anthropic_models:
+      haiku: general
+      "*": coder
+  probe:
+    sizes: [4096, 16384, 32768, 65536, 131072]   # long-context sizes `law probe` tries
+    min_free_gb: 4                # a size only counts as safe if this much RAM stayed free
+    # mlx-openai-server gives up on a request after 300 s of reading the prompt
+    # (internal limit). A size only counts as safe if it was read well within that.
+    max_prompt_s: 240
+  undo:
+    max_file_mb: 50               # `law snapshot` skips files bigger than this (videos, model files)
+  agent:
+    max_steps: 80                 # model turns per agent job before it stops and reports. Local models
+                                  #   take many small steps; a real build+deploy (npm/docker, fix errors,
+                                  #   rebuild) easily needs 40+. Context stays bounded (context_chars) so
+                                  #   each turn is still fast. Resume a job that still stops with --resume.
+    max_depth: 2                  # how deep sub-jobs may delegate (0 = no delegation)
+    translate: true               # turn casual requests into a task spec first (law agent)
+    shell_timeout_s: 3600         # default max time for ONE shell command (the agent can pass a larger
+                                  #   timeout_s per call for a known-long build). run_shell pulses the
+                                  #   worker heartbeat every 0.25s while a command runs, so a long build
+                                  #   won't be mistaken for a frozen worker and killed.
+    tool_output_chars: 8000       # longer tool output is shortened (start + end kept)
+    max_tokens: 8192              # answer length per model turn
+    # Each agent turn re-sends the WHOLE conversation, and the model server gives up after
+    # 300 s of reading a prompt (internal limit). qwen38-27b reads ~48K tokens in 156 s, so a
+    # conversation that grows unbounded eventually trips that limit mid-job (this is what made
+    # long Telegram tasks "fail" after many steps). Keep the prompt small: ~48K chars ≈ 12-14K
+    # tokens ≈ ~45 s of prefill even on the slow default model, with comfortable margin.
+    context_chars: 48000          # older tool output is shortened when the conversation grows past this
+    nudges: 2                     # an agent that "finishes" without calling any tool is told to act, this often
+    auto_resume: 3                # if it hits the step budget while still using tools, auto-continue this many
+                                  #   times (each extends the ceiling by max_steps) so long builds finish on
+                                  #   their own instead of silently stopping at the limit
+    # Retention for the debug store (~/.law/state/agent.db): after each agent job, specs, briefs
+    # and raw replies are trimmed so the store can't grow forever. Durable `remember` facts are
+    # NEVER pruned. View what's kept with `law job <id>`; 0 = no limit.
+    keep_jobs: 200                # per project, keep this many most-recent jobs' specs/replies/briefs
+    keep_days: 30                 # and drop anything older than this many days
+    # true = stream each agent turn so thinking/answer tokens appear live (Telegram progress,
+    # dashboard). Verified on server 1.8.1 with the qwen3_coder parser: streamed tool calls
+    # assemble identically to whole replies, and normalize()/parse_text_calls still recover any
+    # tool call a model writes as text, so streaming is now both live AND reliable.
+    stream: true
+    save_replies: true            # keep every raw model reply in law's store (runs) for debugging
+  telegram:                       # runs only when TELEGRAM_BOT_TOKEN + TELEGRAM_USER_ID are set (law configure)
+    project: telegram             # default project folder for tasks sent from Telegram (~/MLX-AI/source/<name>)
+    persona: general              # default persona for plain messages
+    poll_s: 50                    # Telegram long-poll time
+    edit_every_s: 3               # how often the progress message is updated
+    progress_lines: 8             # how many recent progress lines the progress message shows
+    stale_s: 300                  # watchdog restarts the bot if it hasn't polled for this long
+  opencode:
+    manage: true                  # keep a "law" provider in ~/.config/opencode/opencode.json (if OpenCode is used)
+    default_model: coder          # set as OpenCode's model only if you haven't chosen one
+
+ports:
+  inference: 8000             # model server (127.0.0.1 only — reached through the queue)
+  gateway: 4000               # law gateway: OpenAI + Anthropic compatible, every request is a queue job
+  dashboard: 8800             # dashboard (Phase 7)
+  vision: 8081                # reserved (Phase 6)
+  openwebui: 3001
+  searxng: 8888
+  portainer: 9000
+  acestep: 7860               # ACE-Step music
+
+paths:
+  workspace: ~/MLX-AI/source
+  outputs: ~/MLX-AI/outputs
+
+defaults:
+  persona: general            # Telegram/dashboard default — NOT the orchestrator
+  model: qwen38-27b
+
+models:
+  # ── language ──────────────────────────────────────────────────────────
+  - id: qwen38-27b
+    repo: mlx-community/Qwen3.8-27B-4bit
+    kind: lm
+    weights_gb: 16
+    context: 49152            # measured on M5 Pro 64 GB: 48K read in 156 s, 15 GB free; ~85K hit the 300 s limit
+    license: Apache-2.0
+    # qwen3_coder (not qwen3): same XML tool-call format, but it's the parser the model server
+    # maps to a message converter that rebuilds arguments into a mapping for the chat template.
+    # With the plain `qwen3` parser, re-sending a prior tool call crashed the template
+    # ("Can only get item pairs from a mapping") — which broke every multi-step Telegram task.
+    tool_parser: qwen3_coder
+    reasoning_parser: qwen3
+    download: auto
+    tier: core
+    verified: true
+    label: "General / writer / QA / reasoning (default)"
+
+  - id: qwen36-35b
+    repo: unsloth/Qwen3.6-35B-A3B-UD-MLX-4bit
+    kind: lm
+    weights_gb: 20
+    context: 65536            # not measured yet — run `law probe qwen36-35b`
+    license: Apache-2.0
+    tool_parser: qwen3_coder  # see qwen38-27b: the converter-backed parser, for chat-template safety
+    reasoning_parser: qwen3
+    download: auto
+    tier: core
+    verified: true
+    label: "Orchestrator (large multi-part tasks only)"
+
+  - id: qwen3-coder-next
+    repo: mlx-community/Qwen3-Coder-Next-4bit
+    kind: lm
+    weights_gb: 42
+    context: 32768            # measured on M5 Pro 64 GB: 32K OK with 5 GB RAM left; 64K won't fit
+    license: Apache-2.0
+    tool_parser: qwen3_coder
+    reasoning_parser: null
+    download: auto
+    tier: heavy
+    verified: true
+    label: "Coder (80B MoE, agentic tool calling)"
+
+  - id: deepseek-r1-70b
+    repo: mlx-community/DeepSeek-R1-Distill-Llama-70B-4bit
+    kind: lm
+    weights_gb: 37
+    context: 32768
+    license: MIT
+    tool_parser: null
+    reasoning_parser: qwen3        # DeepSeek-R1 uses <think>…</think>; the server has no 'deepseek_r1' parser
+    download: manual
+    tier: optional
+    verified: true
+    # NOTE: loads fine but FAILS to generate on mlx-openai-server 1.8.1 with
+    # "There is no Stream(gpu, 1) in current thread" (an MLX runtime issue for this
+    # Llama-70B build). Unusable until a compatible server/model; use qwen36-35b for
+    # heavy reasoning instead. Kept manual so it isn't auto-downloaded.
+    label: "Deep reasoner — BROKEN on server 1.8.1 (MLX Stream error); use qwen36-35b"
+
+  - id: deepseek-r1-32b
+    repo: mlx-community/DeepSeek-R1-Distill-Qwen-32B-4bit
+    kind: lm
+    weights_gb: 18
+    context: 32768
+    license: MIT
+    tool_parser: null
+    reasoning_parser: qwen3        # DeepSeek-R1 uses <think>…</think>; the server has no 'deepseek_r1' parser
+    download: manual
+    tier: optional
+    verified: true
+    label: "Fast reasoner (optional, older distill)"
+
+  - id: qwen3-coder-30b
+    repo: mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit
+    kind: lm
+    weights_gb: 15
+    context: 65536
+    license: Apache-2.0
+    tool_parser: qwen3_coder
+    reasoning_parser: null
+    download: manual
+    tier: optional
+    verified: true
+    label: "Light coder (optional)"
+  # REMOVED: devstral-small-2 — mlx-community/Devstral-Small-2-4bit is NOT FOUND on HF.
+  # REMOVED: v1 "Kimi K2.6" — repo was Kimi-K2-Instruct-0905 (1T params), cannot run in 64 GB.
+
+  # ── vision ────────────────────────────────────────────────────────────
+  - id: qwen3-vl-8b
+    repo: mlx-community/Qwen3-VL-8B-Instruct-4bit
+    kind: vlm
+    weights_gb: 6
+    context: 32768
+    license: Apache-2.0
+    download: auto
+    tier: core
+    verified: true
+    label: "Vision / OCR"
+
+  # ── embeddings ────────────────────────────────────────────────────────
+  - id: qwen3-embed-8b
+    repo: mlx-community/Qwen3-Embedding-8B-4bit-DWQ
+    kind: embed
+    weights_gb: 5
+    license: Apache-2.0
+    download: auto
+    tier: core
+    verified: true
+    label: "RAG embeddings"
+
+  # ── media helpers (wired in Phase 6) ──────────────────────────────────
+  - id: gemma3-12b-encoder
+    repo: mlx-community/gemma-3-12b-it-4bit
+    kind: encoder
+    weights_gb: 8
+    license: Gemma
+    download: manual
+    tier: optional
+    verified: true
+    label: "LTX-2.3 text encoder (kept because v1 video needs it)"
+
+  - id: kokoro-82m
+    repo: prince-canuma/Kokoro-82M
+    kind: tts
+    weights_gb: 1
+    license: Apache-2.0
+    download: auto
+    tier: core
+    verified: true
+    label: "TTS (Kokoro)"
+
+personas:
+  general:       { model: qwen38-27b,       desc: "Answers and does simple tasks directly" }
+  orchestrator:  { model: qwen36-35b,       desc: "Plans large tasks and delegates sub-jobs" }
+  researcher:    { model: qwen36-35b,       desc: "Web research with SearXNG" }
+  ba:            { model: qwen36-35b,       desc: "Business analysis / requirements" }
+  coder:         { model: qwen3-coder-next, desc: "Writes, tests and fixes code" }
+  writer:        { model: qwen38-27b,       desc: "Long documents" }
+  qa:            { model: qwen36-35b,       desc: "Reviews and verifies results to a high bar" }
+  po:            { model: qwen36-35b,       desc: "Product owner — accepts or rejects work vs the goal" }
+  reasoner:      { model: qwen38-27b,       desc: "Careful step-by-step reasoning" }
+  deep-reasoner: { model: deepseek-r1-70b,  desc: "Heavy reasoner — model BROKEN on server 1.8.1; use orchestrator/reasoner for now" }
+  vision:        { model: qwen3-vl-8b,      desc: "Images, screenshots, OCR" }
+  # designer runs a TEXT agent loop (screenshot tool + inspect rendered HTML/CSS); the 8B vision
+  # model is too slow at reading a long brief (300 s timeout) AND agents can't feed it an image
+  # mid-run yet (multimodal = phase 6), so it gives no benefit. Use the capable text model until
+  # multimodal lands, then switch back to a vision model with real image input.
+  designer:      { model: qwen36-35b,       desc: "Design/UX review (HTML/CSS + screenshots)" }
+
+# ── system packages (Homebrew). Removing one here uninstalls it on the next run,
+#    but ONLY if this installer installed it and nothing else depends on it.
+brew:
+  formulae: [uv, git, jq, wget, ffmpeg, colima, docker, docker-compose, node, pandoc, sqlite,
+             cliclick, graphviz, typst]
+  # GUI apps (install-only, never auto-removed). chromium = a headless browser for the screenshot /
+  # cowork / QA-designer tools; skipped if Google Chrome or Brave is already installed.
+  casks: [chromium]
+
+# ── Python runtime for the model server (its own venv; locked + synced every run,
+#    so packages no longer listed are removed).  `install.sh --upgrade` re-resolves.
+python:
+  version: "3.12"
+  runtime:
+    # mlx-openai-server pins its own matched MLX stack (mlx, mlx-lm, mlx-vlm, transformers).
+    # Do NOT add lower bounds for those here — 1.8.1 requires mlx-vlm <0.5 and a
+    # conflicting bound makes the whole resolve fail.
+    - mlx-openai-server==1.8.1
+    - huggingface_hub>=0.34
+    - psutil
+    - requests
+    # Media generation (verified to co-resolve with mlx-openai-server 1.8.1 — no MLX conflict):
+    - mflux                     # image generation (FLUX / Qwen-Image / Z-Image via dedicated CLIs)
+    - mlx-audio                 # text-to-speech (Kokoro)
+    - misaki[en]                # Kokoro's English text processing (pulls the spacy en_core_web_sm
+                                #   model at first TTS run; ttsgen.py sets VIRTUAL_ENV so uv can fetch it)
+    - mlx-video-with-audio      # text/image-to-video (LTX-2.3, includes audio)
+
+# ── Docker UIs (Colima VM). Containers are recreated when their spec changes;
+#    named volumes (your Open WebUI chats, Portainer data) are always kept.
+docker:
+  colima: { cpu: 4, memory_gb: 4, disk_gb: 60 }   # small VM → more RAM for models
+  containers:
+    open-webui:
+      image: ghcr.io/open-webui/open-webui:main
+      port: openwebui
+      container_port: 8080
+      volumes: ["open-webui:/app/backend/data"]
+      env:
+        OPENAI_API_BASE_URL: "http://host.docker.internal:{gateway}/v1"
+        OPENAI_API_KEY: "local"
+    searxng:
+      image: searxng/searxng:latest
+      port: searxng
+      container_port: 8080
+      volumes: ["{law}/searxng:/etc/searxng"]
+    portainer:
+      image: portainer/portainer-ce:latest
+      port: portainer
+      container_port: 9000
+      volumes: ["/var/run/docker.sock:/var/run/docker.sock", "portainer_data:/data"]
