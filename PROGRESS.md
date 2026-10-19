@@ -105,3 +105,6 @@ Storage at start: 685Gi used / 208Gi free; ~/LAW 320G.
 - 2026-10-20 01:40: storage 695Gi/198Gi free; ~/LAW 333G (oMLX SSD cache 61G -> cap 20G pending restart; ~/.m2 to move after agent).
 - 2026-10-20 01:43: offline client E2E PASSED: install.sh (sandboxed, no internet) + OpenCode with served config wrote correct slugify(); also flagged Unicode limitation unprompted.
 - 2026-10-20 02:33: storage 715Gi/177Gi free; oMLX SSD cache 81G (+~20G/h). Safety watcher: apply omlx-settings cap if free < 100G. Agent C7 at 99 min (review phase).
+- 2026-10-20 03:33 auto-resume check: lan-chat agent (f3d2c9e91f03) still running; disk 160Gi free; ~/LAW 372G; watcher active (caps oMLX SSD cache if free < 100G).
+- 2026-10-20 04:33 auto-resume check: lan-chat agent still running; disk 150Gi free; ~/LAW 382G; watcher active.
+- 2026-10-20 05:20 C7 run 2 failed after 4h24m: harness bug (asyncio 64KiB line limit in run_cmd; agent process orphaned). Fixed (99f232a, +2 tests, 163 pass). Applied install: oMLX SSD cache capped, 104.5 GB freed (cache 20G). ~/.m2 moved to ~/LAW/cache/m2. lan-chat run 3 started (log test-lan-chat3.log). Disk: 239Gi free.
