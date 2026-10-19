@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS jobs(
   state     TEXT
 );
 CREATE INDEX IF NOT EXISTS jobs_pick ON jobs(status, priority DESC, id);
+CREATE INDEX IF NOT EXISTS jobs_parent ON jobs(parent_id);
 CREATE TABLE IF NOT EXISTS events(
   job_id INTEGER NOT NULL,
   seq    INTEGER NOT NULL,
@@ -59,6 +60,7 @@ CREATE TABLE IF NOT EXISTS events(
   data   TEXT,
   PRIMARY KEY(job_id, seq)
 );
+CREATE INDEX IF NOT EXISTS events_ts ON events(ts);
 CREATE TABLE IF NOT EXISTS worker(
   id     INTEGER PRIMARY KEY CHECK(id = 1),
   pid    INTEGER,
@@ -199,13 +201,17 @@ class Queue:
         return "queued"
 
     def requeue(self, job_id: int, *, reason: str, undo_attempt: bool = False,
-                max_interruptions: int | None = None) -> bool:
+                max_interruptions: int | None = None, fresh: bool = False) -> bool:
         """Retry after an error (attempt counted), or put back after an interruption
-        (undo_attempt=True: the attempt doesn't count, but the interruption does)."""
+        (undo_attempt=True: the attempt doesn't count, but the interruption does).
+        fresh=True: the job made real progress (agent auto-continue) — reset the retry budget so
+        a later transient error still gets its retries."""
         with self._tx() as c:
             st = c.execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone()
             if not st or st[0] != "running":
                 return False
+            if fresh:
+                c.execute("UPDATE jobs SET attempts=0 WHERE id=?", (job_id,))
             if undo_attempt:
                 c.execute("UPDATE jobs SET attempts=attempts-1 WHERE id=?", (job_id,))
                 return self._interrupt(c, job_id, reason,
@@ -244,7 +250,8 @@ class Queue:
     def wait_for_children(self, job_id: int, children: list[int]) -> bool:
         """running → waiting until every sub-job has ended (then _wake_parent requeues it)."""
         with self._tx() as c:
-            n = c.execute("UPDATE jobs SET status='waiting' WHERE id=? AND status='running'",
+            # parking for sub-jobs is progress, not a failed attempt: reset the retry budget
+            n = c.execute("UPDATE jobs SET status='waiting', attempts=0 WHERE id=? AND status='running'",
                           (job_id,)).rowcount
             if n:
                 self._event(c, job_id, "status", {"state": "waiting", "children": children})
@@ -342,6 +349,40 @@ class Queue:
     def running_job(self) -> dict | None:
         row = self._conn().execute("SELECT * FROM jobs WHERE status='running' ORDER BY started LIMIT 1").fetchone()
         return dict(row) if row else None
+
+    # ── retention ───────────────────────────────────────────────────────
+    KEEP_EVENT_TYPES = ("done", "error", "cancelled")
+
+    def prune(self, keep_events_days: float = 14, keep_jobs_days: float = 180) -> dict:
+        """Keep the queue database small. Finished jobs older than keep_events_days lose their
+        step-by-step events (token deltas, tool lines) but keep the job row, its result and the
+        final done/error event. Finished jobs older than keep_jobs_days are deleted entirely.
+        0 = keep forever. Active jobs are never touched."""
+        now = time.time()
+        res = {"events": 0, "jobs": 0}
+        with self._tx() as c:
+            if keep_events_days:
+                cut = now - keep_events_days * 86400
+                res["events"] = c.execute(
+                    "DELETE FROM events WHERE type NOT IN (?,?,?) AND job_id IN "
+                    "(SELECT id FROM jobs WHERE status IN ('done','failed','cancelled') AND finished < ?)",
+                    (*self.KEEP_EVENT_TYPES, cut)).rowcount
+            if keep_jobs_days:
+                cut = now - keep_jobs_days * 86400
+                old = [r[0] for r in c.execute(
+                    "SELECT id FROM jobs WHERE status IN ('done','failed','cancelled') AND finished < ? "
+                    "AND id NOT IN (SELECT parent_id FROM jobs WHERE parent_id IS NOT NULL "
+                    "AND status IN ('queued','running','waiting'))", (cut,))]
+                for i in range(0, len(old), 500):
+                    part = old[i:i + 500]
+                    marks = ",".join("?" * len(part))
+                    c.execute(f"DELETE FROM events WHERE job_id IN ({marks})", part)
+                    res["jobs"] += c.execute(f"DELETE FROM jobs WHERE id IN ({marks})", part).rowcount
+        try:
+            self._conn().execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except sqlite3.Error:
+            pass
+        return res
 
     # ── watchdog log ────────────────────────────────────────────────────
     def log_watchdog(self, target: str, action: str, reason: str) -> None:

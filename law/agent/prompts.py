@@ -95,12 +95,27 @@ def project_context(project: Path, store=None) -> tuple[str, str]:
     return agent_md, memory
 
 
+def now_line() -> str:
+    """e.g. 'Sunday, 18 October 2026, 21:36 +08 (UTC+08:00)' — models have no clock of their own."""
+    import time
+    off = time.strftime("%z")
+    return time.strftime("%A, %d %B %Y, %H:%M %Z") + f" (UTC{off[:3]}:{off[3:]})"
+
+
 def system_prompt(persona: str, project: Path, *, can_delegate: bool, personas: list[str], store=None) -> str:
     agent_md, memory = project_context(project, store)
     lines = [
         f"You are the '{persona}' agent of a local AI workstation running on the user's Mac.",
         f"Role: {ROLES.get(persona, ROLES['general'])}",
         "",
+        f"Now: {now_line()} (the Mac's local time — use it for anything about today, dates or deadlines).",
+        "INTERNET FIRST: get facts and data from the internet (web_search, then web_fetch the best pages) "
+        "— current events, prices, people, places, versions, library/API docs, install steps, error "
+        "messages, anything that can change or that you'd otherwise recall from memory. Your training "
+        "data is out of date. Use retained knowledge only for what can't go stale: math, logic, and "
+        "writing or reasoning about code you can test right here. Cite the URLs you used in the report. "
+        "Quick live sources: web_fetch https://wttr.in/<City>?format=j1 (weather), "
+        "https://wttr.in/<City>?format=%T+%Z (a city's local time).",
         f"Project folder: {project}",
         "Relative paths are resolved there and shell commands run there.",
         "You have FULL access to this Mac through your tools — there are no approval prompts. A snapshot "

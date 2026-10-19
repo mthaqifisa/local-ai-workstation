@@ -58,7 +58,36 @@ def probe_note(pr: dict, context: int | None) -> str:
     return s
 
 
-def report(p: Paths, *, check_hf: bool = False) -> int:
+UPDATE_PKGS = ("mlx-openai-server", "mlx-lm", "mlx-vlm", "mlx", "mflux", "mlx-audio", "huggingface-hub")
+
+
+def pypi_latest(name: str) -> str | None:
+    try:
+        with urllib.request.urlopen(f"https://pypi.org/pypi/{name}/json", timeout=8) as r:
+            return json.loads(r.read())["info"]["version"]
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def updates(p: Paths) -> list[tuple[str, str, str]]:
+    """[(package, installed, latest)] for the model-server packages that have a newer release.
+    Check only — upgrading is `./install.sh --upgrade` (pins in registry.yaml may hold some back)."""
+    from .system import System
+    from .steps.python_env import parse_pins
+    try:
+        have = {pin.split("==")[0]: pin.split("==")[1]
+                for pin in parse_pins(System().uv_freeze(p.runtime / ".venv" / "bin" / "python"))}
+    except Exception:  # noqa: BLE001
+        return []
+    res = []
+    for name in UPDATE_PKGS:
+        cur, new = have.get(name), pypi_latest(name)
+        if cur and new and new != cur:
+            res.append((name, cur, new))
+    return res
+
+
+def report(p: Paths, *, check_hf: bool = False, check_updates: bool = False) -> int:
     print(f"law {__version__}")
     head("Machine")
     if is_macos():
@@ -189,6 +218,24 @@ def report(p: Paths, *, check_hf: bool = False) -> int:
     for r in recent:
         when = time.strftime("%m-%d %H:%M", time.localtime(r["ts"]))
         print(f"           {when} watchdog {r['action']} {r['target']}: {r['reason']}")
+
+    head("Disk")
+    from .diskinfo import usage
+    du = usage(p, max_age_s=0)
+    mark = {"critical": "  ← CRITICAL: free space now (law reclaim)", "low": "  ← getting low (law reclaim)"}
+    print(f"  free {du['free_gb']} GB of {du['total_gb']} GB{mark.get(du['level'], '')}")
+    for it in sorted(du["items"], key=lambda x: -x["gb"]):
+        if it["gb"] >= 0.1:
+            print(f"  {it['gb']:>7.1f} GB  {it['name']:<38} {it['note']}")
+    problems += du["level"] == "critical"
+
+    if check_updates:
+        head("Updates (model-server packages on PyPI)")
+        ups = updates(p)
+        for name, cur, new in ups:
+            print(f"  {name:<20} {cur} → {new}")
+        print("  " + ("upgrade with ./install.sh --upgrade (registry pins may hold some back)" if ups
+                      else "everything is current"))
 
     head("v1")
     print("  still present → run ./install.sh to retire it" if v1_present(p) else "  retired / not present")

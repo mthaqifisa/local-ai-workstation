@@ -85,9 +85,11 @@ def guess_kind(info: dict) -> str:
 def guess_parsers(repo: str) -> tuple[str | None, str | None]:
     r = repo.lower()
     if "deepseek-r1" in r:
-        return None, "deepseek_r1"
+        return None, "qwen3"              # same as the registry's DeepSeek entries (the server has no deepseek_r1 parser)
     if "qwen3-coder" in r or "qwen3_coder" in r:
         return "qwen3_coder", None
+    if re.search(r"qwen3\.[5-9]", r):        # Qwen3.5+ templates open <think> in the prompt
+        return "qwen3_coder", "qwen3_5"
     if re.search(r"qwen3(?:[.\-_]|$)|qwq", r):
         return "qwen3", "qwen3"
     return None, None
@@ -112,6 +114,18 @@ def _write(p: Paths, data: dict) -> None:
     clean = {k: v for k, v in data.items() if v}
     atomic_write(p.user_models, HEADER + yaml.safe_dump(clean or {"models": []}, sort_keys=False))
     load(p)                                         # validate — raises on a broken result
+
+
+def set_context(p: Paths, mid: str, context: int) -> None:
+    """Record a measured context for a model in models.user.yaml (an override of only that field)."""
+    data = _read(p)
+    for m in data["models"]:
+        if m.get("id") == mid:
+            m["context"] = int(context)
+            break
+    else:
+        data["models"].append({"id": mid, "context": int(context)})
+    _write(p, data)
 
 
 def add_model(p: Paths, repo: str, *, mid: str | None = None, kind: str | None = None,

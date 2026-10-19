@@ -1,10 +1,12 @@
 """Live dashboard — watch the workstation think, in a browser.
 
-Runs as launchd service com.law.dashboard on 0.0.0.0:<dashboard port> (LAN / VPN, no auth,
-read-only). It never runs a job itself: it only reads the queue database, so it shows exactly
+Runs as launchd service com.law.dashboard on <bind_host>:<dashboard port> (127.0.0.1 by default;
+LAW_BIND_HOST=0.0.0.0 in ~/.law/.env opens it to your LAN). No login — instead every request
+goes through law.runtime.netguard (trusted networks only, Host + Origin checks, JSON-only writes),
+because the dashboard is a command center: it can start agent jobs that run shell commands.
+It never runs a job itself — it only reads and writes the queue database, so it shows exactly
 what the worker, Telegram and the gateway are all doing — the model loading, each agent step,
-the tool calls, and the model's live thinking and answer streaming in token by token (the same
-reasoning you see in a web chat with thinking turned on).
+the tool calls, and the model's live thinking and answer streaming in token by token.
 
   GET /              the single-page dashboard (no external files, works offline)
   GET /api/state     machine, worker, queue, recent jobs, ports  (polled every ~2 s)
@@ -31,6 +33,7 @@ from ..paths import get_paths
 from ..registry import load
 from . import memory
 from .db import Queue
+from .netguard import Guard
 
 log = logging.getLogger("law.dashboard")
 
@@ -67,7 +70,8 @@ def _port_open(host: str, port: int, timeout: float = 0.2) -> bool:
 def job_prompt(job: dict) -> str:
     try:
         p = json.loads(job.get("payload") or "{}")
-        what = p.get("task") or (p.get("messages") or [{}])[-1].get("content") or ""
+        what = (p.get("task") or p.get("prompt") or p.get("text") or p.get("query")
+                or (p.get("messages") or [{}])[-1].get("content") or "")
     except (ValueError, KeyError, IndexError, TypeError):
         what = ""
     return " ".join(str(what).split())[:140]
@@ -107,11 +111,21 @@ def snapshot(paths, reg, q: Queue) -> dict:
             "jobs": jobs, "ports": ports, "personas": personas, "models": models}
 
 
+# "Add to Home Screen" on a phone on your LAN → opens full-screen like an app
+MANIFEST = {"name": "LAW · Local AI Workstation", "short_name": "LAW", "start_url": "/", "display": "standalone",
+            "background_color": "#0b1220", "theme_color": "#0b1220",
+            "icons": [{"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}]}
+ICON = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" '
+        'fill="#0b1220"/><circle cx="256" cy="256" r="150" fill="none" stroke="#0ea5e9" stroke-width="36"/>'
+        '<circle cx="256" cy="256" r="52" fill="#38bdf8"/></svg>')
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "law-dashboard"
     q: Queue
     paths = None
     reg = None
+    guard: Guard = Guard()
 
     def log_message(self, *_a):          # don't spam the service log with every poll
         pass
@@ -130,7 +144,16 @@ class Handler(BaseHTTPRequestHandler):
     def _json(self, obj) -> None:
         self._send(200, json.dumps(obj).encode(), "application/json; charset=utf-8")
 
+    def _refused(self, write: bool) -> bool:
+        why = self.guard.check(self.client_address[0], self.headers, write=write, json_only=True)
+        if why:
+            log.warning("refused %s %s from %s: %s", self.command, self.path[:80], self.client_address[0], why)
+            self._send(403, json.dumps({"error": why}).encode(), "application/json; charset=utf-8")
+        return bool(why)
+
     def do_GET(self) -> None:
+        if self._refused(write=False):
+            return
         path = urlparse(self.path)
         try:
             if path.path == "/":
@@ -144,6 +167,20 @@ class Handler(BaseHTTPRequestHandler):
             elif path.path == "/api/job":
                 jid = int((parse_qs(path.query).get("id") or ["0"])[0] or 0)
                 self._json(self._job_detail(jid))
+            elif path.path == "/api/job/export":
+                from .report import job_markdown
+                from .store import Store
+                jid = int((parse_qs(path.query).get("id") or ["0"])[0] or 0)
+                job = self.q.get(jid) or {}
+                cwd = (json.loads(job.get("payload") or "{}") or {}).get("cwd") if job else None
+                md = job_markdown(self.q, jid, Store(self.paths.agent_db) if cwd else None, cwd)
+                body = md.encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/markdown; charset=utf-8")
+                self.send_header("Content-Disposition", f'attachment; filename="law-job-{jid}.md"')
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
             elif path.path == "/media":
                 self._serve_media((parse_qs(path.query).get("path") or [""])[0])
             elif path.path == "/api/db":
@@ -166,7 +203,11 @@ class Handler(BaseHTTPRequestHandler):
                     res = {}
                 self._json({"status": job.get("status"), "results": res.get("results", []),
                             "index": res.get("index")})
-            elif path.path in ("/health", "/favicon.ico"):
+            elif path.path == "/manifest.webmanifest":
+                self._send(200, json.dumps(MANIFEST).encode(), "application/manifest+json")
+            elif path.path in ("/icon.svg", "/favicon.ico"):
+                self._send(200, ICON.encode(), "image/svg+xml")
+            elif path.path == "/health":
                 self._send(200, b"ok", "text/plain")
             else:
                 self._send(404, b"not found", "text/plain")
@@ -177,6 +218,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         """Interactive actions. The dashboard is a command center: it can start and stop jobs,
         exactly like the CLI or Telegram — every task becomes a normal queue job."""
+        if self._refused(write=True):
+            return
         path = urlparse(self.path)
         n = int(self.headers.get("Content-Length") or 0)
         try:
@@ -186,6 +229,19 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path.path == "/api/task":
                 self._json(self._enqueue(body))
+            elif path.path == "/api/music":
+                from ..steps import acestep
+                if body.get("action") == "stop":
+                    self._json({"ok": True, "note": "stopped" if acestep.stop() else "was not running"})
+                else:
+                    self._json({"ok": True, "note": acestep.start()})
+            elif path.path == "/api/unload":
+                w = self.q.worker_info() or {}
+                if not w.get("model"):
+                    self._json({"ok": True, "note": "no model loaded"})
+                else:
+                    jid = self.q.enqueue(w["model"], {}, source="dashboard", kind="unload", priority=100)
+                    self._json({"ok": True, "id": jid})
             elif path.path == "/api/cancel":
                 jid = int(body.get("id"))
                 self._json({"ok": bool(self.q.cancel(jid, reason="cancelled from dashboard")), "id": jid})
@@ -227,12 +283,18 @@ class Handler(BaseHTTPRequestHandler):
         job = self.q.get(jid)
         if not job:
             return {"error": f"no job {jid}"}
-        report = ""
+        report, plan = "", None
         if job.get("status") == "done":
             try:
-                report = (json.loads(job.get("result") or "{}").get("message") or {}).get("content") or ""
+                res = json.loads(job.get("result") or "{}")
+                report = (res.get("message") or {}).get("content") or ""
+                plan = res.get("plan")
             except ValueError:
                 report = ""
+        try:
+            project = (json.loads(job.get("payload") or "{}") or {}).get("cwd")
+        except ValueError:
+            project = None
         timeline = []
         for e in self.q.events(jid):
             d = e["data"] or {}
@@ -264,7 +326,8 @@ class Handler(BaseHTTPRequestHandler):
         return {"id": jid, "status": job.get("status"), "kind": job.get("kind"),
                 "persona": job.get("persona"), "model": job.get("model"), "source": job.get("source"),
                 "parent_id": job.get("parent_id"), "error": job.get("error"),
-                "prompt": job_prompt(job), "report": report, "timeline": timeline[-200:]}
+                "prompt": job_prompt(job), "report": report, "timeline": timeline[-200:],
+                "plan": plan, "project": project}
 
     # ── system view (native services + docker, one pane) ─────────────────
     def _system(self) -> dict:
@@ -306,7 +369,12 @@ class Handler(BaseHTTPRequestHandler):
             pass
         mem = {"free_gb": round(memory.available_gb()), "total_gb": round(memory.total_gb()),
                "pressure": memory.pressure()}
-        return {"native": native, "docker": docker, "mem": mem, "machine": machine_info()}
+        from ..diskinfo import usage
+        try:
+            disk = usage(self.paths)
+        except Exception as e:  # noqa: BLE001 — best effort
+            disk = {"error": str(e)}
+        return {"native": native, "docker": docker, "mem": mem, "machine": machine_info(), "disk": disk}
 
     # ── usage / cost analytics ───────────────────────────────────────────
     def _usage(self) -> dict:
@@ -333,10 +401,23 @@ class Handler(BaseHTTPRequestHandler):
                           "WHERE created > ? GROUP BY d ORDER BY d", (now - 14 * 86400,)).fetchall()]
             compute_s = c.execute(f"SELECT {dur} FROM jobs WHERE started IS NOT NULL",
                                   (now,)).fetchone()[0] or 0
+            # model health: how often each model loaded, how long that took, its last error
+            loads = {m: {"loads": n, "avg_load_s": round(a or 0, 1), "max_load_s": round(mx or 0, 1)}
+                     for m, n, a, mx in c.execute(
+                         "SELECT json_extract(data,'$.model'), COUNT(*), AVG(json_extract(data,'$.load_s')), "
+                         "MAX(json_extract(data,'$.load_s')) FROM events WHERE type='model' "
+                         "AND json_extract(data,'$.state')='ready' GROUP BY 1").fetchall() if m}
+            for m, n, last in c.execute("SELECT model, COUNT(*), MAX(finished) FROM jobs WHERE status='failed' "
+                                        "GROUP BY model").fetchall():
+                row = loads.setdefault(m, {"loads": 0, "avg_load_s": 0, "max_load_s": 0})
+                row["failed_jobs"] = n
+                err = c.execute("SELECT error FROM jobs WHERE model=? AND status='failed' ORDER BY finished DESC "
+                                "LIMIT 1", (m,)).fetchone()
+                row["last_error"] = ((err[0] if err else "") or "")[:160]
         finally:
             c.close()
         return {"total": total, "by_status": by_status, "by_kind": by_kind, "by_model": by_model,
-                "by_day": by_day, "compute_s": round(compute_s, 1)}
+                "by_day": by_day, "compute_s": round(compute_s, 1), "model_health": loads}
 
     # ── database viewer (read-only) ──────────────────────────────────────
     def _dbs(self) -> dict:
@@ -486,7 +567,9 @@ class Handler(BaseHTTPRequestHandler):
             return {"error": "bad image data"}
         if len(raw) > 12_000_000:
             return {"error": "image too large (max 12 MB)"}
-        ext = (body.get("ext") or "png").lstrip(".").lower()[:5] or "png"
+        ext = (body.get("ext") or "png").lstrip(".").lower()
+        if ext not in ("png", "jpg", "jpeg", "webp", "gif", "heic", "bmp", "tif", "tiff"):
+            ext = "png"                                  # never a path piece from the request
         dest = self.paths.outputs / "vision" / f"up-{int(time.time())}.{ext}"
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(raw)
@@ -513,6 +596,10 @@ class Handler(BaseHTTPRequestHandler):
         payload = {"task": task, "cwd": str(project), "depth": 0,
                    "translate": bool(body.get("translate", True)),
                    "messages": [{"role": "user", "content": task}]}
+        if body.get("plan_only"):                    # show the spec first, run nothing (like Telegram /plan)
+            payload["plan_only"] = True
+        elif body.get("spec_text"):                  # run a plan you approved (like Telegram /go)
+            payload.update(spec_text=str(body["spec_text"]), translate=False)
         jid = self.q.enqueue(model, payload, persona=persona, source="dashboard", kind="agent")
         return {"ok": True, "id": jid, "project": str(project), "persona": persona, "model": model}
 
@@ -524,7 +611,8 @@ def build(paths=None) -> ThreadingHTTPServer:
     Handler.q = Queue(paths.queue_db)
     Handler.paths = paths
     Handler.reg = reg
-    httpd = ThreadingHTTPServer(("0.0.0.0", port), Handler)
+    Handler.guard = Guard()
+    httpd = ThreadingHTTPServer((reg.bind_host, port), Handler)
     httpd.daemon_threads = True
     return httpd
 
@@ -532,7 +620,7 @@ def build(paths=None) -> ThreadingHTTPServer:
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s dashboard %(levelname)s %(message)s")
     httpd = build()
-    log.info("dashboard on http://0.0.0.0:%s", httpd.server_address[1])
+    log.info("dashboard on http://%s:%s", httpd.server_address[0], httpd.server_address[1])
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
@@ -544,6 +632,10 @@ PAGE = r"""<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>LAW · Local AI Workstation</title>
+<link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon.svg"><meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="LAW">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="theme-color" content="#0b1220">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -796,6 +888,7 @@ PAGE = r"""<!doctype html>
       <div class="chatbar">
         <select id="c-persona" title="agent"></select>
         <input class="proj" id="c-proj" placeholder="project folder (optional)" autocomplete="off">
+        <label class="muted" style="font-size:12px;font-family:var(--mono);display:flex;align-items:center;gap:6px;cursor:pointer" title="the agent writes a task spec first; you read it, then press Run this plan"><input type="checkbox" id="c-plan"> plan first</label>
         <span class="muted" style="font-size:12px;font-family:var(--mono)">agent mode · tools · web · files</span>
       </div>
       <section class="card" style="min-height:220px"><h2>Live</h2><div id="cnow"><div class="idle">Your dispatched task appears here, thinking out loud.</div></div></section>
@@ -889,7 +982,8 @@ PAGE = r"""<!doctype html>
 
   <!-- SYSTEM -->
   <section class="view" id="view-system" hidden>
-    <div class="vhead"><h1>System</h1><span class="vsub">native services + Docker containers, one pane</span></div>
+    <div class="vhead"><h1>System</h1><span class="vsub">native services + Docker containers, one pane</span>
+      <button class="btn" style="margin-left:auto" onclick="unloadModel()" title="free the RAM now; the model reloads on the next job">⏏ Unload model</button></div>
     <div class="grid cols2" style="margin-top:0">
       <section class="card">
         <h2>Native services <span class="dim" style="font-size:11px">(run on macOS — GPU/MLX; not in Portainer)</span></h2>
@@ -898,6 +992,10 @@ PAGE = r"""<!doctype html>
       <section class="card">
         <h2>Docker containers <span class="dim" style="font-size:11px">(also in Portainer :9000)</span></h2>
         <div id="sys-docker"><div class="idle">loading…</div></div>
+      </section>
+      <section class="card">
+        <h2>Disk <span class="dim" style="font-size:11px">(what law uses · free space with <code>law reclaim</code>)</span></h2>
+        <div id="sys-disk"><div class="idle">loading…</div></div>
       </section>
     </div>
   </section>
@@ -1055,7 +1153,8 @@ function renderLaunchers(){const box=$("#launch");if(!box||!state)return;const h
   box.innerHTML=[
     nav("🖼","Image generation","ready · open Create","create"),
     tile("openwebui",3001,"💬","Chat (Open WebUI)","chat with any model"),
-    tile("acestep",7860,"🎵","Music studio","ACE-Step generator"),
+    (up("acestep")?tile("acestep",7860,"🎵","Music studio","ACE-Step generator")
+      :'<div class="tile" style="cursor:pointer" onclick="startMusic()">'+inner("🎵","Music studio","off · click to start (~15 GB, ~1 min)")+'</div>'),
     tile("searxng",8888,"🔎","Search","private web search"),tile("portainer",9000,"🐳","Containers","Docker / Portainer")].join("");
 }
 function render(){
@@ -1087,12 +1186,13 @@ async function openJob(id){
   $("#scrim").classList.add("show");$("#drawer").classList.add("show");
   $("#dh").innerHTML='<div class="muted">loading #'+id+'…</div>';$("#db").innerHTML="";
   try{const j=await (await fetch("/api/job?id="+id,{cache:"no-store"})).json();const active=["running","queued","waiting"].includes(j.status);
-    $("#dh").innerHTML='<span class="ava" style="width:34px;height:34px;font-size:16px">'+(AVA[j.persona]||"🤖")+'</span><div style="flex:1;min-width:0"><div style="font-weight:600;font-size:15px">#'+j.id+' · @'+esc(j.persona||j.model||"")+' <span class="badge b-'+j.status+'">'+j.status+'</span></div><div class="dim" style="font-size:12px;font-family:var(--mono)">'+esc(j.kind||"")+' · '+esc(j.model||"")+' · via '+esc(j.source||"")+(j.parent_id?" · sub of #"+j.parent_id:"")+'</div></div>'+(active?'<button class="btn ghost" onclick="cancelJob('+j.id+');closeJob()">cancel</button>':'')+'<span class="x" onclick="closeJob()">✕</span>';
+    $("#dh").innerHTML='<span class="ava" style="width:34px;height:34px;font-size:16px">'+(AVA[j.persona]||"🤖")+'</span><div style="flex:1;min-width:0"><div style="font-weight:600;font-size:15px">#'+j.id+' · @'+esc(j.persona||j.model||"")+' <span class="badge b-'+j.status+'">'+j.status+'</span></div><div class="dim" style="font-size:12px;font-family:var(--mono)">'+esc(j.kind||"")+' · '+esc(j.model||"")+' · via '+esc(j.source||"")+(j.parent_id?" · sub of #"+j.parent_id:"")+'</div></div>'+(active?'<button class="btn ghost" onclick="cancelJob('+j.id+');closeJob()">cancel</button>':'')+'<a class="btn ghost" style="text-decoration:none" href="/api/job/export?id='+j.id+'" title="download this job as a Markdown report">⤓ .md</a><span class="x" onclick="closeJob()">✕</span>';
     const ic={think:"🧠",say:"💬",note:"·",tool:"🔧",result:"↳",delegate:"→",spec:"📝",model:"⚙",warn:"⚠",done:"✅",error:"❌",cancelled:"⏹"};
     const rows=(j.timeline||[]).map(e=>'<div class="ev '+e.k+'"><span class="ic">'+(ic[e.k]||"•")+'</span><span class="tx">'+(e.step?'<span class="dim">['+e.step+'] </span>':'')+esc(e.text||e.k)+'</span></div>').join("");
     const kids=((state&&state.jobs)||[]).filter(x=>x.parent_id===id);
     const sub=kids.length?'<div class="subtree"><div class="dim" style="font-size:10px;text-transform:uppercase;letter-spacing:.12em;margin-bottom:4px">Delegated sub-jobs</div>'+kids.map(k=>'<div class="s" onclick="openJob('+k.id+')">'+(AVA[k.persona]||"🤖")+' @'+esc(k.persona||"")+' #'+k.id+' <span class="badge b-'+k.status+'">'+k.status+'</span> '+esc((k.prompt||"").slice(0,46))+'</div>').join("")+'</div>':'';
-    $("#db").innerHTML=(j.prompt?'<div class="report"><b>Task:</b> '+esc(j.prompt)+'</div>':'')+(j.report?'<div class="report">'+esc(j.report)+'</div>':'')+(j.error?'<div class="report" style="color:var(--red)">'+esc(j.error)+'</div>':'')+sub+'<div class="tl">'+(rows||'<div class="muted">no activity yet</div>')+'</div>';
+    lastPlan=(j.plan&&j.plan.spec)?{task:j.plan.task||j.prompt,persona:j.persona,project:j.project||"",spec_text:j.plan.spec}:null;
+    $("#db").innerHTML=(lastPlan?'<div class="report"><button class="btn" onclick="runPlan()">Run this plan ▶</button> <span class="dim">the spec below becomes the agent\'s brief</span></div>':'')+(j.prompt?'<div class="report"><b>Task:</b> '+esc(j.prompt)+'</div>':'')+(j.report?'<div class="report">'+esc(j.report)+'</div>':'')+(j.error?'<div class="report" style="color:var(--red)">'+esc(j.error)+'</div>':'')+sub+'<div class="tl">'+(rows||'<div class="muted">no activity yet</div>')+'</div>';
   }catch(e){$("#db").innerHTML='<div class="muted">could not load this job</div>';}
 }
 function closeJob(){$("#scrim").classList.remove("show");$("#drawer").classList.remove("show");}
@@ -1101,10 +1201,16 @@ document.addEventListener("keydown",e=>{if(e.key==="Escape")closeJob();});
 /* actions */
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove("show"),2800);}
 async function dispatch(){const task=$("#c-task").value.trim();if(!task){toast("type a task first");return;}
-  const body={task,persona:$("#c-persona").value,project:$("#c-proj").value.trim()};$("#c-run").disabled=true;
+  const body={task,persona:$("#c-persona").value,project:$("#c-proj").value.trim(),plan_only:!!($("#c-plan")&&$("#c-plan").checked)};$("#c-run").disabled=true;
   try{const j=await (await fetch("/api/task",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})).json();
-    if(j.ok){toast("dispatched job #"+j.id+" to @"+j.persona);$("#c-task").value="";refresh();}else toast("error: "+(j.error||"failed"));}
+    if(j.ok){toast((body.plan_only?"planning job #":"dispatched job #")+j.id+" to @"+j.persona);$("#c-task").value="";refresh();}else toast("error: "+(j.error||"failed"));}
   catch(e){toast("network error");}finally{$("#c-run").disabled=false;}}
+let lastPlan=null;
+async function runPlan(){if(!lastPlan)return;
+  try{const j=await (await fetch("/api/task",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(lastPlan)})).json();
+    if(j.ok){toast("running the plan as job #"+j.id);closeJob();refresh();}else toast("error: "+(j.error||"failed"));}catch(e){toast("network error");}}
+async function startMusic(){try{const j=await (await fetch("/api/music",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"})).json();toast(j.note||"starting…");}catch(e){toast("could not start ACE-Step");}}
+async function unloadModel(){try{const j=await (await fetch("/api/unload",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"})).json();toast(j.note||(j.ok?"unloading the model…":(j.error||"failed")));setTimeout(()=>{refresh();if(typeof renderSystem==="function")renderSystem();},2500);}catch(e){toast("could not unload");}}
 async function cancelJob(id){try{await fetch("/api/cancel",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id})});toast("cancelled #"+id);refresh();}catch(e){toast("could not cancel");}}
 
 const IMG_MODELS=[["z-image-turbo","Z-Image Turbo · fast, best balance"],["qwen","Qwen-Image · top quality, slow"],["flux2","FLUX.2 klein · fast"],["z-image","Z-Image · photoreal"],["fibo","FIBO"]];
@@ -1285,7 +1391,8 @@ async function renderUsage(){
   const tbl=(rows,cols)=>'<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr>'+cols.map(c=>'<th style="text-align:left;padding:6px 8px;color:var(--muted);border-bottom:1px solid var(--line)">'+c+'</th>').join("")+'</tr></thead><tbody>'+rows+'</tbody></table>';
   const td='style="padding:6px 8px;border-bottom:1px solid var(--line)"';
   $("#usage-kind").innerHTML=(u.by_kind||[]).length?tbl((u.by_kind).map(r=>'<tr><td '+td+'>'+esc(r.kind)+'</td><td '+td+'>'+r.jobs+'</td><td '+td+'>'+fmtDur(r.secs)+'</td><td '+td+'>'+fmtDur(r.avg)+'</td></tr>').join(""),["Kind","Jobs","Compute","Avg"]):'<div class="idle">—</div>';
-  $("#usage-model").innerHTML=(u.by_model||[]).length?tbl((u.by_model).map(r=>'<tr><td '+td+' style="font-family:var(--mono);padding:6px 8px">'+esc(r.model)+'</td><td '+td+'>'+r.jobs+'</td><td '+td+'>'+fmtDur(r.secs)+'</td></tr>').join(""),["Model","Jobs","Compute"]):'<div class="idle">—</div>';
+  const mh=u.model_health||{};
+  $("#usage-model").innerHTML=(u.by_model||[]).length?tbl((u.by_model).map(r=>{const h=mh[r.model]||{};return '<tr><td '+td+' style="font-family:var(--mono);padding:6px 8px">'+esc(r.model)+'</td><td '+td+'>'+r.jobs+'</td><td '+td+'>'+fmtDur(r.secs)+'</td><td '+td+'>'+(h.loads?h.loads+' × ~'+fmtDur(h.avg_load_s):'—')+'</td><td '+td+' title="'+esc(h.last_error||"")+'">'+(h.failed_jobs?'<span style="color:var(--red)">'+h.failed_jobs+'</span>':'0')+'</td></tr>';}).join(""),["Model","Jobs","Compute","Loads","Failed"]):'<div class="idle">—</div>';
 }
 async function renderSystem(){
   const nn=$("#sys-native"), dd=$("#sys-docker"); if(!nn) return;
@@ -1293,6 +1400,17 @@ async function renderSystem(){
   const row=x=>'<div class="svc"><span class="svc-dot" style="background:'+(x.up?"var(--green)":"var(--dim)")+'"></span><div style="flex:1;min-width:0"><div class="svc-nm">'+esc(x.name)+'</div><div class="dim" style="font-size:11.5px;font-family:var(--mono)">'+esc(x.detail||x.status||x.ports||"")+'</div></div><span class="badge '+(x.up?"b-done":"b-queued")+'">'+(x.up?"up":"down")+'</span></div>';
   nn.innerHTML=(s.native||[]).map(row).join("");
   dd.innerHTML=(s.docker||[]).length?(s.docker||[]).map(x=>row({name:x.name,up:x.up,detail:(x.ports||"")+" · "+(x.status||"")})).join(""):'<div class="idle">no containers</div>';
+  const dk=$("#sys-disk"), d=s.disk||{};
+  if(dk){
+    if(d.error){dk.innerHTML='<div class="idle">'+esc(d.error)+'</div>';}
+    else{
+      const col=d.level==="critical"?"var(--red)":d.level==="low"?"var(--amber,#d97706)":"var(--green)";
+      const pct=d.total_gb?Math.round(100*(d.total_gb-d.free_gb)/d.total_gb):0;
+      dk.innerHTML='<div class="svc"><span class="svc-dot" style="background:'+col+'"></span><div style="flex:1"><div class="svc-nm">'+d.free_gb+' GB free of '+d.total_gb+' GB</div>'
+        +'<div style="height:6px;border-radius:3px;background:var(--line,#333);margin-top:6px"><div style="height:6px;border-radius:3px;width:'+pct+'%;background:'+col+'"></div></div></div></div>'
+        +(d.items||[]).filter(x=>x.gb>=0.1).sort((a,b)=>b.gb-a.gb).map(x=>'<div class="svc"><div style="flex:1;min-width:0"><div class="svc-nm">'+esc(x.name)+'</div><div class="dim" style="font-size:11.5px;font-family:var(--mono)">'+esc(x.note||x.path)+'</div></div><span class="badge b-queued">'+x.gb+' GB</span></div>').join("");
+    }
+  }
 }
 
 /* VIDEO / LTX */

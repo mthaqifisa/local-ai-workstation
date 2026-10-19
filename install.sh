@@ -17,7 +17,6 @@
 # =============================================================================
 set -Eeuo pipefail
 
-LAW_VERSION="2.0.0-phase7"
 LAW_HOME="${LAW_HOME:-$HOME/.law}"
 LAW_REPO="${LAW_REPO:-https://github.com/mthaqifisa/local-ai-workstation.git}"
 LAW_BRANCH="${LAW_BRANCH:-v5-enhanced-mlx}"
@@ -55,7 +54,7 @@ for a in "$@"; do
 done
 
 # ── 1. preflight ────────────────────────────────────────────────────────────
-log "Local AI Workstation ${c_b}v${LAW_VERSION}${c_0}"
+log "${c_b}Local AI Workstation v2${c_0}"
 [ "$(uname -s)" = "Darwin" ] || die "macOS only."
 [ "$(uname -m)" = "arm64" ]  || die "Apple Silicon (arm64) only. If you're on Rosetta, open a native Terminal."
 [ "$(id -u)" -ne 0 ]         || die "Do not run as root/sudo. Run as your normal user."

@@ -139,7 +139,7 @@ def make_wd(home, healthy=True, pressure="normal", **cfg):
     restarts: list[str] = []
     clock = Clock()
     state = {"healthy": healthy}
-    wd = Watchdog(load(get_paths()), q, restart=restarts.append, health=lambda: state["healthy"],
+    wd = Watchdog(load(get_paths()), q, restart=restarts.append, health=lambda: state["healthy"], dash_health=lambda: True,
                   pressure=lambda: pressure, now=clock, cfg={"cooldown_s": 120, **cfg})
     return wd, q, restarts, clock, state
 
@@ -185,11 +185,14 @@ def test_watchdog_still_restarts_a_worker_frozen_through_the_wake(home):
     assert "restart worker (heartbeat)" in seen
 
 
-def test_watchdog_leaves_stopped_worker_alone(home):
+def test_watchdog_leaves_stopped_worker_alone_briefly_then_revives_it(home):
     wd, q, restarts, clock, _ = make_wd(home)
     q.beat(1, None, None, "stopped", clock.t)
-    clock.t += 10_000
+    clock.t += 60                                    # a restart in progress: leave it alone
     assert wd.check() == [] and restarts == []
+    clock.t += 10_000 - 60                           # `law stop` would have stopped the watchdog too,
+    wd._last_tick = clock.t - wd.cfg["interval_s"]   # so a long "stopped" = a reload that didn't come back
+    assert wd.check() == ["restart worker (stopped)"] and restarts == ["com.law.worker"]
 
 
 def test_watchdog_restarts_stalled_job_but_not_a_slow_one(home):
@@ -226,7 +229,7 @@ def test_watchdog_warns_on_critical_pressure_during_job(home):
 
 
 def test_watchdog_stall_default_covers_worker_timeouts(home):
-    wd = Watchdog(load(get_paths()), Queue(get_paths().queue_db), restart=lambda l: None, health=lambda: True)
+    wd = Watchdog(load(get_paths()), Queue(get_paths().queue_db), restart=lambda l: None, health=lambda: True, dash_health=lambda: True)
     assert wd.cfg["stall_s"] >= 1800 + 300
 
 

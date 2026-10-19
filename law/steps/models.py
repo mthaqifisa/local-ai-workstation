@@ -27,18 +27,23 @@ def is_complete(ctx: Ctx, repo: str) -> bool:
     return m is None or bool(m.get("complete"))   # not ours → present is enough
 
 
-def _empty_trash(ctx: Ctx) -> None:
-    for d in ctx.paths.trash.iterdir() if ctx.paths.trash.is_dir() else []:
-        shutil.rmtree(d, ignore_errors=True) if d.is_dir() else d.unlink()
+def _trash_gb(ctx: Ctx) -> float:
+    from ..runtime.modelproc import dir_size
+    t = ctx.paths.trash
+    return sum(dir_size(d) if d.is_dir() else d.stat().st_size for d in t.iterdir()) / 1024**3 \
+        if t.is_dir() else 0.0
 
 
 def _download(ctx: Ctx, repo: str, gb: float) -> None:
     need = gb * 1.05 + 2
-    if ctx.sys.free_gb(ctx.paths.hf_cache) < need:
-        _empty_trash(ctx)
-        free = ctx.sys.free_gb(ctx.paths.hf_cache)
-        if free < need:
-            raise NotEnoughDisk(f"{repo} needs ~{need:.0f} GB free disk, only {free:.0f} GB available")
+    free = ctx.sys.free_gb(ctx.paths.hf_cache)
+    if free < need:
+        # never empty the trash behind your back (it may hold a model you still want back) —
+        # say how much it would free and let you decide
+        tg = _trash_gb(ctx)
+        hint = (f" ~/.law/trash holds {tg:.0f} GB of removed items — free it with `law reclaim --trash`."
+                if tg >= 1 else " Free space with `law reclaim` (see `law status` for what uses the disk).")
+        raise NotEnoughDisk(f"{repo} needs ~{need:.0f} GB free disk, only {free:.0f} GB available.{hint}")
     man = load_manifest(ctx.paths)
     if man.model(repo) is None:
         man.own_model(repo, complete=False)

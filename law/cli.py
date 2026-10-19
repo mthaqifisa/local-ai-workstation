@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from . import agentcmds, runcmds, setupcmds
+from . import agentcmds, backupcmds, mediacmds, runcmds, setupcmds
 from .doctor import cached, report
 from .engine import Ctx, StepFailed, run_steps
 from .paths import get_paths
@@ -29,7 +29,7 @@ LEGACY = {
     "--setup-opencode": ("setup-opencode", None), "--agent": ("agent", None),
     "--resume": ("agent", None), "--show-memory": ("agent", None),
     "--telegram": ("telegram", None), "--telegram-service": ("telegram", None),
-    "--image": ("image", 6), "--vision": ("vision", 6),
+    "--image": ("image", None), "--vision": ("vision", None),
 }
 
 
@@ -73,7 +73,7 @@ def cmd_install(a) -> int:
 
 
 def cmd_status(a) -> int:
-    return report(get_paths(), check_hf=a.models)
+    return report(get_paths(), check_hf=a.models, check_updates=a.updates)
 
 
 def cmd_models(a) -> int:
@@ -144,6 +144,7 @@ def build_parser() -> argparse.ArgumentParser:
     for name in ("status", "doctor"):
         s = sub.add_parser(name, help="read-only health report")
         s.add_argument("--models", action="store_true", help="also check every repo id on Hugging Face")
+        s.add_argument("--updates", action="store_true", help="also check PyPI for newer model-server packages")
         s.set_defaults(fn=cmd_status)
 
     s = sub.add_parser("models", help="list the model registry")
@@ -155,8 +156,10 @@ def build_parser() -> argparse.ArgumentParser:
     s.set_defaults(fn=cmd_init_project)
 
     runcmds.add_parsers(sub)
+    mediacmds.add_parsers(sub)
     agentcmds.add_parsers(sub)
     setupcmds.add_parsers(sub)
+    backupcmds.add_parsers(sub)
 
     s = sub.add_parser("purge", help="remove v2 (used by install.sh --purge)")
     s.add_argument("--yes", action="store_true", help="required — confirms the removal")
@@ -172,6 +175,10 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         err("interrupted — re-run ./install.sh; it continues from where it stopped")
         return 130
+    except BrokenPipeError:                       # `law job 5 --md | head` — the reader left
+        import os
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        return 0
 
 
 if __name__ == "__main__":

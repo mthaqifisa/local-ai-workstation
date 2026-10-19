@@ -1,4 +1,6 @@
-"""OpenAI- and Anthropic-compatible gateway on 0.0.0.0:<gateway port> (LAN / VPN, no auth).
+"""OpenAI- and Anthropic-compatible gateway on <bind_host>:<gateway port> (127.0.0.1 by default;
+LAW_BIND_HOST=0.0.0.0 opens it to your LAN). No auth — every request passes law.runtime.netguard
+(trusted networks only, Host + Origin checks) so other machines and web pages can't use it.
 
 Every request becomes a queue job, so Open WebUI, OpenCode, Claude Code, Telegram, the CLI
 and the dashboard all take turns — never two models or two jobs at once.
@@ -25,6 +27,8 @@ from __future__ import annotations
 import json
 import logging
 import re
+import select
+import socket
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Iterator
@@ -35,6 +39,7 @@ from ..paths import get_paths
 from ..registry import load
 from . import anthropic as anth
 from .db import TERMINAL, Queue
+from .netguard import Guard
 
 log = logging.getLogger("law.gateway")
 CHAT_KINDS = ("lm", "vlm")
@@ -127,6 +132,7 @@ class Gateway:
         gcfg = (reg.raw.get("runtime") or {}).get("gateway") or {}
         self.progress = bool(gcfg.get("progress", True))
         self.anthropic_rules = dict(gcfg.get("anthropic_models") or {"haiku": "general", "*": "coder"})
+        self.guard = Guard()
 
     def resolve(self, name: str | None) -> tuple[str, str | None] | None:
         """model field → (model id, persona). Accepts persona names and model ids."""
@@ -174,9 +180,25 @@ class Handler(BaseHTTPRequestHandler):
 
     # ── helpers ─────────────────────────────────────────────────────────
     def _cors(self):
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        # only an Origin that passed the guard is echoed — never "*" (any web page could read chats)
+        origin = self.headers.get("Origin")
+        if origin:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
+            self.send_header("Access-Control-Allow-Headers", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+
+    def _refused(self) -> bool:
+        why = self.g.guard.check(self.client_address[0], self.headers, write=self.command == "POST")
+        if why:
+            log.warning("refused %s %s from %s: %s", self.command, self.path[:80], self.client_address[0], why)
+            body = json.dumps({"error": {"message": why, "type": "forbidden"}}).encode()
+            self.send_response(403)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        return bool(why)
 
     def _json(self, code: int, obj) -> None:
         body = json.dumps(obj).encode()
@@ -207,20 +229,42 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.close_connection = True
 
-    def _wait(self, jid: int) -> tuple[str, dict]:
+    def _client_gone(self) -> bool:
+        """True if the client closed the connection (readable + 0 bytes peeked)."""
+        try:
+            r, _, _ = select.select([self.connection], [], [], 0)
+            return bool(r) and self.connection.recv(1, socket.MSG_PEEK) == b""
+        except (OSError, ValueError):
+            return True
+
+    def _wait(self, jid: int) -> tuple[str, dict] | None:
+        """Wait for a non-streamed job. None = the client hung up (the job is cancelled, so it
+        doesn't keep the single worker busy for nobody)."""
         q = self.g.q
+        last = time.time()
         while (st := q.status(jid)) not in TERMINAL:
             time.sleep(0.25)
+            if time.time() - last >= 1:
+                last = time.time()
+                if self._client_gone():
+                    if q.cancel(jid, reason="client disconnected"):
+                        log.info("job %s cancelled: client disconnected", jid)
+                    self.close_connection = True
+                    return None
         return st, q.get(jid)
 
     # ── routes ──────────────────────────────────────────────────────────
     def do_OPTIONS(self):
+        if self._refused():
+            return
         self.send_response(204)
         self._cors()
         self.send_header("Content-Length", "0")
         self.end_headers()
 
     def do_GET(self):
+        if self._refused():
+            return
         u = urlparse(self.path)
         q = self.g.q
         if u.path == "/health":
@@ -240,6 +284,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._err(404, f"no route {u.path}")
 
     def do_POST(self):
+        if self._refused():
+            return
         u = urlparse(self.path)
         m = re.fullmatch(r"/law/jobs/(\d+)/cancel", u.path)
         if m:
@@ -275,7 +321,10 @@ class Handler(BaseHTTPRequestHandler):
         jid = self.g.q.enqueue(model_id, {"messages": msgs, "params": params}, persona=persona, source="api")
         if req.get("stream"):
             return self._chat_stream(jid, name)
-        st, job = self._wait(jid)
+        waited = self._wait(jid)
+        if waited is None:
+            return None
+        st, job = waited
         if st == "done":
             res = json.loads(job["result"])
             return self._json(200, {
@@ -347,7 +396,10 @@ class Handler(BaseHTTPRequestHandler):
         msg_id = f"msg_law_{jid}"
         if req.get("stream"):
             return self._messages_stream(jid, name, msg_id)
-        st, job = self._wait(jid)
+        waited = self._wait(jid)
+        if waited is None:
+            return None
+        st, job = waited
         if st == "done":
             return self._json(200, anth.from_openai(json.loads(job["result"]), name, msg_id))
         return self._aerr(500 if st == "failed" else 409, f"job {jid} {st}: {job.get('error') or ''}",
@@ -371,7 +423,7 @@ class Handler(BaseHTTPRequestHandler):
                 elif kind in ("progress", "keepalive"):
                     emit([("ping", {"type": "ping"})])
                 elif kind == "done":
-                    emit(tr.finish((val or {}).get("finish_reason")))
+                    emit(tr.finish((val or {}).get("finish_reason"), (val or {}).get("usage")))
                 elif kind == "error":
                     emit([("error", {"type": "error", "error": {"type": "api_error", "message": val}})])
                 elif kind == "cancelled":

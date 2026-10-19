@@ -284,11 +284,32 @@ def cmd_setup_music(a) -> int:
     except StepFailed:
         warn("ACE-Step setup hit a problem — see the output above")
         return 1
-    ok("ACE-Step music studio set up → http://localhost:7860 (first generation downloads ~5 GB)")
+    ok("ACE-Step music studio set up. Start it when you need it: law music start  (or the dashboard's "
+       "Music tile) → http://localhost:7860 — it holds ~15 GB of memory while it runs")
     return 0
 
 
+def cmd_music(a) -> int:
+    from .steps import acestep
+    if a.action == "start":
+        msg = acestep.start()
+        (warn if "not set up" in msg else ok)(msg)
+        return 1 if "not set up" in msg else 0
+    if a.action == "stop":
+        ok("ACE-Step stopped — its memory is free" if acestep.stop() else "ACE-Step was not running")
+        return 0
+    ok("ACE-Step is " + ("running → http://localhost:7860" if acestep.running() else "stopped (law music start)"))
+    return 0
+
+
+def _add_music(sub) -> None:
+    s = sub.add_parser("music", help="start / stop / status of the ACE-Step music studio (on demand, ~15 GB)")
+    s.add_argument("action", nargs="?", default="status", choices=["start", "stop", "status"])
+    s.set_defaults(fn=cmd_music)
+
+
 def add_parsers(sub) -> None:
+    _add_music(sub)
     s = sub.add_parser("configure", help="set secrets: Telegram bot token + user id, Hugging Face token")
     s.add_argument("--telegram-token", help="bot token from @BotFather (checked with Telegram)")
     s.add_argument("--telegram-user", help="your Telegram user id (several: comma-separated)")

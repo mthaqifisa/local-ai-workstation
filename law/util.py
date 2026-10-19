@@ -110,6 +110,32 @@ def copy_if_absent(src: Path, dst: Path) -> bool:
     return True
 
 
+def rotate_logs(folder: Path, max_mb: float = 20, keep: int = 2) -> list[str]:
+    """Copy-truncate every *.log bigger than max_mb: x.log → x.log.1 (→ .2 …, `keep` copies).
+    Copy-truncate (not rename) because launchd and the model process keep the file open in
+    append mode — after the truncate they simply continue writing at the new end."""
+    rotated: list[str] = []
+    folder = Path(folder)
+    if not folder.is_dir():
+        return rotated
+    for f in sorted(folder.glob("*.log")):
+        try:
+            if f.stat().st_size <= max_mb * 1024 * 1024:
+                continue
+            for i in range(keep - 1, 0, -1):
+                older = f.with_name(f"{f.name}.{i}")
+                if older.exists():
+                    os.replace(older, f.with_name(f"{f.name}.{i + 1}"))
+            if keep > 0:
+                shutil.copyfile(f, f.with_name(f"{f.name}.1"))
+            with open(f, "r+b") as fh:
+                fh.truncate(0)
+            rotated.append(f.name)
+        except OSError:
+            continue
+    return rotated
+
+
 # ── locking ─────────────────────────────────────────────────────────────
 class LockBusy(RuntimeError):
     pass

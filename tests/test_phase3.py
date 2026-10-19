@@ -338,7 +338,8 @@ def test_guesses():
     assert guess_kind({"pipeline_tag": "image-text-to-text"}) == "vlm"
     assert guess_kind({"pipeline_tag": "feature-extraction"}) == "embed"
     assert guess_parsers("mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit") == ("qwen3_coder", None)
-    assert guess_parsers("mlx-community/DeepSeek-R1-Distill-Qwen-32B-4bit") == (None, "deepseek_r1")
+    assert guess_parsers("mlx-community/DeepSeek-R1-Distill-Qwen-32B-4bit") == (None, "qwen3")
+    assert guess_parsers("mlx-community/Qwen3.8-27B-4bit") == ("qwen3_coder", "qwen3_5")
     assert default_id("mlx-community/Qwen3-14B-Instruct-4bit") == "qwen3-14b"
 
 

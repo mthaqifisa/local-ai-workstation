@@ -37,7 +37,7 @@ def exe(paths, model: str = "qwen") -> Path | None:
 
 
 def available(paths) -> bool:
-    return exe(paths, "qwen") is not None
+    return any((paths.runtime / ".venv" / "bin" / spec["cmd"]).exists() for spec in MODELS.values())
 
 
 def out_dir(paths) -> Path:

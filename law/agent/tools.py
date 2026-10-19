@@ -196,11 +196,34 @@ def list_dir(ctx: ToolCtx, path: str = ".", depth: int = 2) -> str:
     return f"[{root}]\n" + ("\n".join(lines) or "(empty)") + more
 
 
+def _decompress(raw: bytes, encoding: str) -> bytes:
+    """gzip / deflate bodies → bytes. Some servers (python.org, many CDNs) compress even when the
+    client never asked; urllib doesn't decode, so web_fetch used to return binary garbage. Uses a
+    streaming decoder so a body cut at max_bytes still yields its readable start."""
+    import zlib
+    enc = (encoding or "").lower()
+    if "gzip" in enc or raw[:2] == b"\x1f\x8b":
+        wbits = 16 + zlib.MAX_WBITS
+    elif "deflate" in enc:
+        wbits = zlib.MAX_WBITS
+    else:
+        return raw
+    try:
+        return zlib.decompressobj(wbits).decompress(raw)
+    except zlib.error:
+        try:
+            return zlib.decompressobj(-zlib.MAX_WBITS).decompress(raw)   # raw deflate
+        except zlib.error:
+            return raw
+
+
 def _http_get(url: str, timeout: float = 30, max_bytes: int = 3_000_000) -> tuple[str, bytes]:
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (law local agent)",
-                                               "Accept": "text/html,application/json,text/plain,*/*"})
+                                               "Accept": "text/html,application/json,text/plain,*/*",
+                                               "Accept-Encoding": "gzip, deflate"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.headers.get("Content-Type", ""), r.read(max_bytes)
+        return r.headers.get("Content-Type", ""), _decompress(r.read(max_bytes),
+                                                              r.headers.get("Content-Encoding", ""))
 
 
 def web_search(ctx: ToolCtx, query: str, max_results: int = 8) -> str:

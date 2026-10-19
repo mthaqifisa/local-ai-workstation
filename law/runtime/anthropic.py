@@ -214,15 +214,20 @@ class StreamTranslator:
                                               "delta": {"type": "input_json_delta",
                                                         "partial_json": fn["arguments"]}}
 
-    def finish(self, finish_reason: str | None) -> Iterator[tuple[str, dict]]:
+    def finish(self, finish_reason: str | None, usage: dict | None = None) -> Iterator[tuple[str, dict]]:
         if self.index < 0:
             yield from self._open("text", {"type": "text", "text": ""})
         yield from self._close()
         reason = STOP.get(finish_reason or "stop", "end_turn")
         if self.saw_tool and reason == "end_turn":
             reason = "tool_use"
+        u = usage or {}
+        # real counts from the model server when it reports them; else the delta-count estimate
+        out = {"output_tokens": int(u.get("completion_tokens") or self.out_tokens)}
+        if u.get("prompt_tokens"):
+            out["input_tokens"] = int(u["prompt_tokens"])
         yield "message_delta", {"type": "message_delta", "delta": {"stop_reason": reason, "stop_sequence": None},
-                                "usage": {"output_tokens": self.out_tokens}}
+                                "usage": out}
         yield "message_stop", {"type": "message_stop"}
 
 

@@ -13,8 +13,9 @@ Then the loop, one model turn per step (max_steps):
 
 Making local models reliable (learned from a real M5 Pro run, where qwen38-27b "finished"
 after one 80-token reply without creating anything):
-  - turns are NOT streamed (agent.stream: false): the model server parses tool calls more
-    reliably for complete replies
+  - turns are streamed (agent.stream: true) so thinking/answer appear live in Telegram and the
+    dashboard; streamed tool calls assemble identically to whole replies on server 1.8.1, and
+    agent.stream: false falls back to whole replies
   - thinking that leaks into the answer ("…</think>") is moved out of it
   - tool calls the model wrote as TEXT (<tool_call>…, <function=…>, JSON) are recovered
   - if the model "finishes" without ever calling a tool — so nothing happened on the Mac —
@@ -52,6 +53,9 @@ DEFAULTS = {"max_steps": 80, "max_depth": 2, "translate": True, "shell_timeout_s
             "tool_output_chars": 8000, "max_tokens": 8192, "context_chars": 48000,
             "nudges": 2, "save_replies": True, "stream": True,
             "keep_jobs": 200, "keep_days": 30, "auto_resume": 3}
+
+
+SCREENSHOT_MARKER = ".law-temp"
 
 
 class WaitingForChildren(Exception):
@@ -288,6 +292,10 @@ def run_agent(w, job: dict) -> dict:
     cfg = agent_cfg(w.reg, payload)
     project = check_project(payload.get("cwd") or ".", w.paths.home)
     ensure_project(project)
+    shots = project / ".screenshots"
+    if not shots.exists():                       # law's own scratch folder → marked, so the worker
+        shots.mkdir(parents=True, exist_ok=True)  # deletes it after the job; a folder of yours is kept
+        (shots / SCREENSHOT_MARKER).write_text("created by law for this agent job — removed when it ends\n")
     store = Store(w.paths.agent_db)
     depth = int(payload.get("depth", 0))
     can_delegate = depth < int(cfg["max_depth"])

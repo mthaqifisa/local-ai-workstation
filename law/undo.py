@@ -27,7 +27,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-EXCLUDES = [".local-agent/", ".git/", ".DS_Store"]
+EXCLUDES = [".local-agent/", ".git/", ".DS_Store", ".screenshots/"]   # .screenshots = agents' scratch
 DEFAULT_MAX_FILE_MB = 50
 
 
@@ -117,9 +117,19 @@ class Undo:
         return out[:12] if out else None
 
     # ── public ──────────────────────────────────────────────────────────
+    def _ensure_excludes(self) -> None:
+        """Histories made by an older law lack newer EXCLUDES entries — add them (keeps big-file lines)."""
+        f = self.gitdir / "info" / "exclude"
+        have = f.read_text().splitlines() if f.exists() else []
+        missing = [e for e in EXCLUDES if e not in have]
+        if missing:
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text("\n".join(have + missing) + "\n")
+
     def snapshot(self, message: str = "snapshot") -> tuple[str, int, list[str]]:
         """→ (snapshot id, files changed, big files skipped). 0 changed = nothing new."""
         self.init()
+        self._ensure_excludes()
         self._git("add", "-A")
         skipped = self._exclude_big_staged()
         has_head = self.head() is not None

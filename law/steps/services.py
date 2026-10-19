@@ -106,7 +106,8 @@ def plan_services(ctx: Ctx) -> list[Action]:
                     f.unlink(missing_ok=True)
                 acts.append(Action("remove", f"service {lab} (no longer used)", rm))
     if not acts:
-        url = f"http://127.0.0.1:{load(ctx.paths).ports['gateway']}/health"
+        reg = load(ctx.paths)
+        url = f"http://{reg.local_host}:{reg.ports['gateway']}/health"
         if not ctx.sys.http_ok(url):
             acts.append(Action("update", f"restart gateway (no answer from {url}; log: ~/.law/logs/gateway.log)",
                                lambda: ctx.sys.launchd_kickstart(label("gateway"))))

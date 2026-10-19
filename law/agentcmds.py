@@ -141,6 +141,16 @@ def cmd_job(a) -> int:
         err(f"no job {a.id} in the queue")
         return 1
     project = _project_of(q, job)
+    if getattr(a, "md", False):
+        from .runtime.report import job_markdown
+        md = job_markdown(q, a.id, store, project)
+        if a.out:
+            from pathlib import Path
+            Path(a.out).expanduser().write_text(md)
+            ok(f"saved {a.out}")
+        else:
+            print(md)
+        return 0
     want_spec, want_replies, want_handoff = a.spec, a.replies, a.handoff
     if not (want_spec or want_replies or want_handoff):          # default: a summary + the spec
         prompt = ""
@@ -187,6 +197,8 @@ def add_parsers(sub) -> None:
     s.add_argument("--spec", action="store_true", help="show the task spec the translator produced")
     s.add_argument("--replies", action="store_true", help="show every raw model reply (for debugging)")
     s.add_argument("--handoff", action="store_true", help="show the brief a delegated sub-job was given")
+    s.add_argument("--md", action="store_true", help="the whole job as a Markdown report")
+    s.add_argument("-o", "--out", help="with --md: write the report to this file")
     s.set_defaults(fn=cmd_job)
 
     s = sub.add_parser("agent", help='give an agent a task with tools:  law agent "…" -C <project folder>')
