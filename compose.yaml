@@ -1,0 +1,49 @@
+# LAW v6 containers (Colima). Ports and host addresses come from settings/registry.yaml via env.
+# Models and media run natively on Metal; only lightweight web apps live here.
+name: law6
+
+services:
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:v0.12.3
+    restart: unless-stopped
+    ports: ["0.0.0.0:${OPEN_WEBUI_PORT:-3000}:8080"]
+    volumes: ["${LAW_HOME}/docker/open-webui:/app/backend/data"]
+    environment:
+      WEBUI_NAME: LAW
+      WEBUI_AUTH: "False"
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY}
+      ENABLE_PERSISTENT_CONFIG: "False"
+      ENABLE_OLLAMA_API: "False"
+      OPENAI_API_BASE_URL: http://host.lima.internal:${LLM_PORT:-8000}/v1
+      OPENAI_API_KEY: local
+      DEFAULT_MODELS: qwen3.8-27b-8bit
+      ENABLE_WEB_SEARCH: "True"
+      WEB_SEARCH_ENGINE: searxng
+      SEARXNG_QUERY_URL: http://searxng:8080/search?q=<query>
+      RAG_EMBEDDING_ENGINE: openai
+      RAG_EMBEDDING_MODEL: qwen3-embedding-4b
+      RAG_OPENAI_API_BASE_URL: http://host.lima.internal:${LLM_PORT:-8000}/v1
+      RAG_OPENAI_API_KEY: local
+      ENABLE_IMAGE_GENERATION: "True"
+      IMAGE_GENERATION_ENGINE: comfyui
+      COMFYUI_BASE_URL: http://host.lima.internal:${COMFYUI_PORT:-8188}
+      ANONYMIZED_TELEMETRY: "False"
+      DO_NOT_TRACK: "True"
+    depends_on: [searxng]
+
+  searxng:
+    image: searxng/searxng:2026.10.17-1c10abe2d
+    restart: unless-stopped
+    ports: ["0.0.0.0:${SEARXNG_PORT:-8888}:8080"]
+    volumes: ["${LAW_REPO}/settings/searxng:/etc/searxng:ro"]
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET}
+      SEARXNG_BASE_URL: http://localhost:${SEARXNG_PORT:-8888}/
+
+  homepage:
+    image: ghcr.io/gethomepage/homepage:v2.6.0
+    restart: unless-stopped
+    ports: ["0.0.0.0:${HOMEPAGE_PORT:-3010}:3000"]
+    volumes: ["${LAW_HOME}/config/homepage:/app/config"]
+    environment:
+      HOMEPAGE_ALLOWED_HOSTS: "*"

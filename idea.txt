@@ -1,0 +1,15 @@
+study v4 and v5.
+If you were to build a local opensource completely free (no subscription) AI on your M5 Pro with 64Gb of ram, how would you do it? it has to be powerful. focus on accuracy, correctness and high quality rather than fast response.
+prepare a complete plan on how you would approach it. 
+The intention is for coding, design, documentation, judgement, computation, pen testing, photo/video/audio editing and generation. 
+If i were to ask you to build v6 of the setup script, but make a huge improvement on the setup&configuration, how would you tell an AI like yourself to do it? 
+I wanna use claude code to perform v6 and wipe out v4 and v5 setup and fresh setup with an installation scripts. 
+Prepare a complete and very detailed prompt or instructions or plan for me to give to claude code to execute it. 
+Include end to end testing too. dont have to reinvent a new things if there are existing tools.dashboard that i can straightaway use. 
+as long as all functionalities that i want are there and they are all free/opensource without subscriptions.
+make sure you did very detaild reseach on the internet and find the best solution that are available today.
+make sure to log your progress. incase token finished, you can continue where you left off.
+make sure to perform storage cleanup too.
+the default folder to write any code is in ~/SourceCode/ . dont write it anyehre else.
+make sure to include robust end to end test. the level that proper SDLC could be done. and make sure whenever local agent produce a code or documents, it is production ready and higest level of quality. make it bank/corporate/consultant level.
+the research should be on pas as BCG team. and the code should select the best tech stack. and include Solution Architect agent role for this project too.

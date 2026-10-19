@@ -1,0 +1,64 @@
+# Legacy artifacts from v4/v5 and older local-AI stacks, removed by scripts/wipe_legacy.py.
+# Paths are relative to $HOME. Categories:
+#   archive = copy into ~/LAW/archive/<run>/ and then delete
+#   delete  = delete without archiving (caches, VMs, regenerable data)
+#   keep    = never touched (listed so reviewers can see it was considered)
+
+[[launch_agents]]
+labels = [
+  "com.law.acestep", "com.law.colima", "com.law.dashboard", "com.law.gateway",
+  "com.law.telegram", "com.law.watchdog", "com.law.worker",
+  "com.mlxstack.inference", "com.mlxstack.gateway", "com.mlxstack.dashboard", "com.mlxstack.vision",
+  "com.mlxstack.colima", "com.mlxstack.docker-bridge", "com.mlxstack.acestep", "com.mlxstack.telegram",
+  "com.aiws.mlx", "com.aiws.litellm", "com.aiws.dashboard", "com.aiws.orchestrator", "com.aiws.vox",
+  "ai.openclaw.gateway",
+]
+
+[[paths]]
+category = "archive"
+items = [
+  ".law/.env", ".law/config", ".law/state/telegram.json",
+  ".local-ai-workstation/.env",
+  ".mlx-ai-workstation/.env", ".mlx-ai-workstation/personas.json",
+  "SourceCode/OpenSourceLocalAI/v4", "SourceCode/OpenSourceLocalAI/v5",
+  "SourceCode/sentinel-fi/.local-agent", ".local-agent",
+  "MLX-AI",
+]
+
+[[paths]]
+category = "delete"
+items = [
+  ".law", ".local-ai-workstation", ".mlx-ai-workstation", ".openclaw", ".config/openclaw",
+  ".colima", ".lima", "ace-step", "MLX-AI", ".codex", ".local-agent",
+  ".cache/huggingface", ".cache/uv", ".local/share/uv/tools", ".local/share/uv/python",
+  "Library/Caches/ms-playwright", ".cache/puppeteer",
+  ".config/opencode/opencode.json", ".config/opencode/opencode.json.law-backup", ".config/opencode/config.json",
+  "SourceCode/OpenSourceLocalAI/v4", "SourceCode/OpenSourceLocalAI/v5",
+  "SourceCode/sentinel-fi/.local-agent",
+  ".vscode/extensions/openai.codex-audio-26.1007.21434",
+]
+
+[[paths]]
+category = "keep"
+items = [".local/bin/claude", ".claude", ".claude.json", ".continue", ".copilot", ".streamlit", ".matplotlib", ".zprofile"]
+
+[bin_shims]
+# Removed from ~/.local/bin (glob patterns). claude is never matched.
+patterns = ["law", "lite", "litellm", "litellm-proxy", "mflux-*", "nano-pdf", "mlx-agent"]
+
+[tmp]
+# Removed from $TMPDIR (glob patterns).
+patterns = ["mlx-openai-prompt-cache-*", "pytest-of-*", "model_*.lock"]
+
+[shell_rc]
+# Lines removed from these files when they match any pattern (a .bak copy is written first).
+files = [".zshrc", ".zprofile"]
+patterns = ["openclaw", "OLLAMA_", "mlx-ai-workstation", "local-ai-workstation"]
+
+[brew]
+# Uninstalled only when no other installed formula depends on them.
+formulae = ["openai-whisper", "pytorch", "socat", "codexbar"]
+
+[docker]
+# Colima VM profiles to delete (this removes every container, image and volume inside them).
+colima_profiles = ["default"]

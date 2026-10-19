@@ -1,0 +1,11 @@
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks: [{id: gitleaks}]
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.1
+    hooks: [{id: ruff, args: [--fix]}, {id: ruff-format}]
+  - repo: local
+    hooks:
+      - {id: mypy, name: mypy, entry: uv run mypy src, language: system, pass_filenames: false, types: [python]}
+      - {id: pytest, name: pytest, entry: uv run pytest -q, language: system, pass_filenames: false, stages: [pre-push]}

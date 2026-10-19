@@ -1,0 +1,10 @@
+default: check
+check: lint type test
+lint:
+    uv run ruff check . && uv run ruff format --check .
+type:
+    uv run mypy src
+test:
+    uv run pytest
+security:
+    uv run bandit -q -r src && gitleaks detect --no-banner

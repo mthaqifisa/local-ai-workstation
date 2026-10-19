@@ -1,0 +1,147 @@
+# LAW v6 registry — the single source of truth for services, ports, models and memory.
+# Edit here, commit, then `law install` applies only the difference.
+version: 1
+
+machine:
+  # 64 GB unified memory split. Models get what remains after macOS/apps and the Docker VM.
+  total_gb: 64
+  macos_reserve_gb: 12
+  colima: {cpus: 4, memory_gb: 4, disk_gb: 60}
+  model_budget_gb: 48
+
+network:
+  # User decision (ADR-0006): user-facing services listen on every interface, no login.
+  bind: 0.0.0.0
+  loopback: 127.0.0.1
+
+ports:
+  llm_public: 8000      # Caddy -> oMLX (no credentials needed on the LAN)
+  llm_internal: 8001    # oMLX, loopback only (oMLX requires a key off-loopback; Caddy injects it)
+  law_api: 8100         # law job API (CLI, Telegram, dashboards)
+  open_webui: 3000
+  homepage: 3010
+  searxng: 8888
+  comfyui: 8188
+  valkey: 6379          # loopback only (internal plumbing)
+
+telegram:
+  # Tony also reports jobs started elsewhere (CLI, Console, other devices). Automated eval/test runs are excluded.
+  notify_sources: [cli, api, console]
+
+services:
+  valkey:    {kind: launchd, label: com.law6.valkey}
+  omlx:      {kind: launchd, label: com.law6.omlx}
+  caddy:     {kind: launchd, label: com.law6.caddy}
+  api:       {kind: launchd, label: com.law6.api}
+  worker:    {kind: launchd, label: com.law6.worker}
+  telegram:  {kind: launchd, label: com.law6.telegram, requires_secret: LAW_TELEGRAM_TOKEN}
+  comfyui:   {kind: launchd, label: com.law6.comfyui}
+  colima:    {kind: launchd, label: com.law6.colima}
+  open_webui: {kind: compose}
+  searxng:   {kind: compose}
+  homepage:  {kind: compose}
+
+# Language / vision / embedding models served by oMLX from ~/LAW/models/llm/<id>.
+# lane: heavy = at most one resident; light = may co-reside with a heavy model.
+llm_models:
+  - id: qwen3.8-27b-8bit
+    repo: lmstudio-community/Qwen3.8-27B-MLX-8bit
+    revision: 241ebb5f1d60b122fd653da658836a55feb9e2b0
+    license: apache-2.0
+    disk_gb: 29.5
+    mem_gb: 34
+    lane: heavy
+    vision: true
+    context: 65536
+    roles: [reasoner, writer, analyst, architect, designer, coder, default]
+  - id: qwen3-coder-next-4bit
+    repo: lmstudio-community/Qwen3-Coder-Next-MLX-4bit
+    revision: 03cba26036330b7553d252c1f3fb899f16cc5ea5
+    license: apache-2.0
+    disk_gb: 44.9
+    mem_gb: 47
+    lane: heavy
+    vision: false
+    context: 32768
+    # Fast but memory-bound: 41 GB weights + ~6 GB prefill at 38k tokens hits the 48 GB guard (measured
+    # 2026-10-20), so long agent sessions use Qwen3.8-27B; this one serves short coding tasks.
+    roles: [coder_fast]
+  - id: qwen3.6-35b-a3b-8bit
+    repo: lmstudio-community/Qwen3.6-35B-A3B-MLX-8bit
+    revision: ea4ab1544e989b4fa38711453e0296cd7b03ac43
+    license: apache-2.0
+    disk_gb: 37.7
+    mem_gb: 41
+    lane: heavy
+    vision: true
+    context: 65536
+    roles: [fast, router, operator, summarizer]
+  - id: gemma-4-31b-8bit
+    repo: lmstudio-community/gemma-4-31B-it-MLX-8bit
+    revision: 9b06d48739ea5f39e5b66880a6e90405a2cb1751
+    license: apache-2.0
+    disk_gb: 33.8
+    mem_gb: 38
+    lane: heavy
+    vision: false
+    context: 32768
+    roles: [judge]
+  - id: qwen3-embedding-4b
+    repo: mlx-community/Qwen3-Embedding-4B-4bit-DWQ
+    revision: b5d88f1fe49b50d2ac01b4692ca2d387f14f9c72
+    license: apache-2.0
+    disk_gb: 2.3
+    mem_gb: 3
+    lane: light
+    roles: [embedding]
+  - id: qwen3-reranker-0.6b
+    repo: mlx-community/Qwen3-Reranker-0.6B-4bit
+    revision: 5f324548f1d20c2b5a450f126fc6ef2fb1126524
+    license: apache-2.0
+    disk_gb: 0.3
+    mem_gb: 1
+    lane: light
+    roles: [reranker]
+
+# Media jobs. Each runs as a native Metal subprocess through the LAW queue.
+# lane heavy = the scheduler unloads LLMs first; light = may run beside a resident LLM.
+media:
+  image:   {tool: mflux-generate-qwen-2.1,      model: qwen-image-2.1,  hf_repo: Qwen/Qwen-Image-2.1, hf_revision: d26bb61231c349cf6b7896fa83353113880e1ba3, quantize: 8, steps: 40, mem_gb: 40, lane: heavy, license: other}
+  edit:    {tool: mflux-generate-qwen-2.1-edit, model: qwen-image-2.1,  hf_repo: Qwen/Qwen-Image-2.1, prefetch: false, quantize: 8, steps: 40, mem_gb: 40, lane: heavy, license: other}
+  upscale: {tool: mflux-upscale-seedvr2,        model: seedvr2-7b,      hf_repo: numz/SeedVR2_comfyUI, prefetch: false, mem_gb: 24, lane: heavy, license: apache-2.0}
+  tts:     {tool: mlx_audio.tts.generate,       model: mlx-community/Kokoro-82M-bf16, hf_revision: a71e4d38b236d968966a2002c4c895dbd12b1c3c,          mem_gb: 2,  lane: light, license: apache-2.0, voice: af_heart, hf_extra: [prince-canuma/Kokoro-82M]}
+  voice:   {tool: mlx_audio.tts.generate,       model: mlx-community/chatterbox-fp16, hf_revision: 4923fcca09086356aeab5191a2348c5a17a23694,    mem_gb: 4,  lane: light, license: mit}
+  stt:     {tool: mlx_audio.stt.generate,       model: mlx-community/whisper-large-v3-turbo-asr-fp16, hf_revision: 624c19c9af5603fa73b83bce14d4aeea96156d18, mem_gb: 3,  lane: light, license: mit}
+  video:   {tool: mlxgen, model: AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit, hf_revision: 39ee5f1f630789956f29f40b5c2c6d48c6e9a798, steps: 40, mem_gb: 46, lane: heavy, license: apache-2.0}
+  animate: {tool: mlxgen, model: AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit, hf_revision: 1a17fbea2649c576de844e08e79fe56296751efa, steps: 40, mem_gb: 46, lane: heavy, license: apache-2.0}
+  music:   {tool: mlx_audio.music.generate,     model: mlx-community/ACE-Step1.5-MLX, hf_revision: bf26dd73880c74f0708847e94b865d450af307c9,          mem_gb: 20, lane: heavy, license: mit}
+
+# Native media tools installed with `uv tool` into ~/LAW/runtime/tools (bins in ~/LAW/runtime/bin).
+# Pins are deliberate: mflux needs Pillow 12.x on Python 3.12; Kokoro needs misaki + the spaCy English model.
+comfyui:
+  repo: https://github.com/Comfy-Org/ComfyUI.git
+  tag: v0.41.3
+  python: "3.12"
+
+tools:
+  - name: huggingface_hub
+    spec: "huggingface_hub[cli,hf_xet]==2.2.0"
+    python: "3.12"
+    check: hf
+  - name: mflux
+    spec: "mflux==0.23.0"
+    python: "3.12"
+    with: ["pillow==12.3.0"]
+    check: mflux-generate-qwen-2.1
+  - name: mlx-audio
+    spec: "mlx-audio==0.5.9"
+    python: "3.12"
+    with: ["misaki[en]", "en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl"]
+    check: mlx_audio.tts.generate
+  - name: mlxgen
+    spec: "mlx-gen==0.38.0"
+    python: "3.12"
+    with: ["pillow==12.3.0"]
+    check: mlxgen
+    # mlx-gen is an mflux fork that ships same-named mflux-* commands; give it its own venv and link only mlxgen.
+    own_venv: true
