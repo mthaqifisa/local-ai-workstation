@@ -1,0 +1,69 @@
+# Golden evaluation set. Each case is checked deterministically first (must/any/number), then judged.
+# Run: law eval            (results: ~/LAW/outputs/test-artifacts/evals/<timestamp>.json, report in docs/TEST-REPORT.md)
+version: 1
+pass_score: 4          # minimum judge score (1-5) where a case asks for judging
+cases:
+  # ---- computation: exact answers ----
+  - id: calc-compound-interest
+    domain: computation
+    role: analyst
+    prompt: "An investment of 25,000 grows at 6.5% per year compounded monthly for 7 years. What is the final value, rounded to the nearest whole number? Give the number on the last line."
+    number: {value: 39356, tolerance: 2}
+  - id: calc-loan-payment
+    domain: computation
+    role: analyst
+    prompt: "Monthly payment on a 400,000 loan at 4.2% annual interest over 30 years (standard amortisation)? Round to 2 decimals and give the number on the last line."
+    number: {value: 1956.07, tolerance: 0.05}
+  - id: calc-statistics
+    domain: computation
+    role: analyst
+    prompt: "Sample standard deviation of: 12, 15, 11, 19, 23, 17, 14. Round to 3 decimals; give the number on the last line."
+    number: {value: 4.180, tolerance: 0.002}
+
+  # ---- reasoning / judgement ----
+  - id: reason-logic
+    domain: reasoning
+    role: assistant
+    prompt: "Alice is older than Bob. Carol is younger than Bob. Dan is older than Alice. Who is the second oldest? Answer with one name on the last line."
+    any: ["Alice"]
+  - id: reason-base-rate
+    domain: reasoning
+    role: analyst
+    prompt: "A disease affects 1% of people. A test has 95% sensitivity and 90% specificity. If someone tests positive, what is the probability they have the disease? Give a percentage to one decimal on the last line."
+    number: {value: 8.8, tolerance: 0.2}
+  - id: judgement-vendor
+    domain: judgement
+    role: architect
+    prompt: "A 40-person bank branch network must choose between a SaaS core-banking add-on and building in-house. Give a recommendation with the 3 decisive factors and the main risk."
+    must: ["recommend"]
+    judge: true
+
+  # ---- documents ----
+  - id: doc-exec-memo
+    domain: documentation
+    role: writer
+    prompt: "Write a one-page executive memo to a bank's board recommending migrating 30% of workloads to cloud over 18 months. Include: recommendation first, rationale, costs/benefits table, risks with mitigations, next steps."
+    must: ["|", "risk", "next step"]
+    judge: true
+
+  # ---- coding (answer-level; full SDLC build is the separate agent test) ----
+  - id: code-function
+    domain: coding
+    role: coder
+    prompt: "Write a typed Python function `parse_duration(s: str) -> int` that converts strings like '1h30m', '45s', '2h', '3m15s' to seconds and raises ValueError on invalid input. Include pytest tests covering edge cases. Code only."
+    must: ["def parse_duration", "ValueError", "def test_"]
+    judge: true
+  - id: code-sql
+    domain: coding
+    role: coder
+    prompt: "Write a single SQL query (PostgreSQL) returning, per customer, total spend in 2025 and their rank by spend, from tables customers(id, name) and orders(id, customer_id, amount, created_at). Customers with no 2025 orders must appear with 0."
+    must: ["LEFT JOIN", "RANK", "COALESCE"]
+    judge: true
+
+  # ---- design ----
+  - id: design-critique
+    domain: design
+    role: designer
+    prompt: "A login page uses light grey (#AAAAAA) text on a white background, 11px font, and the only error message is a red border. List the accessibility problems with the WCAG criteria they break and concrete fixes."
+    must: ["contrast", "4.5"]
+    judge: true

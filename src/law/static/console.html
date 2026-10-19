@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LAW Console</title>
+<style>
+  :root {
+    --bg: #0b0d12; --panel: #141821; --panel-2: #1b2130; --line: #262d3d; --text: #e7eaf2; --muted: #8a93a8;
+    --accent: #6d8cff; --ok: #3ecf8e; --warn: #f5b84b; --bad: #ff6b6b; --radius: 14px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) { --bg: #f5f7fb; --panel: #ffffff; --panel-2: #f0f3f9; --line: #e2e6ef;
+      --text: #151a26; --muted: #5d667a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 18px 24px; border-bottom: 1px solid var(--line);
+           position: sticky; top: 0; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); z-index: 2; }
+  header h1 { font-size: 17px; margin: 0; letter-spacing: .2px; }
+  header .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 10px var(--ok); }
+  nav { display: flex; gap: 6px; margin-left: auto; }
+  nav button { background: none; border: 1px solid transparent; color: var(--muted); padding: 7px 14px; border-radius: 999px;
+               cursor: pointer; font: inherit; }
+  nav button.active { color: var(--text); background: var(--panel-2); border-color: var(--line); }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px; }
+  section { display: none; } section.active { display: block; }
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; }
+  .card h3 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); font-weight: 600; }
+  .big { font-size: 30px; font-weight: 650; letter-spacing: -.5px; }
+  .sub { color: var(--muted); font-size: 12.5px; }
+  .bar { height: 7px; background: var(--panel-2); border-radius: 99px; overflow: hidden; margin-top: 12px; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 99px; transition: width .6s ease; }
+  .bar.warn > i { background: var(--warn); } .bar.bad > i { background: var(--bad); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .chip { padding: 4px 10px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line); font-size: 12.5px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 11px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .6px; }
+  td.mono, .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; }
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: 12px; font-weight: 600; }
+  .s-running, .s-waiting { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+  .s-queued { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+  .s-done { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+  .s-failed, .s-dead, .s-cancelled { background: color-mix(in srgb, var(--bad) 16%, transparent); color: var(--bad); }
+  .progress { color: var(--muted); max-width: 520px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  button.btn { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); padding: 6px 12px; border-radius: 9px;
+               cursor: pointer; font: inherit; }
+  button.btn:hover { border-color: var(--accent); }
+  button.danger { color: var(--bad); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .muted { color: var(--muted); }
+  .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .toolbar h2 { margin: 0; font-size: 18px; }
+  .spacer { flex: 1; }
+  textarea, input, select { width: 100%; background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+                            border-radius: 10px; padding: 10px 12px; font: inherit; }
+  textarea { min-height: 260px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; }
+  label { display: block; margin: 14px 0 6px; color: var(--muted); font-size: 12.5px; }
+  .roles { display: grid; grid-template-columns: 240px 1fr; gap: 16px; }
+  .role-list button { display: block; width: 100%; text-align: left; margin-bottom: 6px; }
+  .role-list button.active { border-color: var(--accent); }
+  .toast { position: fixed; right: 20px; bottom: 20px; background: var(--panel); border: 1px solid var(--line);
+           padding: 12px 16px; border-radius: 12px; opacity: 0; transform: translateY(8px); transition: .25s; }
+  .toast.show { opacity: 1; transform: none; }
+  .empty { padding: 28px; text-align: center; color: var(--muted); }
+  @media (max-width: 760px) { .roles { grid-template-columns: 1fr; } header { flex-wrap: wrap; } nav { margin-left: 0; } }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="health-dot"></span>
+  <h1>LAW Console</h1>
+  <span class="sub" id="host"></span>
+  <nav>
+    <button data-tab="overview" class="active">Overview</button>
+    <button data-tab="jobs">Jobs</button>
+    <button data-tab="personas">Personas</button>
+    <button data-tab="settings">Settings</button>
+  </nav>
+</header>
+<main>
+  <section id="overview" class="active">
+    <div class="grid">
+      <div class="card"><h3>CPU</h3><div class="big" id="cpu">–</div><div class="sub" id="cpu-sub"></div>
+        <div class="bar" id="cpu-bar"><i></i></div></div>
+      <div class="card"><h3>Memory</h3><div class="big" id="mem">–</div><div class="sub" id="mem-sub"></div>
+        <div class="bar" id="mem-bar"><i></i></div></div>
+      <div class="card"><h3>GPU</h3><div class="big" id="gpu">–</div><div class="sub">Apple GPU utilisation</div>
+        <div class="bar" id="gpu-bar"><i></i></div></div>
+      <div class="card"><h3>Storage</h3><div class="big" id="disk">–</div><div class="sub" id="disk-sub"></div>
+        <div class="bar" id="disk-bar"><i></i></div></div>
+    </div>
+    <div class="grid" style="margin-top:16px">
+      <div class="card"><h3>Models in memory</h3><div class="chips" id="models"><span class="muted">none</span></div></div>
+      <div class="card"><h3>Queue</h3><div class="big" id="queue">–</div><div class="sub" id="queue-sub"></div></div>
+    </div>
+  </section>
+
+  <section id="jobs">
+    <div class="toolbar"><h2>Jobs</h2><span class="spacer"></span>
+      <label style="margin:0;display:flex;gap:6px;align-items:center"><input type="checkbox" id="show-all"
+        style="width:auto"> include finished</label></div>
+    <div class="card" style="padding:6px 8px">
+      <table><thead><tr><th>Job</th><th>What</th><th>Status</th><th>Progress</th><th>Age</th><th></th></tr></thead>
+        <tbody id="job-rows"></tbody></table>
+    </div>
+  </section>
+
+  <section id="personas">
+    <div class="toolbar"><h2>Personas</h2><span class="spacer"></span>
+      <span class="sub">Edit a role's instructions; saving re-generates the agents.</span></div>
+    <div class="roles">
+      <div class="role-list card" id="role-list"></div>
+      <div class="card" id="role-editor"><div class="empty">Choose a role</div></div>
+    </div>
+  </section>
+
+  <section id="settings">
+    <div class="toolbar"><h2>Settings</h2></div>
+    <div class="card" id="settings-body"><div class="empty">Loading…</div></div>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const toast = (msg) => { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 2600); };
+async function api(path, opts = {}) {
+  const r = await fetch(path, {headers: {"Content-Type": "application/json"}, ...opts});
+  if (!r.ok) throw new Error((await r.text()).slice(0, 300));
+  return r.headers.get("content-type")?.includes("json") ? r.json() : r.text();
+}
+function setBar(id, pct) {
+  const bar = $(id); bar.querySelector("i").style.width = Math.min(100, pct || 0) + "%";
+  bar.classList.toggle("warn", pct >= 75 && pct < 90); bar.classList.toggle("bad", pct >= 90);
+}
+function ago(t) {
+  const s = Math.max(0, Date.now() / 1000 - t);
+  return s < 60 ? `${s | 0}s` : s < 3600 ? `${(s / 60) | 0}m` : s < 86400 ? `${(s / 3600) | 0}h` : `${(s / 86400) | 0}d`;
+}
+
+// ---- tabs ----
+document.querySelectorAll("nav button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("active", x === b));
+  document.querySelectorAll("section").forEach((s) => s.classList.toggle("active", s.id === b.dataset.tab));
+  if (b.dataset.tab === "personas") loadRoles();
+  if (b.dataset.tab === "settings") loadSettings();
+});
+
+// ---- overview ----
+async function refreshSystem() {
+  try {
+    const s = await api("/system"), h = await api("/healthz");
+    $("#health-dot").style.background = h.ok ? "var(--ok)" : "var(--bad)";
+    $("#cpu").textContent = s.cpu_percent.toFixed(0) + "%"; $("#cpu-sub").textContent = `${s.cpu_cores} cores`; setBar("#cpu-bar", s.cpu_percent);
+    const m = s.memory; $("#mem").textContent = `${m.used_gb} / ${m.total_gb} GB`;
+    $("#mem-sub").textContent = `${m.percent}% used · wired ${m.wired_gb} GB · swap ${m.swap_gb} GB`; setBar("#mem-bar", m.percent);
+    $("#gpu").textContent = s.gpu_percent == null ? "n/a" : s.gpu_percent + "%"; setBar("#gpu-bar", s.gpu_percent);
+    const d = s.disk; $("#disk").textContent = `${d.free_gb} GB free`;
+    $("#disk-sub").textContent = `${d.used_gb} of ${d.total_gb} GB used (${d.percent}%)`; setBar("#disk-bar", d.percent);
+    $("#models").innerHTML = s.loaded_models.length ? s.loaded_models.map((x) => `<span class="chip">${esc(x)}</span>`).join("") : '<span class="muted">none loaded</span>';
+    $("#queue").textContent = `${h.running} running`; $("#queue-sub").textContent = `${h.queued} waiting in the queue`;
+  } catch (e) { $("#health-dot").style.background = "var(--bad)"; }
+}
+
+// ---- jobs ----
+const LIVE = new Set(["queued", "running", "waiting"]);
+async function refreshJobs() {
+  const all = await api("/jobs?limit=120");
+  const roots = all.filter((j) => !j.parent && ($("#show-all").checked || LIVE.has(j.status) || Date.now() / 1000 - j.created < 1800));
+  if (!roots.length) { $("#job-rows").innerHTML = '<tr><td colspan="6" class="empty">No recent jobs</td></tr>'; return; }
+  const rows = await Promise.all(roots.slice(0, 40).map(async (j) => {
+    let progress = "";
+    if (LIVE.has(j.status)) {
+      const ev = await api(`/jobs/${j.id}/events`).catch(() => []);
+      const p = ev.filter((e) => e.event === "progress").pop();
+      progress = p ? p.data.message : "";
+    } else if (j.error) progress = j.error;
+    const what = esc(j.payload?.prompt || j.payload?.caption || j.payload?.text || j.payload?.query || "").slice(0, 80);
+    const cancel = LIVE.has(j.status) ? `<button class="btn danger" data-cancel="${j.id}">Cancel</button>` : "";
+    return `<tr><td class="mono">${j.id}<div class="sub">${esc(j.kind)} · ${esc(j.source)}</div></td><td>${what}</td>
+      <td><span class="pill s-${j.status}">${j.status}</span></td><td class="progress" title="${esc(progress)}">${esc(progress)}</td>
+      <td class="sub">${ago(j.created)}</td><td>${cancel}</td></tr>`;
+  }));
+  $("#job-rows").innerHTML = rows.join("");
+  document.querySelectorAll("[data-cancel]").forEach((b) => b.onclick = async () => {
+    b.disabled = true; await api(`/jobs/${b.dataset.cancel}/cancel`, {method: "POST"}); toast("Cancelling " + b.dataset.cancel); refreshJobs();
+  });
+}
+$("#show-all").onchange = refreshJobs;
+$("#host").textContent = location.host;
+refreshSystem(); refreshJobs();
+setInterval(refreshSystem, 3000);
+setInterval(() => { if ($("#jobs").classList.contains("active")) refreshJobs(); }, 3000);
+
+// ---- personas ----
+let roles = {}, current = null;
+async function loadRoles() {
+  roles = await api("/roles");
+  $("#role-list").innerHTML = Object.entries(roles).map(([n, r]) =>
+    `<button class="btn ${n === current ? "active" : ""}" data-role="${esc(n)}"><b>${esc(n)}</b><div class="sub">${esc(r.summary)}</div></button>`).join("");
+  document.querySelectorAll("[data-role]").forEach((b) => b.onclick = () => { current = b.dataset.role; loadRoles(); showRole(); });
+  if (current) showRole();
+}
+function showRole() {
+  const r = roles[current];
+  $("#role-editor").innerHTML = `
+    <div class="toolbar"><h2>${esc(current)}</h2><span class="spacer"></span><span class="sub">model: ${esc(r.model)}</span></div>
+    <label>Summary</label><input id="r-summary" value="${esc(r.summary)}">
+    <label>Instructions</label><textarea id="r-prompt">${esc(r.prompt)}</textarea>
+    <div class="grid" style="grid-template-columns:repeat(3,1fr)">
+      <div><label>Temperature (0–1)</label><input id="r-temp" type="number" min="0" max="1" step="0.05" value="${r.temperature}"></div>
+      <div><label>Reasoning</label><select id="r-reason">${["low", "medium", "xhigh"].map((x) => `<option ${x === r.reasoning ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+      <div><label>Tools</label><input id="r-tools" value="${esc(r.tools.join(", "))}"></div>
+    </div>
+    <div class="toolbar" style="margin-top:16px"><span class="spacer"></span><button class="btn primary" id="r-save">Save</button></div>`;
+  $("#r-save").onclick = async () => {
+    const body = {summary: $("#r-summary").value, prompt: $("#r-prompt").value, temperature: parseFloat($("#r-temp").value),
+                  reasoning: $("#r-reason").value, tools: $("#r-tools").value.split(",").map((x) => x.trim()).filter(Boolean)};
+    try { await api(`/roles/${current}`, {method: "PUT", body: JSON.stringify(body)}); toast("Saved — agents are being updated"); loadRoles(); }
+    catch (e) { toast("Not saved: " + e.message); }
+  };
+}
+
+// ---- settings ----
+async function loadSettings() {
+  const s = await api("/settings");
+  $("#settings-body").innerHTML = `
+    <h3>Telegram</h3>
+    <div class="sub">${s.telegram.configured ? `Connected as <b>@${esc(s.telegram.bot || "?")}</b> · allowed IDs: ${esc(s.telegram.user_ids.join(", ") || "none")}` : "Not configured"}</div>
+    <label>New bot token (leave empty to keep the current one)</label><input id="t-token" type="password" autocomplete="off" placeholder="123456789:AAH…">
+    <label>Allowed Telegram user IDs (comma-separated)</label><input id="t-ids" value="${esc(s.telegram.user_ids.join(", "))}">
+    <div class="toolbar" style="margin-top:16px"><span class="sub">The token is checked with Telegram before it is saved. It is stored only in ~/LAW/state/.env.</span>
+      <span class="spacer"></span><button class="btn primary" id="t-save">Save &amp; restart Tony</button></div>`;
+  $("#t-save").onclick = async () => {
+    const body = {token: $("#t-token").value.trim() || null, user_ids: $("#t-ids").value};
+    try { const r = await api("/settings/telegram", {method: "PUT", body: JSON.stringify(body)}); toast(`Saved — connected as @${r.bot}`); loadSettings(); }
+    catch (e) { toast("Not saved: " + e.message); }
+  };
+}
+</script>
+</body>
+</html>

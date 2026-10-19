@@ -1,0 +1,16 @@
+# Copier template: production-ready Python service (LAW house standard).
+# Usage: uvx copier copy templates/projects/python-service ~/SourceCode/<name>
+_subdirectory: template
+_templates_suffix: .jinja
+project_name:
+  type: str
+  help: Human-readable project name
+project_slug:
+  type: str
+  default: "{{ project_name | lower | replace(' ', '-') }}"
+package:
+  type: str
+  default: "{{ project_slug | replace('-', '_') }}"
+description:
+  type: str
+  default: A production-ready Python service

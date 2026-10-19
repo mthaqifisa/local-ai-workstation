@@ -1,0 +1,93 @@
+# Runbook
+
+## Daily use
+
+| Task | Command |
+|---|---|
+| Health + LAN addresses | `law doctor` |
+| Live stats, jobs (cancel), personas, settings | LAW Console: `http://<mac-name>.local:8100` |
+| One-line status | `law status` |
+| Recent jobs | `law jobs` |
+| Cancel a job | `law cancel <id>` |
+| Service log | `law services logs worker` (also `api`, `omlx`, `caddy`, `valkey`, `telegram`, `comfyui`) |
+| Restart a service | `law services restart worker` |
+| Models on disk | `law models list` |
+
+All logs are in `~/LAW/logs/`.
+
+## Change settings
+
+Everything is declared in `settings/` (git):
+
+- `settings/registry.yaml`: models, memory budget, ports, media tools, pinned versions
+- `settings/roles.yaml`: personas and their tools
+- `compose.yaml`: Open WebUI, SearXNG, Homepage
+- `Brewfile`: system packages
+
+Edit, commit, then run `./install.sh` (or `law install`). It applies only the difference:
+registry changes restart the API, worker and Telegram bot; other services restart only when their own settings change.
+Preview first with `law install --dry-run`.
+
+### Swap or add a model
+
+1. Find an MLX build on Hugging Face and note its commit SHA (revision).
+2. Add or edit an entry under `llm_models:` with `repo`, `revision`, `mem_gb`, `lane`, `roles`.
+3. `law install`. The download is verified and marked complete; `law reclaim` later frees the old one.
+
+Keep every heavy model's `mem_gb` within `machine.model_budget_gb` (48 GB); the registry refuses anything larger.
+
+## Personas
+
+Edit a role's instructions, temperature, reasoning effort or tools in the Console (Personas tab) or in
+`settings/roles.yaml`. Saving in the Console validates the change, keeps the file's comments and re-applies the agents.
+
+## Secrets
+
+Secrets live only in `~/LAW/state/.env` (mode 600) and never in git.
+
+```bash
+law secrets set LAW_TELEGRAM_TOKEN 123456:ABC...
+law secrets set LAW_TELEGRAM_USER_IDS 11111111
+law install                                 # starts or restarts the Telegram bot
+# or: LAW Console → Settings (checks the token with Telegram first)
+law secrets export ~/Desktop/law-secrets.env   # keep this in your password manager
+```
+
+## Storage
+
+```bash
+law reclaim --dry-run   # preview
+law reclaim             # remove unused model caches, old trash, temp files; prune uv/Homebrew/Docker caches
+du -sh ~/LAW/*          # where the space goes
+```
+
+Models are the bulk (about 200 GB). Generated media accumulates in `~/LAW/outputs/`; delete what you don't need.
+
+## Fresh Mac or after a format
+
+1. Install Homebrew and Python.
+2. `git clone <repo> ~/SourceCode/OpenSourceLocalAI && cd ~/SourceCode/OpenSourceLocalAI/v6`
+3. `./install.sh --secrets <your exported secrets file>`
+4. `law doctor`. The first time the operator role controls an app, approve the macOS permission prompts
+   (System Settings → Privacy & Security → Accessibility, Automation, Screen Recording).
+
+## Reset
+
+```bash
+law uninstall --system   # stop and remove services, containers and the ~/.zprofile block
+rm -rf ~/LAW             # remove all machine-local data (models, outputs, secrets)
+```
+
+## Troubleshooting
+
+| Symptom | Check | Fix |
+|---|---|---|
+| `law doctor` shows a service down | `law services logs <name>` | `law install` repairs it; or `law services restart <name>` |
+| Jobs stay queued | `law jobs`; worker log | A heavy job may be running (one at a time by design). `law services restart worker` requeues safely |
+| Very slow first answer | Model is loading (about 0.25 s per GB) | Normal after a swap; repeated jobs on the same model are fast |
+| Open WebUI page empty | `law services logs` for Colima; `law install` | First start takes about a minute |
+| Out of memory warnings | Activity Monitor → Memory | Lower `context` or `mem_gb` in the registry, or close large apps |
+| Image pull errors during install | Network inside the VM | Re-run `law install`; it resumes and pulls one image at a time |
+| Operator can't control an app | System Settings → Privacy & Security | Allow the terminal / `law` under Accessibility and Automation, then retry |
+| Open WebUI says it cannot load a model / 507 | A heavy job (agent, image, video) is using the memory | By design on 64 GB: only one large model fits. Pick the model already loaded, or retry when `law jobs` shows the job finished |
+| Video job very slow | Expected: Wan 2.2 14B renders ~5 s of video in several minutes | Use shorter clips (`--seconds 3`) or lower resolution in the job payload |

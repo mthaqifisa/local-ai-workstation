@@ -1,1 +1,24 @@
+# Secrets — never commit
+.env
+.env.*
+*.pem
+*.key
+*secret*
+!**/secret_patterns.toml
+# Python / tooling
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+node_modules/
+# OS
 .DS_Store
+# Machine-local (lives in ~/LAW)
+/local/

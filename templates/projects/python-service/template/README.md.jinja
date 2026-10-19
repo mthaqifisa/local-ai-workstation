@@ -1,0 +1,24 @@
+# {{ project_name }}
+
+{{ description }}
+
+## Quick start
+
+```bash
+uv sync
+just check     # lint, type-check, tests (coverage >= 85%)
+```
+
+## Structure
+
+| Path | Purpose |
+|---|---|
+| `src/{{ package }}/` | Application code (typed, mypy strict) |
+| `tests/` | Tests (pytest, coverage gate 85%) |
+| `docs/adr/` | Architecture decision records |
+| `docs/THREAT-MODEL.md` | STRIDE threat model |
+
+## Quality gates
+
+Lint (ruff), types (mypy strict), security (bandit, gitleaks), tests with coverage. Enforced locally by
+pre-commit and in CI.

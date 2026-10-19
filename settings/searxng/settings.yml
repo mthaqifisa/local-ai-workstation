@@ -1,0 +1,11 @@
+# SearXNG for LAW: JSON output on (agents and Open WebUI use it), no rate limiter on the LAN.
+use_default_settings: true
+general:
+  instance_name: LAW Search
+server:
+  limiter: false
+  image_proxy: true
+  # secret_key comes from the SEARXNG_SECRET environment variable (machine-local, never committed)
+search:
+  safe_search: 0
+  formats: [html, json]

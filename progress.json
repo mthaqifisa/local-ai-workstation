@@ -1,0 +1,7 @@
+{
+  "stage": "C-user-requests",
+  "task": "C1..C8 in PROGRESS.md",
+  "status": "in_progress",
+  "next_step": "Work C1->C8 in order; check boxes in PROGRESS.md as each lands (tests + commit).",
+  "timestamp": "2026-10-20T00:11:30"
+}
