@@ -8,7 +8,7 @@
 | Live stats, jobs (cancel), personas, settings | LAW Console: `http://<mac-name>.local:8100` |
 | One-line status | `law status` |
 | Recent jobs | `law jobs` |
-| Cancel a job | `law cancel <id>` |
+| Cancel a job | `law cancel <id>` (cancelling a pipeline also stops its running stage and agent process) |
 | Service log | `law services logs worker` (also `api`, `omlx`, `caddy`, `valkey`, `telegram`, `comfyui`) |
 | Restart a service | `law services restart worker` |
 | Models on disk | `law models list` |
