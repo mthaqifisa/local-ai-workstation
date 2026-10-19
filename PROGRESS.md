@@ -101,3 +101,4 @@ Storage at start: 685Gi used / 208Gi free; ~/LAW 320G.
 - 2026-10-20 00:33: auto-resume: storage 661Gi used / 230Gi free; ~/LAW 300G. C7 agent running (30 files so far).
 - 2026-10-20 00:51: C7 run 1 aborted by memory guard (coder-next 47.1 GB peak at 38k ctx; TurboQuant no help). Coder -> Qwen3.8-27B. C7 run 2 started (resumes existing 61 files). Agent progress now readable.
 - 2026-10-20 01:16: Tony now reports CLI/Console/API jobs (start with full prompt, finish with result/review/files); verified with the running lan-chat job.
+- 2026-10-20 01:39: repo was re-cloned from GitHub at 01:28 (public repo); unpushed work squashed into one clean commit (no personal IDs); gitleaks clean. Nothing pushed.
