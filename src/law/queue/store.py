@@ -140,6 +140,9 @@ class JobStore:
             return job
         job.cancel_requested = True
         await self.save(job)
+        if job.status is Status.WAITING:  # a pipeline: stop the stage that is running for it
+            for child in await self.children(job.id):
+                await self.request_cancel(child.id)
         if job.status in {Status.QUEUED, Status.WAITING}:
             await self.finish(job, Status.CANCELLED, error="cancelled by user")
         else:
