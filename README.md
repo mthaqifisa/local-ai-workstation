@@ -196,7 +196,8 @@ law install
 | Any text | Answered with the full quality loop (draft → independent review → revise) |
 | Voice note | Transcribed, then answered |
 | Photo (optionally with a caption) | Described or answered about, using the vision model |
-| `/code <task>` | The coding agent builds it in `~/SourceCode/` |
+| `/code <task>` | The coding agent builds a new project in `~/SourceCode/` |
+| `/code <folder> <task>` | Works in an existing project, e.g. `/code ~/SourceCode/my-app add a login page` |
 | `/image <prompt>` | Generates an image and sends it back |
 | `/music <prompt>` | Generates music and sends it back |
 | `/agent <role> <task>` | Runs a role, e.g. `/agent architect design a payments API` or `/agent operator play jazz on Spotify` |
@@ -303,6 +304,10 @@ OpenCode is the recommended client offline: it is open source and the setup abov
 |---|---|---|
 | `v6/` (git) | Code, `settings/` (models, ports, roles), `knowledge/`, `trained/`, docs | Yes, via git |
 | `~/LAW/` | Models, caches, containers, generated media, logs, secrets (`state/.env`) | No, and that's fine |
+
+Disk use is bounded: the LLM's SSD prompt cache is capped by `machine.llm_ssd_cache_gb` in
+`settings/registry.yaml` (default 20 GB), agent build caches (Maven, npm, Gradle, pip, uv) go to `~/LAW/cache`,
+and `law reclaim` removes retired models, stale downloads and old logs.
 
 No secrets are ever stored in the repo. To reset everything machine-local: `law uninstall && rm -rf ~/LAW`.
 
