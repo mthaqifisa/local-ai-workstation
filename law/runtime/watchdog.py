@@ -5,13 +5,16 @@ and the gateway. Checks every `interval_s`:
           - a job shows no progress for `stall_s` → stuck somewhere the worker's own
             timeouts can't reach → restart (the job goes back in the queue; a job that keeps
             getting interrupted is failed after max_interruptions so it can't loop)
-          - skipped when the worker says "stopped" (you ran `law stop`)
+          - "stopped" for > stopped_grace_s while the watchdog itself runs → restart it
+            (`law stop` stops the watchdog first, so this only catches a reload that failed)
   gateway - /health fails `gateway_failures` checks in a row → restart
+  dashboard- same check on the dashboard's /health
   telegram- the bot (when configured) has not polled Telegram for `telegram.stale_s` → restart
   memory  - critical memory pressure while a job runs → a warning on that job
             (at most every 5 minutes)
 
 Restarts use `launchctl kickstart -k`, at most once per `cooldown_s` per service.
+Every hour it also rotates ~/.law/logs/*.log above `log_max_mb` (copy-truncate, `log_keep` copies).
 Everything it does is recorded (`law status` shows the latest, `law logs watchdog` all).
 
 Laptop sleep: when the Mac sleeps, every process (this one included) is frozen while the
@@ -35,14 +38,15 @@ from typing import Callable
 
 from ..paths import get_paths
 from ..registry import load
-from ..util import run
+from ..util import rotate_logs, run
 from . import memory
 from .db import Queue
 
 log = logging.getLogger("law.watchdog")
 
 DEFAULTS = {"interval_s": 15, "heartbeat_stale_s": 90, "stall_s": None, "gateway_failures": 3,
-            "cooldown_s": 120, "pressure_warn_every_s": 300, "wake_gap_s": 60, "wake_grace_s": 120}
+            "cooldown_s": 120, "pressure_warn_every_s": 300, "wake_gap_s": 60, "wake_grace_s": 120,
+            "log_max_mb": 20, "log_keep": 2, "log_check_s": 3600, "stopped_grace_s": 120}
 
 
 def _kickstart(label: str) -> None:
@@ -67,7 +71,8 @@ class Watchdog:
     def __init__(self, reg, q: Queue, *, restart: Callable[[str], None] = _kickstart,
                  health: Callable[[], bool] | None = None, pressure: Callable[[], str] = memory.pressure,
                  now: Callable[[], float] = time.time, cfg: dict | None = None,
-                 telegram_age: Callable[[], float | None] = lambda: None):
+                 telegram_age: Callable[[], float | None] = lambda: None, logs_dir=None,
+                 dash_health: Callable[[], bool] | None = None):
         rt = reg.raw.get("runtime") or {}
         self.cfg = {**DEFAULTS, **(rt.get("watchdog") or {}), **(cfg or {})}
         if not self.cfg["stall_s"]:
@@ -78,10 +83,13 @@ class Watchdog:
                                       int(ag.get("shell_timeout_s", 0))) + 300
         self.tg_stale = float(((rt.get("telegram") or {}).get("stale_s")) or 300)
         self.telegram_age = telegram_age
+        self.logs_dir = logs_dir
         self.q, self.restart, self.pressure, self.now = q, restart, pressure, now
-        port = reg.ports["gateway"]
-        self.health = health or (lambda: _http_ok(f"http://127.0.0.1:{port}/health"))
+        host, port, dport = reg.local_host, reg.ports["gateway"], reg.ports.get("dashboard", 8800)
+        self.health = health or (lambda: _http_ok(f"http://{host}:{port}/health"))
+        self.dash_health = dash_health or (lambda: _http_ok(f"http://{host}:{dport}/health"))
         self.gw_fail = 0
+        self.dash_fail = 0
         self.last_restart: dict[str, float] = {}
         self.last_pressure_warn = 0.0
         self.stop_event = threading.Event()
@@ -117,7 +125,13 @@ class Watchdog:
         in_grace = now < self._wake_until
 
         w = self.q.worker_info()
-        if w and w["state"] != "stopped":
+        if w and w["state"] == "stopped" and now - (w["beat"] or 0) > self.cfg["stopped_grace_s"] and not in_grace:
+            # `law stop` stops the watchdog too — so a worker that stays "stopped" while the watchdog
+            # runs was stopped by a service reload that didn't bring it back (or a stray bootout)
+            if self._do("worker", f"the worker has been stopped for {now - (w['beat'] or 0):.0f}s "
+                                  "while the other services run"):
+                done.append("restart worker (stopped)")
+        elif w and w["state"] != "stopped":
             beat_age = now - (w["beat"] or 0)
             prog_age = now - (w.get("progress") or w["beat"] or 0)
             if beat_age > self.cfg["heartbeat_stale_s"] and not in_grace:
@@ -146,15 +160,41 @@ class Watchdog:
                 if self._do("gateway", f"/health failed {self.gw_fail} checks in a row"):
                     done.append("restart gateway")
                 self.gw_fail = 0
+        # the dashboard is a convenience, but it's how you watch and steer jobs from the phone —
+        # launchd's KeepAlive only revives a crash, not a hang, so check it like the gateway
+        if self.dash_health() or in_grace:
+            self.dash_fail = 0
+        else:
+            self.dash_fail += 1
+            if self.dash_fail >= self.cfg["gateway_failures"]:
+                if self._do("dashboard", f"dashboard /health failed {self.dash_fail} checks in a row"):
+                    done.append("restart dashboard")
+                self.dash_fail = 0
+        return done
+
+    def rotate(self) -> list[str]:
+        """Keep ~/.law/logs bounded (services + model servers append forever otherwise)."""
+        if not self.logs_dir:
+            return []
+        done = rotate_logs(self.logs_dir, float(self.cfg["log_max_mb"]), int(self.cfg["log_keep"]))
+        if done:
+            log.info("rotated logs: %s", ", ".join(done))
         return done
 
     def run_forever(self) -> None:
         log.info("watchdog ready (every %ss, stall after %ss)", self.cfg["interval_s"], self.cfg["stall_s"])
+        last_rotate = 0.0
         while not self.stop_event.wait(self.cfg["interval_s"]):
             try:
                 self.check()
             except Exception as e:  # noqa: BLE001 — the watchdog itself must never die
                 log.error("check failed: %s", e)
+            if time.time() - last_rotate >= self.cfg["log_check_s"]:
+                last_rotate = time.time()
+                try:
+                    self.rotate()
+                except Exception as e:  # noqa: BLE001
+                    log.error("log rotation failed: %s", e)
 
 
 def _http_ok(url: str) -> bool:
@@ -169,7 +209,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s watchdog %(levelname)s %(message)s")
     paths = get_paths()
     from ..telegram import beat_age
-    wd = Watchdog(load(paths), Queue(paths.queue_db), telegram_age=lambda: beat_age(paths))
+    wd = Watchdog(load(paths), Queue(paths.queue_db), telegram_age=lambda: beat_age(paths), logs_dir=paths.logs)
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: wd.stop_event.set())
     wd.run_forever()

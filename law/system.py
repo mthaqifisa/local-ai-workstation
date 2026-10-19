@@ -161,6 +161,13 @@ class System:
         dom = f"gui/{os.getuid()}"
         if self.launchd_loaded(label):
             run(["launchctl", "bootout", f"{dom}/{label}"], check=False, timeout=90)
+            # bootout returns while the old process is still exiting (the worker first unloads its
+            # model). Bootstrapping now fails, yet `launchctl print` still finds the EXITING job —
+            # which used to count as success and left NO worker running. Wait until it is gone.
+            for _ in range(120):
+                if not self.launchd_loaded(label):
+                    break
+                time.sleep(0.5)
         last = None
         for _ in range(10):
             r = run(["launchctl", "bootstrap", dom, str(plist)], check=False, timeout=60)

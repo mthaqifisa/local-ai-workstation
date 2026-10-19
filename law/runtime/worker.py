@@ -39,14 +39,14 @@ from ..registry import load
 from . import memory
 from .db import DEFAULT_MAX_INTERRUPTIONS, Queue
 from .modelproc import (MlxOpenAIServerLauncher, ModelError, ModelManager, ModelRefused, PromptTooSlow,
-                        explain_server_error, kill_from_pidfile, log_size)
+                        explain_server_error, kill_from_pidfile, log_size, sweep_prompt_caches)
 
 log = logging.getLogger("law.worker")
 
 DEFAULTS = {"max_attempts": 2, "max_interruptions": DEFAULT_MAX_INTERRUPTIONS, "idle_unload_s": 900,
             "load_timeout_s": 1800, "first_token_timeout_s": 1800, "idle_token_timeout_s": 600,
             "default_max_tokens": 16384, "ram_wait_s": 120, "heartbeat_s": 5,
-            "pressure_check_s": 15}
+            "pressure_check_s": 15, "prompt_cache_max_gb": 8}
 
 
 class Cancelled(Exception):
@@ -133,9 +133,28 @@ class Worker:
     def startup(self) -> None:
         if kill_from_pidfile(self.mm.pidfile):
             log.warning("killed an orphaned model process from a previous run")
+        self.mm.stop()                            # also wipes the model's temp folder (prompt cache)
+        try:
+            n, freed = sweep_prompt_caches()
+            if n:
+                log.warning("removed %s leftover prompt-cache folder(s) from the system temp folder (%.1f GB)",
+                            n, freed / 1024**3)
+        except OSError as e:
+            log.warning("prompt-cache sweep failed: %s", e)
+        self._prune_queue()
         back = self.q.requeue_running(self.cfg["max_interruptions"])
         if back:
             log.warning("put back interrupted jobs: %s", back)
+
+    def _prune_queue(self) -> None:
+        qc = (self.reg.raw.get("runtime") or {}).get("queue") or {}
+        try:
+            res = self.q.prune(float(qc.get("keep_events_days", 14)), float(qc.get("keep_jobs_days", 180)))
+            if res["events"] or res["jobs"]:
+                log.info("queue retention: removed %s old events, %s old jobs", res["events"], res["jobs"])
+        except Exception as e:  # noqa: BLE001 — housekeeping must never stop the worker
+            log.warning("queue retention failed: %s", e)
+        self._last_prune = time.time()
 
     def run_forever(self) -> None:
         self.startup()
@@ -149,6 +168,8 @@ class Worker:
             self._beat()
             job = self.q.claim()
             if job is None:
+                if time.time() - getattr(self, "_last_prune", 0) > 6 * 3600:
+                    self._prune_queue()
                 if self.mm.current and time.time() - idle_since > self.cfg["idle_unload_s"]:
                     log.info("idle for %ss → unloading %s", self.cfg["idle_unload_s"], self.mm.current)
                     self.mm.stop()
@@ -194,6 +215,11 @@ class Worker:
                 result = self._vision(job)
             elif job["kind"] == "stt":
                 result = self._stt(job)
+            elif job["kind"] == "unload":
+                was = self.mm.current
+                self.mm.stop()
+                result = {"finish_reason": "stop", "message": {"role": "assistant", "content":
+                          f"unloaded {was} — RAM is free" if was else "no model was loaded"}}
             else:
                 raise ModelRefused(f"unknown job kind '{job['kind']}'")
             self.q.finish(jid, "done", result=result)
@@ -202,7 +228,7 @@ class Worker:
             self.q.wait_for_children(jid, wc.children)
             log.info("job %s waits for sub-jobs %s", jid, wc.children)
         except ContinueJob:
-            self.q.requeue(jid, reason="auto-continue: extended step budget")
+            self.q.requeue(jid, reason="auto-continue: extended step budget", fresh=True)
             log.info("job %s auto-continuing (step budget extended)", jid)
         except Cancelled:
             log.info("job %s cancelled", jid)
@@ -222,17 +248,35 @@ class Worker:
                 self.q.finish(jid, "failed", error=msg)
         finally:
             self.mm.emit = lambda t, d: None
+            self._notify(job)
             # a cowork job takes many screenshots (screenshot→look_at→act→screenshot); once the job is
             # truly finished (not just paused/requeued), delete them so they don't pile up.
             if job.get("kind") == "agent" and self.q.status(jid) in ("done", "failed", "cancelled"):
                 try:
                     import shutil
+                    from ..agent.runner import SCREENSHOT_MARKER
                     proj = json.loads(job["payload"]).get("cwd")
-                    if proj:
-                        shutil.rmtree(os.path.join(os.path.expanduser(str(proj)), ".screenshots"),
-                                      ignore_errors=True)
+                    shots = os.path.join(os.path.expanduser(str(proj)), ".screenshots") if proj else ""
+                    # only law's own scratch folder (marked when the job started) — never yours
+                    if shots and os.path.exists(os.path.join(shots, SCREENSHOT_MARKER)):
+                        shutil.rmtree(shots, ignore_errors=True)
                 except Exception:  # noqa: BLE001
                     pass
+
+    def _notify(self, job: dict) -> None:
+        from . import notify
+        try:
+            st = self.q.status(job["id"])
+            cur = self.q.get(job["id"]) or {}
+            secs = (cur.get("finished") or time.time()) - (cur.get("created") or time.time())
+            cfg = (self.reg.raw.get("runtime") or {}).get("notify") or {}
+            if notify.should_notify(job, st, secs, cfg):
+                pl = json.loads(job["payload"])
+                what = pl.get("task") or pl.get("prompt") or pl.get("text") or job["kind"]
+                notify.send(f"law · job {job['id']} {'finished' if st == 'done' else 'FAILED'}",
+                            f"{job['kind']} · {str(what)[:150]} ({secs / 60:.0f} min)")
+        except Exception as e:  # noqa: BLE001 — a notification must never break the worker
+            log.debug("notify failed: %s", e)
 
     def check(self, jid: int) -> None:
         if self.stop_event.is_set():
@@ -242,8 +286,17 @@ class Worker:
 
     _check = check
 
+    def _abort_generation(self, jid: int) -> None:
+        """The job was cancelled (or the worker is stopping) while the model was still writing.
+        Dropping the HTTP connection does not stop mlx-openai-server — it would keep generating up
+        to max_tokens and the next job would wait behind it — so stop the model process."""
+        if self.mm.current:
+            self.q.add_event(jid, "model", {"state": "unloading", "model": self.mm.current,
+                                            "reason": "stopping generation"})
+            self.mm.stop(grace_s=3)
+
     def _image(self, job: dict) -> dict:
-        """Generate an image (FLUX via mflux). Frees the language model first so the image model
+        """Generate an image (mflux: Z-Image / Qwen-Image / FLUX). Frees the language model first so the image model
         gets the RAM/GPU, then runs mflux and saves the PNG."""
         from . import imagegen
         jid = job["id"]
@@ -255,7 +308,7 @@ class Worker:
             self.mm.stop()                        # one GPU user at a time
         self.check(jid)
         cfg = payload.get("params") or {}
-        self.q.add_event(jid, "image", {"state": "generating", "model": f"flux-{cfg.get('base_model', 'schnell')}",
+        self.q.add_event(jid, "image", {"state": "generating", "model": cfg.get("model") or cfg.get("base_model") or imagegen.DEFAULTS["model"],
                                         "prompt": (payload.get("prompt") or "")[:200]})
         last = [0.0]
 
@@ -493,7 +546,11 @@ class Worker:
                     now = time.time()
                     if now - last_check >= 0.5:
                         last_check = now
-                        self.check(jid)
+                        try:
+                            self.check(jid)
+                        except (Cancelled, Interrupted):
+                            self._abort_generation(jid)
+                            raise
                     if not warned and now - last_pressure >= self.cfg["pressure_check_s"]:
                         last_pressure = now
                         if self.pressure() == "critical":
@@ -515,6 +572,11 @@ class Worker:
                         raise explain_server_error(str(chunk["error"]), self.mm.log_path(), since)
                     for ch in chunk.get("choices") or []:
                         d = ch.get("delta") or {}
+                        if d.get("content") and not asm.content and (asm.reasoning or d.get("reasoning_content")):
+                            # the blank lines a thinking model puts after </think> aren't part of the answer
+                            d = {**d, "content": d["content"].lstrip("\n")}
+                            if not d["content"]:
+                                d.pop("content")
                         asm.add(d, ch.get("finish_reason"))
                         if d.get("content") or d.get("reasoning_content") or d.get("reasoning") \
                                 or d.get("tool_calls"):
@@ -567,7 +629,11 @@ class Worker:
         th.start()
         while th.is_alive():
             self._touch()
-            self.check(jid)
+            try:
+                self.check(jid)
+            except (Cancelled, Interrupted):
+                self._abort_generation(jid)
+                raise
             th.join(0.5)
         if "http" in box:
             code, raw = box["http"]
@@ -591,6 +657,8 @@ class Worker:
         msg["content"] = msg.get("content") or ""
         if msg.get("reasoning") and not msg.get("reasoning_content"):
             msg["reasoning_content"] = msg.pop("reasoning")
+        if msg.get("reasoning_content"):
+            msg["content"] = msg["content"].lstrip("\n")
         if not msg.get("tool_calls"):
             msg.pop("tool_calls", None)
         res = {"message": msg, "finish_reason": ch.get("finish_reason") or "stop", "usage": data.get("usage")}
@@ -601,8 +669,19 @@ def build(paths=None) -> Worker:
     paths = paths or get_paths()
     reg = load(paths)
     cfg = {**DEFAULTS, **((reg.raw.get("runtime") or {}).get("worker") or {})}
-    mm = ModelManager(paths, reg, launcher=MlxOpenAIServerLauncher(paths.runtime / ".venv" / "bin" / "mlx-openai-server"),
+    launcher = MlxOpenAIServerLauncher(paths.runtime / ".venv" / "bin" / "mlx-openai-server",
+                                       prompt_cache_max_gb=cfg.get("prompt_cache_max_gb"))
+    def reclaim() -> str | None:
+        from ..steps import acestep
+        try:
+            if acestep.running(int(reg.ports.get("acestep", 7860))) and acestep.stop():
+                return "stopped the ACE-Step music studio to free its ~15 GB for this model (law music start)"
+        except Exception as e:  # noqa: BLE001
+            log.warning("could not stop ACE-Step: %s", e)
+        return None
+    mm = ModelManager(paths, reg, launcher=launcher,
                       port=reg.ports["inference"], load_timeout=cfg["load_timeout_s"], ram_wait=cfg["ram_wait_s"])
+    mm.reclaim = reclaim
     return Worker(paths, reg, Queue(paths.queue_db), mm, cfg)
 
 

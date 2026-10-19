@@ -32,6 +32,7 @@ frozen bot.
 """
 from __future__ import annotations
 
+import http.client
 import json
 import logging
 import mimetypes
@@ -89,6 +90,60 @@ Send a VOICE note and I transcribe it, then do exactly what you said.
 /persona [name] — show / change the persona
 /project [folder] — show / change the project folder
 /help — this message"""
+
+
+# ── HTTP with a short CONNECT timeout ───────────────────────────────────
+CONNECT_TIMEOUT_S = 10
+
+
+class _FastConnectHTTPS(http.client.HTTPSConnection):
+    """Connect (TCP + TLS handshake) within CONNECT_TIMEOUT_S per address, then use the long
+    timeout for reading. urllib uses ONE timeout for everything and tries every address of
+    api.telegram.org in turn (IPv6 first), so a route that silently drops packets cost the full
+    long-poll timeout per address before the next was tried — the bot then looked frozen."""
+
+    def connect(self):
+        full = self.timeout
+        if isinstance(full, (int, float)):
+            self.timeout = min(full, CONNECT_TIMEOUT_S)
+        try:
+            super().connect()
+        finally:
+            self.timeout = full
+        if self.sock is not None and isinstance(full, (int, float)):
+            self.sock.settimeout(full)
+
+
+class _FastConnectHandler(urllib.request.HTTPSHandler):
+    def https_open(self, req):
+        return self.do_open(_FastConnectHTTPS, req, context=self._context)
+
+
+_OPENER = urllib.request.build_opener(_FastConnectHandler())
+
+
+def _open(req, timeout: float):
+    return _OPENER.open(req, timeout=timeout)
+
+
+def with_deadline(fn, seconds: float, what: str):
+    """Run fn() in a helper thread; raise OSError if it hasn't returned in `seconds`. A DNS lookup
+    has no timeout at all in Python, so this is the only way to bound a network call fully."""
+    box: dict = {}
+
+    def run() -> None:
+        try:
+            box["res"] = fn()
+        except BaseException as e:  # noqa: BLE001 — handed to the caller
+            box["err"] = e
+    th = threading.Thread(target=run, name=f"tg-{what}", daemon=True)
+    th.start()
+    th.join(seconds)
+    if th.is_alive():
+        raise OSError(f"{what} did not return within {seconds:.0f}s (network / DNS hang) — retrying")
+    if "err" in box:
+        raise box["err"]
+    return box.get("res")
 
 
 # ── configuration ───────────────────────────────────────────────────────
@@ -183,11 +238,103 @@ _LOOKUP_RE = re.compile(
     r"\b(weather|temperature|forecast|rain|news|headline|today|tonight|tomorrow|yesterday|latest|"
     r"current(?:ly)?|right now|this (?:week|month|year)|price|cost|how much (?:is|are|does)|stock|"
     r"exchange rate|score|who won|what happened|release date|when (?:is|was|does|will)|look up|"
-    r"search (?:for|the|up)|google|find out|open now|opening hours)\b", re.I)
+    r"search (?:for|the|up)|google|find out|open now|opening hours|"
+    r"what time|local time|time ?zone|jam berapa|pukul berapa|"
+    r"cuaca|hujan|hari ini|esok|semalam|berita|terkini|harga|sekarang)\b", re.I)   # + common Malay
+
+
+_WEATHER_RE = re.compile(r"\b(weather|forecast|temperature|rain(?:ing)?|humid(?:ity)?|cuaca|hujan)\b", re.I)
+_PLACE_RE = re.compile(r"\b(?:in|at|for|di)\s+([A-Z][\w'.-]*(?:\s+[A-Z][\w'.-]*){0,3})")
+
+
+def weather_place(text: str) -> str | None:
+    """'what's the weather in Kuala Lumpur today?' → 'Kuala Lumpur' (capitalised words after in/at/for)."""
+    if not _WEATHER_RE.search(text or ""):
+        return None
+    m = _PLACE_RE.search(text)
+    return m.group(1).strip() if m else None
+
+
+def weather_lookup(text: str, timeout: float = 8) -> str:
+    """Current conditions + today's range from wttr.in for the place in the question ('' if none).
+    Search snippets rarely contain a real forecast, so a weather question used to get a vague answer."""
+    place = weather_place(text)
+    if not place:
+        return ""
+    try:
+        def fetch():
+            req = urllib.request.Request(f"https://wttr.in/{urllib.parse.quote(place)}?format=j1",
+                                         headers={"User-Agent": "curl/8"})
+            with _open(req, timeout=timeout) as r:
+                return json.loads(r.read())
+        d = with_deadline(fetch, timeout + 4, "weather")
+        cur = (d.get("current_condition") or [{}])[0]
+        day = (d.get("weather") or [{}])[0]
+        desc = ((cur.get("weatherDesc") or [{}])[0].get("value") or "").strip()
+        return (f"{place}: {desc}, {cur.get('temp_C')}°C (feels {cur.get('FeelsLikeC')}°C), humidity "
+                f"{cur.get('humidity')}%, wind {cur.get('windspeedKmph')} km/h; today {day.get('mintempC')}–"
+                f"{day.get('maxtempC')}°C, observed {cur.get('localObsDateTime') or (str(cur.get('observation_time')) + ' UTC')}")
+    except Exception as e:  # noqa: BLE001 — best effort; the web search still runs
+        log.info("weather lookup for %r failed: %s", place, e)
+        return ""
+
+
+_TIME_RE = re.compile(r"\b(what time|time (?:is it )?(?:in|at|now)|local time|time ?zone|jam berapa|pukul berapa|"
+                      r"waktu (?:di|sekarang))\b", re.I)
+
+
+def time_place(text: str) -> str | None:
+    if not _TIME_RE.search(text or ""):
+        return None
+    m = _PLACE_RE.search(text)
+    return m.group(1).strip() if m else None
+
+
+def time_lookup(text: str, timeout: float = 8) -> str:
+    """Live local time of the place in the question, from the internet (wttr.in resolves a city name
+    to its time zone): 'Tokyo: 22:42:35 +0900 (Asia/Tokyo)'. '' if no place / no answer."""
+    place = time_place(text)
+    if not place:
+        return ""
+    try:
+        def fetch():
+            req = urllib.request.Request(f"https://wttr.in/{urllib.parse.quote(place)}?format=%25T+%25Z",
+                                         headers={"User-Agent": "curl/8"})
+            with _open(req, timeout=timeout) as r:
+                return r.read().decode(errors="replace").strip()
+        raw = with_deadline(fetch, timeout + 4, "worldtime") or ""
+        m = re.match(r"(\d{1,2}:\d{2}:\d{2})([+-]\d{4})\s+(\S+)", raw)
+        return f"{place}: {m.group(1)} UTC{m.group(2)[:3]}:{m.group(2)[3:]} ({m.group(3)})" if m else ""
+    except Exception as e:  # noqa: BLE001 — best effort
+        log.info("time lookup for %r failed: %s", place, e)
+        return ""
+
+
+# Internet first: every question is grounded with a web search, EXCEPT what needs no outside facts
+# and can't go stale — math, code, writing/translation, small talk. (A wrong guess here costs one
+# search; a missed lookup costs a stale or invented answer, so the default is to search.)
+_OFFLINE_RE = re.compile(
+    r"(\d\s*[-+*/^x×÷%]\s*\d|\b(solve|calculate|compute|simplify|factori[sz]e|integral|integrate|"
+    r"derivative|differentiate|equation|prove|proof|probability of|convert \d)\b|"
+    r"\b(write|fix|debug|refactor|review|optimi[sz]e|explain)\s+(?:me\s+)?(?:a|an|the|this|my)?\s*"
+    r"(?:\w+\s+)?(code|function|script|regex|query|sql|class|method|snippet|program|bug)\b|```|"
+    r"\b(rewrite|rephrase|paraphrase|proofread|translate|terjemah|grammar|poem|haiku|story|essay|caption|"
+    r"slogan|joke)\b|\b(?:write|draft)\s+(?:me\s+)?(?:a|an)\s+(?:short\s+)?(?:email|letter|message|reply|"
+    r"bio|post)\b)", re.I)
+_CREATIVE_RE = re.compile(r"\b(poem|haiku|limerick|lyrics|story|joke|slogan|pantun|sajak)\b", re.I)
+_SMALLTALK_RE = re.compile(r"^\s*(hi|hello|hey|yo|bro|thanks|thank you|thx|ok(?:ay)?|cool|nice|good "
+                           r"(?:morning|night|evening)|terima kasih|tq|salam|apa khabar)\b[\s!.?]*$", re.I)
 
 
 def needs_lookup(text: str) -> bool:
-    return bool(_LOOKUP_RE.search(text or ""))
+    """True unless the message is self-contained (math, code, writing, small talk) — see above.
+    The explicit live-fact words still force a lookup even inside, say, a code question."""
+    t = (text or "").strip()
+    if not t or _SMALLTALK_RE.match(t) or _CREATIVE_RE.search(t):
+        return False
+    if _LOOKUP_RE.search(t):
+        return True
+    return not _OFFLINE_RE.search(t)
 
 
 # A short instruction right after a generation ("make it brighter", "more red", "again") = edit the last
@@ -247,6 +394,11 @@ def route_media(text: str) -> tuple[str, dict] | None:
     return None
 
 
+def _minutes(hm: str) -> int:
+    h, m = hm.split(":")
+    return int(h) * 60 + int(m)
+
+
 def tail(text: str, n: int) -> str:
     """Last n characters of collapsed-whitespace text, with a leading ellipsis if cut."""
     text = " ".join((text or "").split())
@@ -274,6 +426,10 @@ def md_to_html(md: str) -> str:
     md = re.sub(r"\*\*([^*\n]+)\*\*", r"<b>\1</b>", md)
     md = re.sub(r"(?m)^\s*#{1,6}\s*(.+?)\s*$", r"<b>\1</b>", md)          # headings → bold
     md = re.sub(r"(?<![\w*])\*([^*\n]+)\*(?![\w*])", r"<i>\1</i>", md)    # *italic*
+    # "> quote" lines (escaped to "&gt; " above) → one <blockquote> per run of lines
+    md = re.sub(r"(?m)(?:^&gt; ?.*(?:\n|$))+",
+                lambda m: "<blockquote>" + re.sub(r"(?m)^&gt; ?", "", m.group(0)).rstrip("\n") + "</blockquote>\n",
+                md)
     for k, v in ph.items():
         md = md.replace(k, v)
     return md
@@ -352,7 +508,7 @@ class Api:
         body = json.dumps({k: v for k, v in params.items() if v is not None}).encode()
         req = urllib.request.Request(self.url + method, data=body, headers={"Content-Type": "application/json"})
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:
+            with _open(req, timeout=timeout) as r:
                 data = json.loads(r.read())
         except urllib.error.HTTPError as e:
             try:
@@ -370,7 +526,7 @@ class Api:
         ctype, body = multipart(params, file_field, path.name, path.read_bytes())
         req = urllib.request.Request(self.url + method, data=body, headers={"Content-Type": ctype})
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:
+            with _open(req, timeout=timeout) as r:
                 data = json.loads(r.read())
         except urllib.error.HTTPError as e:
             try:
@@ -389,21 +545,29 @@ class Api:
     def download_file(self, file_path: str, dest: Path, timeout: float = 120) -> Path:
         """Download a file the user sent (photos/documents) via the Bot API file endpoint."""
         url = self.url.replace("/bot", "/file/bot", 1) + file_path
-        with urllib.request.urlopen(urllib.request.Request(url), timeout=timeout) as r:
+        with _open(urllib.request.Request(url), timeout=timeout) as r:
             data = r.read()
         Path(dest).parent.mkdir(parents=True, exist_ok=True)
         Path(dest).write_bytes(data)
         return Path(dest)
 
+    POLL_GRACE_S = 30
+
     def get_updates(self, offset: int | None, timeout: float) -> list[dict]:
-        """Long poll: waits up to `timeout` seconds for new messages."""
-        return self._long_poll(offset, timeout)
+        """Long poll: waits up to `timeout` seconds for new messages — with a HARD deadline.
+        urllib's timeout covers connect and each read, but not the DNS lookup (and not a TLS peer
+        that trickles bytes), so on a flaky network the call could hang far past it; the bot then
+        stopped polling and the watchdog restarted it every few minutes. The poll now runs in a
+        helper thread: past timeout + POLL_GRACE_S it is abandoned (Telegram re-delivers anything
+        not yet confirmed by the next offset) and an OSError lets the loop retry."""
+        return with_deadline(lambda: self._long_poll(offset, timeout) or [],
+                             float(timeout) + self.POLL_GRACE_S, "getUpdates")
 
     def _long_poll(self, offset, timeout) -> list[dict]:
         body = json.dumps({"offset": offset, "timeout": int(timeout), "allowed_updates": ["message"]}).encode()
         req = urllib.request.Request(self.url + "getUpdates", data=body, headers={"Content-Type": "application/json"})
         try:
-            with urllib.request.urlopen(req, timeout=float(timeout) + 15) as r:
+            with _open(req, timeout=float(timeout) + 15) as r:
                 data = json.loads(r.read())
         except urllib.error.HTTPError as e:
             try:
@@ -472,8 +636,9 @@ class Bot:
             atomic_write(self.file, json.dumps(self.state, indent=2, sort_keys=True) + "\n", mode=0o600)
 
     def chat(self, cid: int) -> dict:
-        return self.state["chats"].setdefault(str(cid), {"persona": self.cfg["persona"],
-                                                         "project": self.cfg["project"]})
+        with self.lock:                      # the pump + scheduler threads read/save state too
+            return self.state["chats"].setdefault(str(cid), {"persona": self.cfg["persona"],
+                                                             "project": self.cfg["project"]})
 
     def push_history(self, cid: int, role: str, content: str) -> None:
         """Record one turn of the chat so later messages ('it's not working') have context."""
@@ -493,15 +658,28 @@ class Bot:
         return (self.paths.source / p).resolve()
 
     # ── sending ─────────────────────────────────────────────────────────
+    NET_RETRIES = (2, 5, 12)                  # seconds to wait before each retry of a network failure
+
     def _api(self, method: str, **params):
-        for attempt in range(3):
+        """Call the Bot API with retries: Telegram's 429 (wait as told) AND network failures
+        (connection reset / timeout). Without the latter an agent's final report was simply lost
+        when api.telegram.org reset one connection — the job showed ✅ done and nothing followed."""
+        net = 0
+        for attempt in range(6):
             try:
                 return self.api.call(method, **params)
             except TGError as e:
-                if e.code == 429 and attempt < 2:
+                if e.code == 429 and attempt < 5:
                     time.sleep(min(float(e.retry_after or 2), 30))
                     continue
                 raise
+            except (OSError, urllib.error.URLError) as e:
+                if net >= len(self.NET_RETRIES):
+                    raise
+                log.info("%s: network error (%s) — retrying in %ss", method, e, self.NET_RETRIES[net])
+                time.sleep(self.NET_RETRIES[net])
+                net += 1
+        return self.api.call(method, **params)
 
     def action(self, cid: int, kind: str = "typing") -> None:
         """Show the '… is typing' indicator in the chat (lasts ~5s; re-send to keep it on)."""
@@ -559,6 +737,10 @@ class Bot:
                 log.warning("send_file(%s) failed: %s", p.name, e)
                 return False
             except (OSError, urllib.error.URLError) as e:
+                if attempt < 2:                       # a reset connection: try the upload again
+                    log.info("send_file(%s): network error (%s) — retrying", p.name, e)
+                    time.sleep(3 + attempt * 5)
+                    continue
                 log.warning("send_file(%s) failed: %s", p.name, e)
                 return False
         return False
@@ -778,8 +960,12 @@ class Bot:
         turn, from streamed deltas — the 'watch it think' line, like web chat with thinking on."""
         raw = f.get("stream") or ""
         think_rc = f.get("think") or ""            # reasoning_content, if the server sends it split
-        thinking, answer = live_split(raw)
-        thinking = (think_rc + " " + thinking).strip() if think_rc else thinking
+        if think_rc and "</think>" not in raw:
+            # the server's reasoning parser already split it: the content stream IS the answer
+            thinking, answer = think_rc.strip(), raw.replace("<think>", "").strip()
+        else:
+            thinking, answer = live_split(raw)
+            thinking = (think_rc + " " + thinking).strip() if think_rc else thinking
         if answer:
             return "💬 " + tail(answer, 360)
         if thinking:
@@ -917,16 +1103,42 @@ class Bot:
 
     cmd_help = cmd_start
 
+    PAGES_TO_READ = 2
+    PAGE_CHARS = 1800
+
     def _web_lookup(self, query: str, n: int = 5) -> str:
-        """Top SearXNG results as plain text, for grounding a chat answer in current facts."""
+        """Top SearXNG results for grounding a chat answer in current facts: the snippets of the first
+        `n`, plus the readable text of the first PAGES_TO_READ pages (snippets alone are often too thin
+        to answer from — the model then hedged or guessed)."""
         port = int(self.reg.ports.get("searxng", 8888))
         url = f"http://127.0.0.1:{port}/search?" + urllib.parse.urlencode(
             {"q": query, "format": "json", "safesearch": 0})
         with urllib.request.urlopen(url, timeout=18) as r:
             data = json.loads(r.read())
         rows = data.get("results") or []
-        return "\n".join(f"- {x.get('title', '').strip()}: {(x.get('content') or '').strip()[:220]} "
-                         f"({x.get('url', '')})" for x in rows[:n])
+        out = ["\n".join(f"- {x.get('title', '').strip()}: {(x.get('content') or '').strip()[:220]} "
+                          f"({x.get('url', '')})" for x in rows[:n])]
+        from .agent.tools import _http_get, html_to_text
+        read = 0
+        for x in rows[:n]:
+            if read >= self.PAGES_TO_READ:
+                break
+            link = x.get("url") or ""
+            if not link.startswith(("http://", "https://")):
+                continue
+            try:
+                ctype, raw = with_deadline(lambda: _http_get(link, timeout=8, max_bytes=1_500_000), 10, "page")
+            except Exception:  # noqa: BLE001 — a slow or blocked page is simply skipped
+                continue
+            text = raw.decode(errors="replace")
+            if "html" in (ctype or "").lower() or "<html" in text[:2000].lower():
+                text = html_to_text(text)
+            text = " ".join(text.split())
+            if len(text) < 200:
+                continue
+            out.append(f"\n[page: {link}]\n{text[:self.PAGE_CHARS]}")
+            read += 1
+        return "\n".join(out)
 
     def answer(self, cid: int, question: str) -> int:
         """Answer a question in chat: a quick, streamed reply (thinking shown live, no tools). The
@@ -938,16 +1150,28 @@ class Bot:
         if persona in ("orchestrator", "coder", "qa", "designer", "po"):
             persona = self.cfg["persona"]
         model = self.reg.personas[persona]["model"]
+        prev = [h["content"] for h in self.history(cid) if h.get("role") == "user"]
         self.push_history(cid, "user", question)
-        sysbits = [f"Today is {time.strftime('%A, %d %B %Y')}. You are a helpful assistant replying on "
-                   "Telegram; be natural and concise."]
+        # a short follow-up ("and tomorrow?") is searched together with the question it follows
+        query = f"{prev[-1]} {question}" if prev and len(question.split()) <= 6 else question
+        from .agent.prompts import now_line
+        sysbits = [f"Right now it is {now_line()} on the user's Mac — use this for any question about the "
+                   "current time or date (convert to other time zones yourself). You are a helpful assistant "
+                   "replying on Telegram; be natural and concise."]
         if needs_lookup(question):
             self.action(cid, "typing")
+            tm = time_lookup(question)
+            if tm:
+                sysbits.append("Live local time just now (from the internet — state it exactly):\n" + tm)
+            wx = weather_lookup(question)
+            if wx:
+                sysbits.append("Live weather just now (wttr.in — trust this over search snippets):\n" + wx)
             try:
-                hits = self._web_lookup(question)
+                hits = self._web_lookup(query[:300])
                 if hits:
-                    sysbits.append("Web search results just now (use them to answer; you DO have current "
-                                   "info via these):\n" + hits)
+                    sysbits.append("Web search results just now — answer FROM these (you DO have current info "
+                                   "via them), name the source for key facts, and say so if they don't "
+                                   "cover the question instead of guessing:\n" + hits)
             except (urllib.error.URLError, OSError, ValueError):
                 pass
         messages = [{"role": "system", "content": "\n\n".join(sysbits)}] + self.history(cid)
@@ -1057,8 +1281,10 @@ class Bot:
         with self.lock:
             self.state["sched_seq"] += 1
             sid = self.state["sched_seq"]
+            # a daily task created after today's time starts tomorrow (else catch-up fires it now)
+            last = time.strftime("%Y-%m-%d") if kind == "daily" and time.strftime("%H:%M") >= at else ""
             self.state["schedules"].append({"id": sid, "chat": cid, "kind": kind, "at": at,
-                                            "text": text, "last_day": ""})
+                                            "text": text, "last_day": last})
             self.save()
         return sid
 
@@ -1111,7 +1337,8 @@ class Bot:
     def _fire_schedule(self, s: dict) -> None:
         cid, text = s["chat"], s["text"]
         if s["kind"] == "daily":
-            self.send(cid, f"🔁 Running your daily task: {text}")
+            late = f" (late by {s['late_min']} min — the Mac was asleep)" if s.get("late_min") else ""
+            self.send(cid, f"🔁 Running your daily task{late}: {text}")
             self.route_text(cid, text)                    # execute it (question/task/media)
         else:
             self.send(cid, f"⏰ Reminder: {text}")
@@ -1125,9 +1352,13 @@ class Bot:
             for s in self.state["schedules"]:
                 if s["kind"] == "once" and now >= float(s["at"]):
                     fire.append(s)
-                elif s["kind"] == "daily" and s["at"] == hm and s.get("last_day") != today:
+                elif s["kind"] == "daily" and hm >= s["at"] and s.get("last_day") != today:
+                    # >= (not ==): if the Mac slept through the minute, it runs on wake instead of
+                    # being silently skipped for the day; more than 6 h late → skip until tomorrow
                     s["last_day"] = today
-                    fire.append(s)
+                    late = _minutes(hm) - _minutes(s["at"])
+                    if late <= 360:
+                        fire.append({**s, "late_min": late} if late > 2 else s)
                     keep.append(s)
                 else:
                     keep.append(s)
@@ -1281,8 +1512,9 @@ class Bot:
                 log.exception("progress update failed")
 
     def run_forever(self) -> None:
+        self.touch()
         try:
-            me = self.api.call("getMe") or {}
+            me = with_deadline(lambda: self.api.call("getMe"), 45, "getMe") or {}
             self.state["bot"] = me.get("username")
             self.save()
             log.info("telegram bot @%s ready (users %s)", me.get("username"), sorted(self.users))

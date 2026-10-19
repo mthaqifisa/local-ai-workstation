@@ -1,7 +1,7 @@
 # Local AI Workstation v2 (`law`)
 
 A one-command, fully local, open-source AI workstation for Apple Silicon Macs.
-Branch `v5-enhanced-mlx` · version `2.0.0-phase7` · built for a 64 GB M-series MacBook, works on 32 GB+.
+Branch `v5-enhanced-mlx` · version `2.1.0` ([changelog](CHANGELOG.md)) · built for a 64 GB M-series MacBook, works on 32 GB+.
 
 - **One installer** (`./install.sh`) for a brand-new Mac *or* a Mac that already has
   something installed. Every run checks everything: installs what's missing, repairs what
@@ -14,8 +14,9 @@ Branch `v5-enhanced-mlx` · version `2.0.0-phase7` · built for a 64 GB M-series
 - **Create anything.** Text-to-image, text-to-video (with audio), text-to-speech, music
   (ACE-Step), and image understanding / OCR — all local, from the dashboard or Telegram.
 - **A real command center.** A live web dashboard (`:8800`): task board, agent timelines,
-  Create/Studio media tools, RAG file search, a read-only SQL viewer, a system monitor, and
-  **usage analytics** (jobs & compute over time).
+  plan-first dispatch, Create/Studio media tools, RAG file search, a read-only SQL viewer, a
+  system + disk monitor, **usage and per-model health**, Markdown export of any job — and it
+  installs on your phone's home screen like an app.
 - **From your phone, naturally.** A private Telegram bot you can *talk to*: type, send a
   **voice note** (transcribed), or a **photo** (analysed). It answers like a modern
   assistant — shows its thinking live, remembers the conversation, **looks things up on the
@@ -30,10 +31,15 @@ Branch `v5-enhanced-mlx` · version `2.0.0-phase7` · built for a 64 GB M-series
   and continue instead of dying, and clear reasons when something fails.
 - **Undo.** Every agent run starts with a snapshot of its project folder; roll back in one
   command (or `/undo` from Telegram).
-- **LAN / VPN access, no login.** Services listen on `0.0.0.0` on purpose.
+- **Personal, no login — but not open to strangers.** Services listen on `127.0.0.1` by
+  default; opt in to LAN / Tailscale with one setting. A request guard only serves this Mac
+  and private networks, and refuses cross-site requests from web pages (see [Security](#security-no-login-trusted-network)).
+- **Keeps the disk in check.** Model-server caches live in `~/.law/run` and are wiped when a
+  model stops; `law status` / the dashboard show what uses the disk; `law reclaim` frees it.
 
 > **Status:** working now — installer, model downloads, web UIs, the `:8800` command-center
-> dashboard (+ usage analytics), job queue, worker, OpenAI + Anthropic gateway, CLI,
+> dashboard (+ usage analytics), job queue, worker, OpenAI + Anthropic gateway, CLI (incl.
+> `law image / speak / video / vision / transcribe`, `law backup / restore`),
 > watchdog, memory guard, agents (tools incl. machine-control + vision `look_at`, quality
 > loop, request translator, sub-jobs, auto-continue, resume, project memory), media
 > generation (image / video / voice / music), image understanding, RAG file search
@@ -57,17 +63,20 @@ Branch `v5-enhanced-mlx` · version `2.0.0-phase7` · built for a 64 GB M-series
 12. [Adding and removing your own models](#adding-and-removing-your-own-models)
 13. [How a job runs](#how-a-job-runs)
 14. [Reliability: watchdog, memory guard, interruptions](#reliability-watchdog-memory-guard-interruptions)
-15. [Long prompts and the 300-second limit](#long-prompts-and-the-300-second-limit)
-16. [Measuring models: `law probe`](#measuring-models-law-probe)
-17. [Undo: snapshots and rollback](#undo-snapshots-and-rollback)
-18. [What the installer does](#what-the-installer-does)
-19. [Files and folders](#files-and-folders)
-20. [Configuration](#configuration)
-21. [Moving from v1 (mlx-setup.sh)](#moving-from-v1-mlx-setupsh)
-22. [Troubleshooting](#troubleshooting)
-23. [Uninstall](#uninstall)
-24. [Development and tests](#development-and-tests)
-25. [Roadmap](#roadmap)
+15. [Security: no login, trusted network](#security-no-login-trusted-network)
+16. [Disk space](#disk-space)
+17. [Long prompts and the 300-second limit](#long-prompts-and-the-300-second-limit)
+18. [Measuring models: `law probe`](#measuring-models-law-probe)
+19. [Undo: snapshots and rollback](#undo-snapshots-and-rollback)
+20. [Backup and restore](#backup-and-restore)
+21. [What the installer does](#what-the-installer-does)
+22. [Files and folders](#files-and-folders)
+23. [Configuration](#configuration)
+24. [Moving from v1 (mlx-setup.sh)](#moving-from-v1-mlx-setupsh)
+25. [Troubleshooting](#troubleshooting)
+26. [Uninstall](#uninstall)
+27. [Development and tests](#development-and-tests)
+28. [Roadmap](#roadmap)
 
 ---
 
@@ -78,7 +87,7 @@ Branch `v5-enhanced-mlx` · version `2.0.0-phase7` · built for a 64 GB M-series
 | Mac | Apple Silicon (M1 or newer). Intel Macs are not supported. |
 | macOS | 14 Sonoma or newer |
 | RAM | 32 GB minimum; 64 GB recommended (the 42 GB coder model needs it) |
-| Disk | ~100 GB free for the default models, plus room for optional ones |
+| Disk | ~100 GB free for the core models; ~200 GB with every media model (image, video, music) |
 | Network | Needed for the first install (Homebrew, Python packages, models, Docker images) and for Telegram |
 | Account | A normal user account — do **not** run with `sudo` |
 
@@ -91,7 +100,7 @@ is installed for you.
 
 ### From a downloaded copy / git checkout
 ```bash
-cd law            # the folder that contains install.sh
+cd local-ai-workstation      # the folder that contains install.sh
 ./install.sh
 ```
 
@@ -119,19 +128,22 @@ vision, RAG, the dashboard, the gateway. A few features need a one-time, per-use
 | To enable | Run / do once |
 |---|---|
 | **Telegram bot** (chat / voice / photos from your phone) | `law configure` — paste your bot token + user id |
-| **Music generation** (ACE-Step) | `law setup-music` |
+| **Music generation** (ACE-Step) | `law setup-music` once; then `law music start` (or the dashboard's Music tile) when you want it |
 | **Agents sending email** | Add an account in **Mail.app**, and approve the one-time *Automation → control Mail* prompt |
-| **LAN access** from other devices | set `network.bind_host: 0.0.0.0` in the registry — **read the security note below first** |
+| **LAN / Tailscale access** from other devices | add `LAW_BIND_HOST=0.0.0.0` to `~/.law/.env`, then `./install.sh` — see [Security](#security-no-login-trusted-network) |
+| **Menu-bar status** (optional) | `brew install --cask swiftbar`, then link `extras/swiftbar/law.10s.sh` into its plugin folder |
 | **OpenCode / editor** integration | `law setup-opencode --install` |
 
-> **⚠️ Security.** By default the gateway + dashboard bind to **`127.0.0.1` (this Mac only)**.
-> They have **no authentication**, and the dashboard can run **any shell command** via an agent.
-> Only set `bind_host: 0.0.0.0` on a network you fully trust (home LAN / VPN) — on an untrusted
-> network, anyone who can reach the port can run commands on your Mac.
+> **⚠️ Security.** By default the gateway, dashboard and ACE-Step bind to **`127.0.0.1` (this Mac
+> only)**. There is **no login** (personal machine) and the dashboard can start agents that run
+> **shell commands** — so even on the LAN a request guard only answers this Mac and private
+> networks, and refuses requests that come from other web sites. Details:
+> [Security](#security-no-login-trusted-network).
 
-> **Housekeeping.** App builds run as plain local servers (no Docker bloat). If free space ever
-> dips, `law reclaim` trims the Docker VM + caches (never touches models); `law reclaim --media 7`
-> also drops generated images/audio/video older than 7 days.
+> **Housekeeping.** `law status` shows what uses the disk. `law reclaim` removes leaked model
+> caches, prunes old job history, trims the Docker VM and package caches (never touches models);
+> `--trash` also empties `~/.law/trash`, `--media 7` drops generated media older than 7 days,
+> `--dry-run` only reports. See [Disk space](#disk-space).
 
 ### Running it again / updating
 ```bash
@@ -157,7 +169,7 @@ so `law` is on your PATH (or run `source ~/.zprofile`).
 Options can be combined, e.g. `./install.sh --upgrade --dry-run`.
 
 **Environment variables** (advanced): `LAW_HOME` (default `~/.law`), `LAW_REPO`,
-`LAW_BRANCH` (default `v5`), `HF_HOME` / `HF_HUB_CACHE` (where models are stored).
+`LAW_BRANCH` (default `v5-enhanced-mlx`), `HF_HOME` / `HF_HUB_CACHE` (where models are stored).
 
 ---
 
@@ -170,8 +182,13 @@ law agent "build tic tac toe with a 3x3 grid for the web, run it on local docker
           -C ~/MLX-AI/source/tictactoe            # an agent that actually builds it
 law jobs                                # what's queued / running / waiting / done
 law rollback ~/MLX-AI/source/tictactoe  # undo everything the agent changed
+law image "a red fox in fresh snow" --open          # media from the terminal
+law speak "dinner is ready" --open      # also: law video, law vision, law transcribe
+law unload                              # free the RAM now (reloads on the next job)
 law configure                           # optional: Telegram bot, Hugging Face token
 ```
+
+Dashboard: **http://localhost:8800** (on a phone: open it and *Add to Home Screen*).
 
 Open the chat UI in a browser: **http://localhost:3001** (Open WebUI) and pick the
 `general` model. From another device on your network use `http://<mac-ip>:3001`
@@ -235,7 +252,7 @@ a real M5 Pro run, `qwen38-27b` replied *"Simple task. Create the file, run it, 
 
 | Problem | What law does |
 |---|---|
-| Tool calls lost while streaming | Agent turns are fetched as **one whole reply** (`agent.stream: false`); the model server parses tool calls more reliably that way |
+| Tool calls lost while streaming | Streamed tool-call fragments are re-assembled into whole calls (verified identical to whole replies on server 1.8.1), and anything the model wrote as text is recovered. `agent.stream: false` switches to one whole reply per turn |
 | Thinking leaks into the answer (`…</think>`) | Everything up to `</think>` is moved out of the answer |
 | The model writes a tool call as **text** (`<tool_call>{…}</tool_call>`, Qwen3-Coder `<function=…>` XML, or a JSON block) | It is recognised and run anyway; you see `recovered 1 tool call(s) the model wrote as text` |
 | The model "finishes" without ever calling a tool | It is told that nothing happened on the Mac and asked to do the work: up to `agent.nudges` (2) times for an empty reply, **once** for a real answer (it may simply be the right answer to a question). If it still does nothing, the report ends with **"this agent did not use any tool, so nothing was changed"** |
@@ -249,15 +266,23 @@ gateway (OpenCode, Claude Code) — see [`tools_whole_reply`](#configuration).
 
 | Tool | What it does |
 |---|---|
-| `run_shell` | Any bash command in the project folder (git, docker, brew, npm, pytest, curl…). Output and exit code are returned; time limit `shell_timeout_s` (30 min) |
+| `run_shell` | Any bash command in the project folder (git, docker, brew, npm, pytest, curl…). Output and exit code are returned; time limit `shell_timeout_s` (60 min; an agent can ask for more) |
 | `read_file` | Read a text file (optionally a line range) |
 | `write_file` | Create or overwrite a file (folders are created) |
 | `edit_file` | Replace an exact piece of text in a file — safer than rewriting it |
 | `list_dir` | List a folder (2 levels by default; skips `.git`, `node_modules`, …) |
 | `web_search` | Search the web through your private SearXNG |
-| `web_fetch` | Download a page as plain text |
+| `web_fetch` | Download a page as plain text (compressed pages are decoded) |
+| `search_files` | Keyword / regex search across the project's text files |
+| `screenshot` / `look_at` | Render a URL in headless Chrome / ask the vision model about an image |
+| `send_email` / `send_file` | Send mail through Mail.app / send a file back to your Telegram chat |
 | `remember` | Save a durable fact to the project's memory in law's store; future runs see it (`law agent --show-memory`) |
 | `delegate` | Hand a sub-task to another persona (see below) |
+
+**Internet first.** Every agent's prompt carries the current date and time and the rule to get
+facts from the internet (search, fetch the pages, cite the URLs) instead of from the model's
+memory — which is out of date. Only what can't go stale (math, logic, code it can test) may
+come from the model itself.
 
 Relative paths resolve inside the project folder; absolute paths work anywhere — **agents
 have full access to your Mac**, as designed. There are no approval prompts. Tool failures
@@ -314,7 +339,9 @@ Two things give agents per-project context:
 ### Limits worth knowing
 - Local models are capable but smaller than hosted frontier models: give clear goals,
   let the translator add structure, and prefer `coder` for code.
-- `max_steps` (40) stops runaway loops; the result tells you how to `--resume`.
+- `max_steps` (80 per run) stops runaway loops. An agent that is still using tools when it
+  hits the limit continues by itself (`auto_resume`, 3 times); after that the result tells you
+  how to `--resume`. Auto-continuing and waiting for sub-jobs don't use up the retry budget.
 - Very long conversations: older tool output is shortened automatically
   (`context_chars`), but a single huge prompt can still hit the
   [300-second limit](#long-prompts-and-the-300-second-limit).
@@ -349,8 +376,12 @@ during the v1 migration, so the bot starts on the next `./install.sh` without an
 
 | Message | What happens |
 |---|---|
-| any text | **Agent task** (persona `general` by default) in the chat's project folder |
-| `/ask <question>` | Quick chat answer, no tools |
+| a question | **Quick answer** right in the chat (you see it think). **Internet first:** it web-searches and reads the top pages by default, and gets live local time / weather for "time / weather in <place>"; only math, code, writing/translation and small talk are answered from the model's own knowledge |
+| a task ("build / fix / add / deploy …") | **Agent task** with tools (persona `general` by default) in the chat's project folder |
+| a **voice note** | Transcribed (whisper), then handled exactly like typed text |
+| a **photo** (optional caption) | Analysed by the vision model ("where is this?", "what's wrong with this UI?") |
+| `/ask <question>` | Force a quick chat answer, no tools |
+| `/image <prompt>` · `/voice [voice] <text>` · `/video <prompt>` | Generate media and send it back here. Follow-ups like "make it darker" edit the last image/video |
 | `/plan <task>` | Only translates the task into a spec and shows it — nothing runs. Then `/go` runs that exact spec, `/raw` runs your words as written |
 | `/raw <task>` | Agent task exactly as written (no translator) |
 | `/status` | Worker, loaded model, queue, free memory and pressure, your persona and project |
@@ -358,6 +389,9 @@ during the v1 migration, so the bot starts on the next `./install.sh` without an
 | `/cancel [id]` | Cancel a job and its sub-jobs (default: your last job) |
 | `/resume [id]` | Continue a failed / cancelled / stopped agent job (default: your last job) |
 | `/undo [id]` | Roll the project back to the snapshot taken before that agent job (default: your last job) |
+| `/remind <in 30m \| 14:30> <what>` | One-off reminder |
+| `/daily <HH:MM> <task>` | Run a task every day. If the Mac was asleep at that time it runs on wake (up to 6 h late) |
+| `/schedules` · `/unschedule <id>` | List / remove reminders and daily tasks |
 | `/persona [name]` | Show the personas / change the one used for plain messages (e.g. `/persona coder`) |
 | `/project [folder]` | Show / change the project folder. A name means `~/MLX-AI/source/<name>`; `~/…` and `/…` paths work too. Default `~/MLX-AI/source/telegram` |
 | `/help` | The list above |
@@ -380,8 +414,9 @@ streams the model's **live thinking** (🧠) and then its live answer (💬) tok
 same reasoning you'd see in a web chat with thinking on — above the tool-call lines.
 When the job ends the message turns into `✅ done in 52s · 3 steps · 2 tool calls`
 (or `❌ failed` with `/resume <id>`, or `⏹ cancelled`), and the agent's report arrives as a
-new message (split into parts if it is long), followed by an `/undo` hint.
-Messages are plain text, so code and file names always display correctly.
+new message (split into parts if it is long, formatted as rich text — bold, lists, code),
+followed by an `/undo` hint. Files an agent produces (images, reports, audio) can be sent
+straight to the chat with its `send_file` tool.
 
 ### Security
 Anyone can find and message a Telegram bot, and agents have full access to the Mac. So the
@@ -460,17 +495,26 @@ Run `law --help` or `law <command> --help` at any time.
 | `law add-model` | Add a Hugging Face model to your models (checks size + RAM limit) |
 | `law remove-model` | Remove one of your models (or your override of a built-in) |
 | `law agent` | Give an agent a task with tools in a project folder; resume; show memory |
+| `law job <id>` | What an agent job saved (spec, raw replies, brief); `--md` = the whole job as a Markdown report |
 | `law run` | Send a prompt through the queue and stream the answer (chat, no tools) |
+| `law image` / `speak` / `video` | Generate an image / speech / a video clip from the terminal |
+| `law vision` / `transcribe` | Ask about an image / turn audio into text |
+| `law index` / `search` | Index a folder for semantic search (RAG) / search it |
 | `law jobs` | List jobs and the worker state |
-| `law cancel` | Cancel a queued, running or waiting job (and its sub-jobs) |
+| `law cancel` | Cancel a queued, running or waiting job (and its sub-jobs) — also stops the model writing |
+| `law unload` | Unload the model now to free RAM (it reloads on the next job) |
 | `law logs` | Show worker / gateway / watchdog / telegram / model logs |
-| `law probe` | Measure a model: load time, speed, safe prompt size |
+| `law probe` | Measure a model: load time, speed, safe prompt size; `--apply` saves the result |
+| `law reclaim` | Free disk space (leaked caches, old history, Docker VM, caches; `--trash`, `--media`, `--dry-run`) |
+| `law backup` / `restore` | Settings, secrets, agent memory and history in one file |
 | `law snapshot` | Save an undo point for a project folder |
 | `law snapshots` | List a folder's undo points |
 | `law rollback` | Restore a folder to an undo point (itself undoable) |
 | `law configure` | Set secrets: Telegram bot token + user id, Hugging Face token |
 | `law telegram` | Telegram bot status / test message / run in the foreground |
 | `law setup-opencode` | Point OpenCode at the gateway (and install it) |
+| `law setup-music` | Install ACE-Step music generation (optional, ~11 GB) |
+| `law music [start\|stop\|status]` | Run the music studio on demand (it holds ~15 GB of memory while running) |
 | `law start` / `stop` / `restart` | Control the background services |
 | `law webui-reset-password` | List Open WebUI accounts and set a new password |
 | `law init-project` | Create the optional `.local-agent/AGENT.md` for project instructions |
@@ -486,7 +530,7 @@ downloading a new version (it also refreshes the `law` command itself).
 
 ### `law status` (alias `law doctor`)
 ```
-law status [--models]
+law status [--models] [--updates]
 ```
 Read-only; never changes anything. Shows:
 - **Machine** — chip, RAM, macOS version, free memory and macOS memory pressure
@@ -502,10 +546,15 @@ Read-only; never changes anything. Shows:
   progress, queue length, agents waiting for sub-jobs), gateway URLs (OpenAI and
   Anthropic), watchdog, Telegram bot (running, last poll — or "not configured"), OpenCode
   provider state, and the watchdog's last 3 actions
+- **Disk** — free space (warns below 50 GB, a problem below 15 GB) and what law uses:
+  models, runtime, state, logs, trash, generated media, Docker VM, ACE-Step, and any model
+  caches leaked into the system temp folder
 - **v1** — whether the old stack is still present
 
 `--models` also asks Hugging Face whether every model repo still exists
-(`hf:ok`, `hf:gated`, `hf:NOT FOUND`).
+(`hf:ok`, `hf:gated`, `hf:NOT FOUND`). `--updates` checks PyPI for newer model-server
+packages (mlx-openai-server, mlx-lm, mlx-vlm, mflux, …) — check only; upgrade with
+`./install.sh --upgrade`.
 
 Exit code: `0` healthy, `1` problems found (useful in scripts). An unconfigured Telegram bot
 is not a problem; a configured one that isn't running is.
@@ -632,12 +681,76 @@ is retried or the worker restarts.
 law cancel <job-id>
 ```
 Cancels a queued, running or waiting job, **and all its sub-jobs**. A running job stops within
-about a second (a running shell command is killed). Cancelling a sub-job wakes its parent,
-which is told the sub-task was cancelled. Finished jobs can't be cancelled.
+about a second (a running shell command is killed). If the model was still writing, it is
+unloaded — dropping the connection alone doesn't stop the model server, and the next job would
+wait behind a reply nobody reads. Cancelling a sub-job wakes its parent, which is told the
+sub-task was cancelled. Finished jobs can't be cancelled.
+
+### `law unload`
+Unloads the model right now (as the next job, ahead of the queue) so the RAM is free for other
+apps. The next job loads it again. The dashboard's **System → ⏏ Unload model** does the same.
+
+### `law music`
+```
+law music start | stop | status
+```
+The ACE-Step music studio (after `law setup-music`) runs only when you want it: it holds
+~15 GB of memory while running. `start` launches it (~1 min until http://localhost:7860
+answers), `stop` frees the memory. The worker also stops it when a model load needs the RAM.
+
+### `law image` / `law speak` / `law video` / `law vision` / `law transcribe`
+```
+law image "a red fox in fresh snow" [--model z-image-turbo|z-image|qwen|flux2|fibo|schnell] [--steps N] [--width W --height H] [--seed N] [--open]
+law speak "dinner is ready" [--voice af_sky|af_heart|am_adam|am_echo|bf_emma|bm_lewis] [--speed 1.1] [--open]
+law video "waves at sunset, slow pan" [--image start.png] [--seconds 5] [--open]
+law vision screenshot.png "what is wrong with this layout?"
+law transcribe memo.m4a
+```
+Each is a normal queue job (same as the dashboard and Telegram): it waits its turn, frees the
+language model first, and prints where the file was saved (`~/MLX-AI/outputs/…`). `--open`
+opens the result, `-d` queues it and returns. The text can also be piped on stdin. The v1
+flags `--image` / `--vision` map to these.
+
+### `law index` / `law search`
+```
+law index ~/Documents/notes
+law search ~/Documents/notes "how did we configure the VPN?" [-k 8]
+```
+Semantic search over your own files with the embedding model (`qwen3-embed-8b`). Index once
+(re-run to pick up changes), then search; results show the file, the chunk and a preview. The
+dashboard has the same thing under **RAG**.
+
+### `law job`
+```
+law job <id> [--spec] [--replies] [--handoff]
+law job <id> --md [-o report.md]
+```
+Shows what an agent job saved in law's store: the task spec the translator wrote, every raw
+model reply (for debugging), the brief a delegated sub-job got. `--md` turns the whole job —
+request, spec, every step and tool call, result, sub-jobs, undo command — into one Markdown
+report (also the **⤓ .md** button in the dashboard's job drawer).
+
+### `law reclaim`
+```
+law reclaim [--dry-run] [--trash] [--media DAYS]
+```
+Frees disk space without touching downloaded models: removes model-server prompt caches
+leaked into the system temp folder, prunes old job history (`runtime.queue`), trims the Docker
+VM (`fstrim`) and runs `docker system prune`, cleans the uv and Homebrew caches.
+`--trash` also empties `~/.law/trash` (models removed from the registry wait there 7 days),
+`--media 7` deletes generated images/audio/video older than 7 days, `--dry-run` only shows
+what uses the disk. See [Disk space](#disk-space).
+
+### `law backup` / `law restore`
+```
+law backup [-o file.tar.gz] [--no-secrets] [--webui]
+law restore <file.tar.gz> [--yes]
+```
+See [Backup and restore](#backup-and-restore).
 
 ### `law logs`
 ```
-law logs [worker | gateway | watchdog | telegram | <model-id>] [-n N] [-f]
+law logs [worker | gateway | dashboard | watchdog | telegram | acestep | <model-id>] [-n N] [-f]
 ```
 | Example | Shows |
 |---|---|
@@ -649,12 +762,14 @@ law logs [worker | gateway | watchdog | telegram | <model-id>] [-n N] [-f]
 | `law logs worker -n 200` | Last 200 lines |
 | `law logs worker -f` | Follow live (Ctrl+C to stop) |
 
-If the name doesn't exist, it lists the available logs. For what an agent's model actually
+If the name doesn't exist, it lists the available logs. Logs are rotated by the watchdog
+every hour: a log above 20 MB is copied to `<name>.log.1` (two old copies kept) and emptied
+(`runtime.watchdog.log_max_mb` / `log_keep`). For what an agent's model actually
 replied, look in law's store (runs) — `law agent --show-memory` summarises a project's saved state.
 
 ### `law probe`
 ```
-law probe <model-id> [--sizes 4k,16k,32k] [-d]
+law probe <model-id> [--sizes 4k,16k,32k] [--apply] [-d]
 law probe --show [<model-id> ...]
 ```
 Measures a chat model on this Mac — see [Measuring models](#measuring-models-law-probe).
@@ -665,6 +780,7 @@ Measures a chat model on this Mac — see [Measuring models](#measuring-models-l
 | `--sizes` | Prompt sizes to try, e.g. `4k,16k,32768`. Default: `runtime.probe.sizes` (4K → 128K) |
 | `-d, --detach` | Queue it and return immediately |
 | `--show` | Print saved results (all models, or the ones you name) instead of probing |
+| `--apply` | Save the recommended context as your override in `~/.law/config/models.user.yaml` (then `./install.sh`) |
 
 It runs as a normal queue job: it waits its turn, `law cancel` stops it, Ctrl+C cancels it.
 
@@ -777,9 +893,7 @@ Low-level removal used by `./install.sh --purge`. Prefer `./install.sh --purge`.
 | `--configure` | `law configure` |
 | `--setup-opencode` | `law setup-opencode` |
 | `--telegram`, `--telegram-service` | `law telegram` (the bot itself runs as a service once configured) |
-| `--image`, `--vision` | Phase 6 |
-
-Flags that aren't available yet print which phase adds them.
+| `--image`, `--vision` | `law image` / `law vision` |
 
 ---
 
@@ -835,8 +949,15 @@ They stop as soon as the model starts answering and are **never** part of the an
 (`content`). Non-streaming responses never include them. Turn them off with
 `runtime.gateway.progress: false` — then only invisible keep-alive comments are sent.
 
-**Anthropic streaming** sends standard `ping` events while waiting instead.
-**If a streaming client disconnects, its job is cancelled.**
+**Anthropic streaming** sends standard `ping` events while waiting instead, and reports the
+model server's real token counts in `message_delta.usage` when it has them.
+**If a client disconnects — streaming or not — its job is cancelled**, so the single worker
+never spends minutes on an answer nobody will read.
+
+**Browser access.** The gateway answers browser (CORS) requests only from its own origin and
+`localhost`; a request carrying any other `Origin` is refused with `403`. Programs (curl,
+OpenCode, Open WebUI's backend, SDKs) send no `Origin` and are unaffected. See
+[Security](#security-no-login-trusted-network).
 
 ### Examples
 ```bash
@@ -905,45 +1026,47 @@ Notes:
 
 ## Web UIs and ports
 
-| Port | Service | Reachable from LAN | Notes |
-|---|---|---|---|
-| 3001 | **Open WebUI** — chat UI | yes | Already connected to the gateway |
-| 8888 | **SearXNG** — private web search | yes | Used by the agents' `web_search` tool |
-| 9000 | **Portainer** — Docker management | yes | Create an admin user on first visit |
-| 4000 | **Gateway** — OpenAI + Anthropic API | yes | See above |
-| 8000 | Model server | **no — by design** | Internal (127.0.0.1); always reached through the queue |
-| 8800 | **Dashboard** — live command center | yes | Watch and dispatch agents; see [below](#dashboard-command-center) |
-| 8081 | Vision server | — | Reserved, Phase 6 |
-| 7860 | ACE-Step music | — | Phase 6 |
+| Port | Service | Notes |
+|---|---|---|
+| 3001 | **Open WebUI** — chat UI | Already connected to the gateway; has its own accounts |
+| 8888 | **SearXNG** — private web search | Used by the agents' `web_search` tool and Telegram's web-grounded answers |
+| 9000 | **Portainer** — Docker management | Create an admin user on first visit |
+| 4000 | **Gateway** — OpenAI + Anthropic API | See [API](#using-it-from-other-apps-api) |
+| 8800 | **Dashboard** — live command center | See [below](#dashboard-command-center) |
+| 7860 | **ACE-Step** music studio | On demand: `law music start` / dashboard Music tile. Its own "DJ Ace" chat also opens on 7861 |
+| 8000 | Model server | **Never** on the LAN: 127.0.0.1 only, always reached through the queue |
+| 8081 | (reserved) | Not used yet |
 
-The Telegram bot opens no port — it connects out to Telegram.
+Everything binds to **127.0.0.1** unless you set `LAW_BIND_HOST` (see
+[Security](#security-no-login-trusted-network)); `law status` shows, per port, whether it is up
+and reachable from the LAN. The Telegram bot opens no port — it connects out to Telegram.
 
 ### Dashboard (command center)
 
-Open **`http://<your-mac>:8800`** (or `http://127.0.0.1:8800` locally). It is a live,
-read-and-command view of the whole workstation — not a log page:
+Open **`http://127.0.0.1:8800`** (or `http://<your-mac>:8800` from the LAN). On a phone, open
+it and choose **Add to Home Screen** — it then opens full-screen like an app. It is a live,
+read-and-command view of the whole workstation:
 
-- **Now — live:** the agent currently working, streaming its *thinking* and its answer token
-  by token (the same reasoning you see in a web chat with thinking on), plus every tool call
-  and delegation as it happens.
-- **Agents & delegation:** a Slack/Jira-style board of the active jobs. Each agent is a lane
-  (orchestrator at the top, the specialists it delegated to nested under it) with a live
-  progress bar and its latest step.
-- **Board:** recent jobs with status; a **cancel** button on anything still running.
-- **Command bar:** type a task, pick which agent, optionally a project folder, and
-  **Dispatch** — it becomes a normal queue job exactly like `law agent` or a Telegram message.
-- **Studio & services:** one-click tiles to Open WebUI (chat), the ACE-Step music studio,
-  SearXNG and Portainer, plus the machine's memory and every port's up/down state. (Image and
-  video generation are marked *phase 6* — the tiles appear once those pipelines are wired.)
+| Tab | What it does |
+|---|---|
+| **Command center** | KPIs, the agent working right now (its *thinking* and answer streaming token by token, every tool call and delegation), active agent lanes, and a task board. Click a card for the job drawer: full timeline, cancel, **⤓ .md** export |
+| **Chat / dispatch** | Type a task, pick an agent and a project folder, **Dispatch**. Tick **plan first** to get the task spec only — then **Run this plan ▶** in the job drawer (like Telegram `/plan` → `/go`) |
+| **Create** | Image generation (Z-Image Turbo by default; Z-Image, Qwen-Image, FLUX.2, FIBO, FLUX schnell), styles and sizes |
+| **Studio & services** | Voice (Kokoro TTS), video (LTX-2.3), vision upload, plus tiles for Open WebUI, ACE-Step, SearXNG, Portainer |
+| **Search** | RAG: index a folder, search it by meaning |
+| **Team** / **Models** | Personas and the model registry (what's downloaded, sizes, context) |
+| **Data** | Read-only SQL over the queue and agent databases |
+| **System** | Every native service and Docker container up/down, memory, a **Disk** card (what uses the disk), and **⏏ Unload model** |
+| **Gallery** | Everything generated — images, video, audio |
+| **Usage** | Jobs and compute per day, kind and model, plus **model health**: loads × average load time, failed jobs and the last error per model |
 
-The dashboard runs as its own service (`com.law.dashboard`) and only ever talks to the job
-queue, so it can never slow down or break model serving. Like the gateway it has **no
-authentication** — use it on a network you trust.
+The dashboard runs as its own service (`com.law.dashboard`) and only talks to the job queue,
+so it can never slow down or break model serving; the watchdog restarts it if it hangs. It has
+**no login** — the request guard keeps it to this Mac and your trusted network and refuses
+requests from other web sites (an agent dispatched from it can run shell commands).
 
-There is **no authentication** on the gateway by design — only use this on networks you
-trust (home LAN, your own VPN). Open WebUI has its own local accounts (it stores your chat
-history); the first account to sign up becomes the admin. Reset a password with
-`law webui-reset-password`.
+Open WebUI has its own local accounts (it stores your chat history); the first account to sign
+up becomes the admin. Reset a password with `law webui-reset-password`.
 
 The web UIs run in **Colima** (a small Linux VM for Docker: 4 CPU, 4 GB RAM by default)
 and start automatically at login.
@@ -959,13 +1082,22 @@ and start automatically at login.
 | `qwen38-27b` | 16 GB | auto | 49152 (measured) | **Default.** General, writing, QA, reasoning |
 | `qwen36-35b` | 20 GB | auto | 65536 (not measured yet) | Orchestrator, researcher, business analysis |
 | `qwen3-coder-next` | 42 GB | auto | 32768 (measured) | Coding — and the fastest (~60 tok/s on M5 Pro) |
-| `qwen3-vl-8b` | 6 GB | auto | 32768 | Vision / OCR (wired in Phase 6) |
-| `qwen3-embed-8b` | 5 GB | auto | — | Embeddings for search over your files (Phase 5) |
-| `kokoro-82m` | 1 GB | auto | — | Text-to-speech (Phase 6) |
-| `deepseek-r1-70b` | 37 GB | manual | 32768 | Optional heavy reasoner — `law pull deepseek-r1-70b` |
+| `qwen3-vl-8b` | 6 GB | auto | 32768 | Vision / OCR (photos, screenshots, `look_at`, `law vision`) |
+| `qwen3-embed-8b` | 5 GB | auto | — | Embeddings for search over your files (`law index` / `law search`) |
+| `kokoro-82m` | 1 GB | auto | — | Text-to-speech (`law speak`, `/voice`) |
+| `deepseek-r1-70b` | 37 GB | manual | 32768 | **Broken on server 1.8.1** (MLX "no Stream(gpu, 1)" error) — use `orchestrator` / `reasoner` |
 | `deepseek-r1-32b` | 18 GB | manual | 32768 | Optional reasoner |
 | `qwen3-coder-30b` | 15 GB | manual | 65536 | Optional lighter coder |
-| `gemma3-12b-encoder` | 8 GB | manual | — | Text encoder for LTX video (Phase 6) |
+| `gemma3-12b-encoder` | 8 GB | manual | — | Text encoder for LTX video |
+
+Media models outside the registry are fetched the first time you use the feature: image
+(Z-Image Turbo ~31 GB, via mflux), video (LTX-2.3 ~20 GB), speech-to-text (whisper ~1.5 GB),
+music (ACE-Step, `law setup-music`).
+
+**ACE-Step runs on demand.** While it runs it keeps its models resident — about **15 GB** of
+unified memory — so it does not start at login. Start it with `law music start` (or click the
+Music tile in the dashboard; it takes about a minute), stop it with `law music stop`. If a
+language model needs the memory, the worker stops ACE-Step by itself and says so in the job.
 
 `auto` models are downloaded by every install run if missing. `manual` models are only
 downloaded by `law pull`, and are kept if already present.
@@ -1086,6 +1218,8 @@ A background service, `com.law.watchdog`, checks every 15 seconds:
 | Worker hasn't reported "alive" for 90 s (frozen or crashed) | Restart the worker |
 | A job has made no progress for longer than the worker's own timeouts allow (default: the longest of model load, first token and agent shell timeouts + 300 s) | Restart the worker; the job goes back in the queue |
 | Gateway `/health` fails 3 checks in a row | Restart the gateway |
+| Dashboard `/health` fails 3 checks in a row | Restart the dashboard |
+| Every hour | Rotate `~/.law/logs/*.log` above 20 MB (copy-truncate, 2 old copies) |
 | The Telegram bot (when configured) hasn't polled for 5 minutes | Restart the bot |
 | macOS memory pressure is **critical** while a job runs | Add a warning to that job (shown in the terminal / chat / Telegram), at most every 5 min |
 
@@ -1109,6 +1243,10 @@ Before loading a model the worker compares free RAM with what the model needs
 - **still not enough but pressure is normal/warn** → load with a warning (macOS can
   reclaim cached memory)
 
+The size limit for a single model is `machine.max_weights_gb: auto` = this Mac's RAM minus
+`reserve_gb` (18 GB): 46 GB on a 64 GB Mac, 18 GB on 36 GB. Bigger models are refused with
+a clear message; set a number to override.
+
 During an answer, critical pressure produces one warning on the job.
 Memory pressure is macOS's own signal (the same one as Activity Monitor's graph);
 `law status` (and `/status` in Telegram) shows it.
@@ -1119,6 +1257,78 @@ job runs, the job goes back to the queue — but each time counts as an interrup
 After **3** the job is failed with an explanation instead of being retried forever
 (a job that keeps crashing the worker usually means it needs more memory than is free).
 Agent jobs keep their saved conversation, so `law agent --resume <id>` can still continue them.
+
+### Notifications
+A job you started from the CLI or the dashboard that runs at least a minute (agent, image,
+video, speech, probe, index, vision, transcription) posts a **macOS notification** when it
+finishes or fails, so you can walk away. Chats from Open WebUI / API clients don't notify, and
+Telegram jobs don't either (the bot already tells you). Settings: `runtime.notify`
+(`enabled`, `after_s`).
+
+---
+
+## Security: no login, trusted network
+
+This is a personal workstation, so there are **no passwords** on the gateway or dashboard.
+That is only safe if nobody else can reach them — the dashboard can start agents that run
+shell commands. Three layers keep it that way:
+
+1. **Where it listens.** Gateway, dashboard and ACE-Step bind to `127.0.0.1` (this Mac only)
+   unless you opt in. The model server is always 127.0.0.1.
+   - LAN / VPN: add `LAW_BIND_HOST=0.0.0.0` to `~/.law/.env`, then `./install.sh`.
+   - Tailscale only: `LAW_BIND_HOST=<your 100.x.y.z address>` — reachable over the tailnet, not
+     the Wi-Fi you happen to be on.
+   - The Docker UIs (Open WebUI, SearXNG, Portainer) follow the same setting.
+2. **Who may ask** (`law/runtime/netguard.py`, gateway + dashboard, every request):
+   - **client address**: this Mac and private networks only (10/8, 172.16/12, 192.168/16,
+     Tailscale 100.64/10, IPv6 ULA / link-local). Narrow it with
+     `LAW_TRUSTED_NETS=192.168.100.0/24,100.64.0.0/10` in `~/.law/.env` (this Mac always counts).
+   - **Host header**: an IP, `localhost`, a single-label name (`mymac`), or a `*.local`, `*.lan`,
+     `*.home.arpa`, `*.internal`, `*.ts.net` name. Anything else is refused — this blocks
+     *DNS rebinding* (a web page pointing its own domain at your Mac). Add your own names with
+     `LAW_ALLOWED_HOSTS=ai.example.com`.
+   - **Origin header**: a browser request from another site is refused — so a page you visit
+     can't dispatch an agent (`/api/task`) or read your chats through the gateway (CSRF).
+     Programs that send no `Origin` (curl, OpenCode, SDKs) are unaffected.
+   - **JSON only**: dashboard actions must be `Content-Type: application/json`, which a
+     cross-site HTML form can't send.
+   A refused request gets `403` with the reason, and is logged (`law logs gateway`,
+   `law logs dashboard`).
+3. **What agents may do.** Agents have full access to your user account by design (there are no
+   approval prompts); every run starts with an undo snapshot of its project folder, and a short
+   hard-block list refuses the few commands no snapshot can undo (deleting `/` or your home
+   folder, erasing / formatting disks, raw disk writes, fork bombs).
+
+Telegram has its own rule: the bot only obeys the user id(s) in `TELEGRAM_USER_ID`.
+Open WebUI and Portainer have their own accounts.
+
+---
+
+## Disk space
+
+Models are large and a Mac's disk fills up quietly, so law shows the usage instead of making
+you guess:
+
+- `law status` → **Disk**: free space and what law uses (models, runtime, state, logs, trash,
+  generated media, the Docker VM, ACE-Step, leaked caches). Warns below 50 GB free; below
+  15 GB it counts as a problem. Sizes are what is really allocated (the Docker VM's disk file
+  is sparse — it *looks* like 100+ GB but uses far less).
+- Dashboard → **System → Disk**: the same, live.
+- `law reclaim [--dry-run] [--trash] [--media DAYS]` frees space — see [`law reclaim`](#law-reclaim).
+
+What law does on its own:
+- **Model-server prompt cache.** mlx-openai-server keeps a disk-backed prompt (KV) cache in a
+  temp folder and only deletes it on a clean shutdown — but law stops models by killing them,
+  so before v2.1 every model swap leaked up to ~16 GB into the system temp folder (one Mac
+  collected ~300 GB). Now the cache lives in `~/.law/run/model-tmp`, is capped at
+  `runtime.worker.prompt_cache_max_gb` (8 GB), and is wiped whenever the model stops; the
+  worker also removes any old leftovers when it starts.
+- **Job history.** Finished jobs lose their token-by-token events after 14 days and are deleted
+  after 180 days (`runtime.queue.keep_events_days` / `keep_jobs_days`); the job row and its
+  result stay until then.
+- **Logs** are rotated hourly by the watchdog (20 MB, 2 old copies).
+- **Removed models** wait 7 days in `~/.law/trash`, then are deleted. A download that doesn't
+  fit never empties the trash behind your back — it tells you to run `law reclaim --trash`.
 
 ---
 
@@ -1231,6 +1441,24 @@ How it works:
 
 ---
 
+## Backup and restore
+
+```bash
+law backup                        # → ~/.law/backups/law-<time>.tar.gz (chmod 600)
+law backup --no-secrets -o ~/Desktop/law.tar.gz
+law backup --webui                # also the Open WebUI volume (your chats there; needs Docker)
+law restore ~/Desktop/law.tar.gz  # asks first; stops the services while it copies
+```
+
+A backup holds what can't be downloaded again: `~/.law/config` (your models and personas),
+`~/.law/.env` (tokens — leave out with `--no-secrets`), and the state that carries your work:
+the agent store (task specs, `remember`ed project facts), the RAG index, Telegram chats and
+schedules, probe results and the job history. Databases are copied with SQLite's backup API, so
+it is safe while services run. Models, the runtime venv and logs are not included —
+`./install.sh` rebuilds them. To move to a new Mac: `./install.sh` there, then `law restore`.
+
+---
+
 ## What the installer does
 
 Each step compares what *should* exist with what *does* exist. Symbols in the output:
@@ -1284,6 +1512,7 @@ packages that were installed before this installer · your OpenCode settings.
 ├── state/
 │   ├── queue.db              job queue, job history, agent conversations, worker heartbeat, watchdog log
 │   ├── agent.db              per-project agent store: task specs, handoffs, raw replies, saved memory
+│   ├── rag.db                `law index` embeddings (semantic file search)
 │   ├── undo/                 per-project undo git histories (kept out of your project folders)
 │   ├── telegram.json         Telegram: update position, per-chat persona/project, jobs being followed (chmod 600)
 │   ├── probes.json           `law probe` results
@@ -1292,19 +1521,21 @@ packages that were installed before this installer · your OpenCode settings.
 │   └── version
 ├── generated/                files generated from the registry (don't edit)
 ├── searxng/settings.yml      generated SearXNG config
-├── logs/                     worker.log, gateway.log, watchdog.log, telegram.log, model-<id>.log, install-error.log
-├── backups/v1-<time>/        backup of the old v1 config
-├── trash/                    removed models, deleted after 7 days
-├── run/                      lock files, model.pid, telegram.beat
+├── logs/                     worker / gateway / dashboard / watchdog / telegram .log, model-<id>.log (rotated hourly)
+├── backups/                  law-<time>.tar.gz (`law backup`), v1-<time>/ (old v1 config)
+├── trash/                    removed models, deleted after 7 days (`law reclaim --trash` empties it)
+├── run/                      lock files, model.pid, telegram.beat,
+│   └── model-tmp/            the model server's temp files + prompt cache (wiped when the model stops)
 └── src/                      repo copy (one-liner installs only)
 
 ~/MLX-AI/source/              your projects (agent workspace)
   ├── telegram/               default project for tasks sent from Telegram
   └── <project>/.local-agent/AGENT.md   optional project instructions (the only file law keeps here)
-~/MLX-AI/outputs/             generated files
+~/MLX-AI/outputs/             generated files: images/, audio/, video/, vision/ (uploads), voice-in/
 ~/.cache/huggingface/hub/     downloaded models
 ~/.config/opencode/opencode.json   OpenCode settings (law manages only the "law" provider)
-~/Library/LaunchAgents/com.law.{worker,gateway,watchdog,telegram,colima}.plist   background services
+~/Library/LaunchAgents/com.law.{worker,gateway,dashboard,watchdog,telegram,colima,acestep}.plist   background services
+~/ace-step/                   ACE-Step music app (after `law setup-music`)
 ~/.local/bin/law              the `law` command
 ```
 
@@ -1320,11 +1551,19 @@ containers and the Colima VM size. After editing it, run `./install.sh` — serv
 automatically when it changes.
 
 ```yaml
+machine:
+  max_weights_gb: auto        # = RAM − reserve_gb; a number forces a limit
+  reserve_gb: 18
+network:
+  bind_host: 127.0.0.1        # LAW_BIND_HOST in ~/.law/.env overrides it (see Security)
 runtime:
-  worker:      { max_attempts, max_interruptions, idle_unload_s, load_timeout_s,
-                 first_token_timeout_s, idle_token_timeout_s, default_max_tokens, ram_wait_s }
-  watchdog:    { interval_s: 15, heartbeat_stale_s: 90, stall_s: null,
-                 gateway_failures: 3, cooldown_s: 120 }
+  worker:      { max_attempts: 3, max_interruptions: 3, idle_unload_s: 900, load_timeout_s: 1800,
+                 first_token_timeout_s: 1800, idle_token_timeout_s: 600, default_max_tokens: 16384,
+                 ram_wait_s: 120, prompt_cache_max_gb: 8 }
+  notify:      { enabled: true, after_s: 60 }          # macOS notification for long jobs
+  queue:       { keep_events_days: 14, keep_jobs_days: 180 }
+  watchdog:    { interval_s: 15, heartbeat_stale_s: 90, stall_s: null, gateway_failures: 3,
+                 cooldown_s: 120, wake_gap_s: 60, wake_grace_s: 120 }   # + log_max_mb: 20, log_keep: 2
   gateway:
     progress: true            # "[law] Loading…" lines in the chat's thinking area
     tools_whole_reply: true   # requests WITH tools: one whole reply + recovered text tool calls
@@ -1332,15 +1571,18 @@ runtime:
   probe:       { sizes: [4096, 16384, 32768, 65536, 131072], min_free_gb: 4, max_prompt_s: 240 }
   undo:        { max_file_mb: 50 }
   agent:
-    max_steps: 40            # model turns per agent job before it stops (resume continues)
+    max_steps: 80            # model turns per run before it stops or auto-continues
     max_depth: 2             # how deep sub-jobs may delegate (0 = no delegation)
     translate: true          # request translator on by default for law agent / Telegram
-    shell_timeout_s: 1800    # max time for one shell command
-    tool_output_chars: 20000 # longer tool output is shortened (start + end kept)
+    shell_timeout_s: 3600    # default max time for one shell command (an agent may ask for more)
+    tool_output_chars: 8000  # longer tool output is shortened (start + end kept)
     max_tokens: 8192         # answer length per model turn
-    context_chars: 140000    # older tool output is shortened past this conversation size
+    context_chars: 48000     # older tool output is shortened past this (keeps prompts < 300 s to read)
     nudges: 2                # empty replies are nudged this often; real answers without tools once
-    stream: false            # false = one whole reply per agent turn (more reliable tool calls)
+    auto_resume: 3           # still working at max_steps → continue by itself this many times
+    keep_jobs: 200           # agent-store retention per project (specs, replies, briefs) …
+    keep_days: 30            # … and age limit; `remember`ed facts are never pruned
+    stream: true             # thinking/answer stream live to Telegram and the dashboard
     save_replies: true       # keep raw model replies in law's store (runs) for debugging
   telegram:
     project: telegram        # default project folder for Telegram tasks (~/MLX-AI/source/<name>)
@@ -1389,6 +1631,9 @@ HF_TOKEN=hf_...                # only needed for gated Hugging Face repos
 TELEGRAM_BOT_TOKEN=...         # from @BotFather
 TELEGRAM_USER_ID=...           # your Telegram user id (several: comma-separated)
 SEARXNG_SECRET=...             # generated automatically
+LAW_BIND_HOST=0.0.0.0          # optional: open gateway/dashboard/UIs to the LAN (or a Tailscale IP)
+LAW_TRUSTED_NETS=...           # optional: narrow who may connect, e.g. 192.168.100.0/24,100.64.0.0/10
+LAW_ALLOWED_HOSTS=...          # optional: extra host names you use to reach the Mac
 ```
 The installer never overwrites existing values; `law configure` changes only what you tell it to.
 
@@ -1421,7 +1666,10 @@ now: `./install.sh --keep-v1`.
 | `law: command not found` | Open a new terminal, or `source ~/.zprofile` |
 | Install stops with `✗` | Read the message; details in `~/.law/logs/install-error.log`. Fix, then `./install.sh` again |
 | `Another install is running` | Wait for it. If none is running, re-run — stale locks are cleared |
-| `needs ~N GB free disk` | Free up disk space, or empty `~/.law/trash` |
+| `needs ~N GB free disk` | `law reclaim --dry-run` shows what uses the disk; `law reclaim --trash` frees it. See [Disk space](#disk-space) |
+| Disk suddenly full | `law status` → Disk. Leaked model caches show as `LEAKED prompt caches` — `law reclaim` removes them |
+| `403 … not on a trusted network` / `Host '…' is not allowed` / `cross-site request … refused` | The request guard refused it — see [Security](#security-no-login-trusted-network). Add your network to `LAW_TRUSTED_NETS` or your host name to `LAW_ALLOWED_HOSTS` in `~/.law/.env`, then `law restart` |
+| Dashboard / gateway not reachable from your phone | Set `LAW_BIND_HOST=0.0.0.0` (or your Tailscale IP) in `~/.law/.env`, then `./install.sh` |
 | Open WebUI seems slow / silent | Open the thinking area: `[law] …` lines show queue position and model loading. First answer after a model switch takes longer |
 | Forgot the Open WebUI password | `law webui-reset-password` |
 | Job stays `queued` | `law status` → is the worker running? `law start`, then `law logs worker` |
@@ -1430,7 +1678,7 @@ now: `./install.sh --keep-v1`.
 | Agent job stays `waiting` | It is waiting for its sub-jobs — `law jobs` shows them (`↳ sub-job of …`). They run next |
 | `refusing to use … as the project folder` | Give the agent a project folder: `-C ~/MLX-AI/source/<name>` (Telegram: `/project <name>`) |
 | Agent did something wrong | `law rollback <folder>` (printed at the start and end of every run), or `/undo` in Telegram |
-| Agent `Stopped after 40 steps` | `law agent --resume <id>` (or `/resume <id>`), or give a smaller / clearer task |
+| Agent `Stopped: reached the step budget` | It already auto-continued 3 times. `law agent --resume <id>` (or `/resume <id>`), or give a smaller / clearer task |
 | Agent says `REFUSED: … hard-block list` | It tried something no snapshot could undo (e.g. `rm -rf ~`). It should pick a narrower command; run it yourself if you really mean it |
 | Agent's web search fails | `law status` → is SearXNG (`:8888`) up? `./install.sh` repairs it |
 | `request translator gave no usable spec` | The model didn't return a valid spec twice; the agent used your request as written. The replies are in law's store (runs, `translate-*`); `--no-translate` / `/raw` skips the step |
@@ -1443,7 +1691,8 @@ now: `./install.sh --keep-v1`.
 | OpenCode doesn't show the `law` models | `law setup-opencode`, then restart OpenCode. If you use `opencode.jsonc`, paste the block from `law setup-opencode --print` |
 | OpenCode / Claude Code answers appear all at once | Expected — requests with tools get one whole reply (`tools_whole_reply`) |
 | Job `failed: … not downloaded` | `law pull <model-id>` |
-| Job `failed: … limit is 46 GB` | Model too big for this machine; use a smaller one |
+| Job `failed: … limit is 46 GB` | Model too big for this machine (limit = RAM − 18 GB); use a smaller one |
+| The Mac feels slow after a job | `law unload` (or dashboard ⏏) frees the model's RAM right away |
 | Job `failed: … gave up after 300s reading the prompt` | Prompt too long for that model — send less, split it, or use the coder. See [Long prompts](#long-prompts-and-the-300-second-limit) |
 | Job `failed: not loading … CRITICAL memory pressure` | Close big apps (browsers, Docker apps, Xcode), then run it again |
 | Job `failed: interrupted 3 times` | The worker kept crashing on this job — usually memory. Check `law logs worker`, close apps, try a smaller model or shorter prompt. Agents: `law agent --resume <id>` |
@@ -1465,8 +1714,8 @@ now: `./install.sh --keep-v1`.
 
 When asking for help, include: `law status --models`, `law jobs`, `law logs worker -n 100`,
 `law logs watchdog -n 50`, `law logs <model-id> -n 80`, `law logs telegram -n 50` (Telegram
-problems), `~/.law/logs/install-error.log` if it exists, and for agents the raw replies in
-law's store (`~/.law/state/agent.db`, runs). Never paste your `.env` — it holds your tokens.
+problems), `~/.law/logs/install-error.log` if it exists, and for agents `law job <id> --md`
+(the whole run as Markdown). Never paste your `.env` — it holds your tokens.
 
 ---
 
@@ -1496,18 +1745,25 @@ colima delete                               # Docker VM, containers and volumes
 
 ```
 install.sh                bash bootstrap → `law install`
-pyproject.toml
+pyproject.toml            package metadata (version read from law/__init__.py)
+.github/workflows/        CI: the test suite on macOS arm64
+extras/swiftbar/          optional menu-bar plugin
 law/
+├── __init__.py           __version__ (the single version)
 ├── cli.py                commands
-├── runcmds.py            run / jobs / cancel / logs / pull / probe / start / stop / restart /
-│                         webui-reset-password / add-model / remove-model / snapshot(s) / rollback
-├── agentcmds.py          law agent (new task, --resume, --show-memory)
-├── setupcmds.py          law configure / telegram / setup-opencode
-├── telegram.py           Telegram bot (Bot API client, commands, progress messages)
+├── runcmds.py            run / index / search / jobs / cancel / unload / logs / pull / probe / reclaim /
+│                         start / stop / restart / webui-reset-password / add-model / remove-model /
+│                         snapshot(s) / rollback
+├── mediacmds.py          law image / speak / video / vision / transcribe
+├── backupcmds.py         law backup / restore
+├── agentcmds.py          law agent (new task, --resume, --show-memory), law job (--md)
+├── setupcmds.py          law configure / telegram / setup-opencode / setup-music / music
+├── telegram.py           Telegram bot (Bot API client, routing, media, schedules, progress messages)
 ├── opencode.py           OpenCode "law" provider (build, merge, write)
-├── modelcmds.py          add-model / remove-model logic (Hugging Face lookup, guesses, guards)
+├── modelcmds.py          add-model / remove-model / probe --apply logic
+├── diskinfo.py           what uses the disk (law status, reclaim, dashboard)
 ├── undo.py               per-project undo history (private git) + APFS local snapshots
-├── doctor.py             law status
+├── doctor.py             law status (+ --models, --updates)
 ├── webui.py              Open WebUI account listing + password reset
 ├── registry.yaml         models, personas, ports, packages, containers, runtime settings
 ├── registry.py           loads + validates the registry and your overlay
@@ -1515,50 +1771,62 @@ law/
 ├── manifest.py           ownership records (what may be removed)
 ├── system.py             every call to brew / colima / docker / uv / launchctl
 ├── project.py            project folder helpers (optional .local-agent/AGENT.md)
-├── paths.py  util.py
-├── steps/                install steps: base, v1, brew, python_env, models, docker, services, opencode
+├── paths.py  util.py     locations; subprocess, atomic writes, locks, .env, log rotation
+├── steps/                install steps: base, v1, brew, python_env, models, docker, services,
+│                         opencode, acestep
 ├── agent/
 │   ├── tools.py          agent tools + hard-block list
 │   ├── prompts.py        persona roles, system prompt, nudges, request translator
 │   ├── textcalls.py      leaked-thinking split + tool calls written as text
 │   └── runner.py         agent job loop: snapshot, translate / plan-only / approved spec, tools,
-│                         nudges, delegation, resume
+│                         nudges, delegation, auto-continue, resume
 └── runtime/
-    ├── db.py             SQLite job queue (+ heartbeat, interruptions, waiting/sub-jobs, agent state, watchdog log)
+    ├── db.py             SQLite job queue (+ heartbeat, interruptions, sub-jobs, agent state,
+    │                     watchdog log, retention)
     ├── store.py          per-project agent store: specs, handoffs, raw replies, memory (SQLite)
     ├── memory.py         free RAM + macOS memory pressure
-    ├── modelproc.py      one-model-at-a-time manager, memory guard, server-error explanations
-    ├── worker.py         the single worker (+ heartbeat thread; streamed and whole replies; chats with tools)
+    ├── modelproc.py      one-model-at-a-time manager, memory guard, prompt-cache containment,
+    │                     server-error explanations
+    ├── worker.py         the single worker (heartbeat thread; streamed and whole replies; chats with
+    │                     tools; media, RAG and unload jobs)
     ├── gateway.py        OpenAI + Anthropic API (+ progress lines)
     ├── anthropic.py      Anthropic ⇄ OpenAI conversion
-    ├── watchdog.py       restarts frozen/stalled worker, gateway and Telegram bot
-    └── probe.py          `law probe`
+    ├── dashboard.py      the :8800 command center (single page, no external files)
+    ├── netguard.py       request guard: trusted networks, Host + Origin checks
+    ├── watchdog.py       restarts frozen/stalled worker, gateway, dashboard, Telegram bot; log rotation
+    ├── notify.py         macOS notifications for long jobs
+    ├── report.py         a job as Markdown
+    ├── probe.py          `law probe`
+    ├── rag.py            embeddings index + search
+    └── imagegen.py  ttsgen.py  videogen.py  visiongen.py  sttgen.py   media back-ends
 tests/
+├── conftest.py           every test runs in a throw-away HOME (never touches the real ~/.law)
 ├── test_phase0.py        installer: fresh Mac, v1 Mac, reruns, repair, pruning, failures
 ├── test_phase1.py        queue, worker, model swaps, crashes, cancel, gateway, services
 ├── test_phase2.py        interruptions, DB upgrade, heartbeat, watchdog, memory guard,
 │                         chat progress, probe, launcher flags, password reset
 ├── test_phase3.py        300 s limit handling, probe fixes, Anthropic API, undo,
 │                         add-model / remove-model, overrides
-├── test_phase4.py        agent tools, hard-block list, agent jobs (snapshot, translator + retry,
-│                         delegation, cancel/resume, memory, max steps), leaked thinking,
-│                         text tool calls, nudges, CLI
-├── test_phase4b.py       Telegram bot (private access, agent/ask/plan→go/raw, progress, cancel,
-│                         resume, undo, persona, project, polling), Telegram service + watchdog,
-│                         law configure, OpenCode provider, chats with tools via the gateway
+├── test_phase4.py        agent tools, hard-block list, agent jobs, leaked thinking, text tool
+│                         calls, nudges, CLI
+├── test_phase4b.py       Telegram bot, Telegram service + watchdog, law configure, OpenCode,
+│                         dashboard endpoints, media, RAG
+├── test_phase5.py        2.1 fixes: prompt-cache containment, request guard, cancel stops the
+│                         model, retry budget, queue retention, log rotation, schedules catch-up,
+│                         media CLI, backup/restore, plan-first, Markdown export
 ├── fakes.py              fake macOS tools
 └── fake_mlx_server.py    fake model server (streamed + whole replies; simulates the 300 s
-                          limit, agent tool calls, and the ways real local models misbehave)
+                          limit, agent tool calls, a prompt-cache temp folder, and the ways real
+                          local models misbehave)
 ```
 The Telegram tests run against a fake Telegram Bot API server, so no real bot is needed.
 
-Run the tests (works on any OS with git — no Mac tools or models needed):
+Run the tests (no Mac tools, models or Docker needed):
 ```bash
-pip install -e '.[test]'
-cd tests && python -m pytest -q
+uv run --with pytest python -m pytest -q tests
 ```
-Checks run before every release: `bash -n install.sh`, `python -m py_compile` on all
-files, and the full test suite (155 tests).
+Checks before every release: `bash -n install.sh`, the dashboard's JavaScript through
+`node --check`, and the full test suite (225+ tests, ~2 minutes).
 
 ---
 
@@ -1571,9 +1839,10 @@ files, and the full test suite (155 tests).
 | 2 | Watchdog, memory guard, interruption limit, chat progress, `law probe`, `law webui-reset-password` | ✅ |
 | 3 | Probe fixes + 300 s limit handling, `law add-model` / `remove-model`, undo (snapshots + rollback), Anthropic-compatible API | ✅ |
 | 4a | Agents: personas with tools, request translator, sub-jobs (delegation), auto-snapshot before runs, resume, project memory, `law agent` | ✅ |
-| 4a.1 | Agents on real local models: whole-reply turns, leaked thinking, text tool calls, nudges, honest "nothing changed" reports, saved raw replies | ✅ |
-| 4b | Telegram bot (`/ask /plan /go /raw /status /jobs /cancel /resume /undo /persona /project`), `law configure`, OpenCode via `law setup-opencode`, whole replies + recovered tool calls for apps that send tools | ✅ (this version) |
-| 7 | **Dashboard command center** (`:8800`): live agent board with delegation lanes, streaming thinking, dispatch & cancel tasks, service/studio launchers | ✅ (this version) |
-| 5 | Search over your files (RAG), longer-term memory | next |
-| 6 | Media: image, video, text-to-speech, speech-to-text, music, vision; voice notes and photos in Telegram; image/video studio tiles light up in the dashboard | |
-| 8 | Full test harness + migration notes | |
+| 4a.1 | Agents on real local models: leaked thinking, text tool calls, nudges, honest "nothing changed" reports, saved raw replies, auto-continue | ✅ |
+| 4b | Telegram bot (questions, tasks, voice notes, photos, media, `/plan /go /raw /remind /daily …`), `law configure`, OpenCode, Claude Code | ✅ |
+| 5 | Search over your files (RAG: `law index` / `law search`, dashboard Search) | ✅ |
+| 6 | Media: image, video, text-to-speech, speech-to-text, music (ACE-Step), vision — dashboard, Telegram and CLI | ✅ |
+| 7 | Dashboard command center (`:8800`): live board, streaming thinking, dispatch, studio, gallery, usage, data, system | ✅ |
+| 2.1 | Hardening: prompt-cache leak fix, trusted-network request guard, cancel stops the model, retention + log rotation, disk report, backup/restore, plan-first, notifications, PWA, menu-bar plugin | ✅ (this version) |
+| next | Dashboard templates & schedules, RAG folder watch, model A/B arena, speculative decoding, MCP endpoint | ideas — see `todo.txt` locally |

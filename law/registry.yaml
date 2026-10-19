@@ -17,8 +17,9 @@ schema: 1
 
 machine:
   # One large model in RAM at a time. Weights above this are REFUSED.
-  # 64 GB − ~18 GB (macOS + KV cache + one small media/aux model) ≈ 46 GB.
-  max_weights_gb: 46
+  # auto = this Mac's RAM − reserve_gb (macOS + KV cache + one small media/aux model),
+  # e.g. 64 GB − 18 GB = 46 GB, 36 GB − 18 GB = 18 GB. Put a number here to force a limit.
+  max_weights_gb: auto
   reserve_gb: 18
 
 network:
@@ -40,6 +41,15 @@ runtime:
     default_max_tokens: 16384
     max_interruptions: 3          # a job interrupted this often (crash/restart) is failed, not retried
     ram_wait_s: 120               # how long a model load waits for RAM to free up
+    prompt_cache_max_gb: 8        # cap on the model server's prompt (KV) cache. It lives in
+                                  #   ~/.law/run/model-tmp and is wiped whenever the model stops
+  notify:                         # macOS notification when a long job (agent, image, video, …) ends
+    enabled: true
+    after_s: 60                   # only jobs that took at least this long
+  queue:                          # retention for ~/.law/state/queue.db (pruned by the worker every 6 h)
+    keep_events_days: 14          # finished jobs older than this lose their step-by-step events
+                                  #   (job row, result and final status are kept)
+    keep_jobs_days: 180           # finished jobs older than this are deleted (0 = keep forever)
   watchdog:
     interval_s: 15                # how often it checks
     heartbeat_stale_s: 90         # worker silent this long → restart it
@@ -147,7 +157,10 @@ models:
     # With the plain `qwen3` parser, re-sending a prior tool call crashed the template
     # ("Can only get item pairs from a mapping") — which broke every multi-step Telegram task.
     tool_parser: qwen3_coder
-    reasoning_parser: qwen3
+    # qwen3_5 (not qwen3): Qwen3.6/3.8's chat template already opens <think> in the PROMPT, so the
+    # reply is "reasoning…</think>answer" with no opening tag. The plain qwen3 parser then leaves
+    # the whole thinking inside the answer; qwen3_5 adds the missing tag (and honours enable_thinking).
+    reasoning_parser: qwen3_5
     download: auto
     tier: core
     verified: true
@@ -160,7 +173,7 @@ models:
     context: 65536            # not measured yet — run `law probe qwen36-35b`
     license: Apache-2.0
     tool_parser: qwen3_coder  # see qwen38-27b: the converter-backed parser, for chat-template safety
-    reasoning_parser: qwen3
+    reasoning_parser: qwen3_5 # see qwen38-27b
     download: auto
     tier: core
     verified: true

@@ -295,6 +295,5 @@ def test_lock_blocks_second_holder(home):
 def test_cli(home, capsys):
     assert cli.main(["--list-models"]) == 0
     assert "qwen38-27b" in capsys.readouterr().out
-    with pytest.raises(SystemExit):
-        cli.main(["--image"])
+    assert cli.main(["--image"]) == 2                    # v1 flag now maps to `law image`; empty prompt
     assert cli.main(["init-project", str(home / "new")]) == 0

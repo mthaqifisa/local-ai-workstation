@@ -173,7 +173,8 @@ def run_probe(w, job: dict) -> dict:
     with Sampler(w.mm.proc.pid if w.mm.proc else None, w.pressure, w.mm.free_gb) as s_speed:
         r = w.complete(jid, base, [{"role": "user", "content":
                                     "Write a 150-word paragraph about the ocean. No preamble."}],
-                       {"max_tokens": 400, "temperature": 0}, publish=False)
+                       {"max_tokens": 400, "temperature": 0, "chat_template_kwargs": {"enable_thinking": False}},
+                       publish=False)
     gen = max(r["gen_s"], 1e-6)
     out["speed"] = {"ttft_s": round(r["ttft_s"] or 0, 2), "tok_s": round(r["n_deltas"] / gen, 1),
                     "tokens": r["n_deltas"], **s_speed.summary()}
@@ -194,8 +195,14 @@ def run_probe(w, job: dict) -> dict:
         t1 = time.time()
         with Sampler(w.mm.proc.pid if w.mm.proc else None, w.pressure, w.mm.free_gb) as smp:
             try:
-                r = w.complete(jid, base, msgs, {"max_tokens": 64, "temperature": 0}, publish=False)
-                answer = (r["result"]["message"].get("content") or "").strip()
+                # thinking off: a thinking model would spend the small token budget reasoning and
+                # never write the code (templates without the switch ignore the kwarg). The
+                # reasoning text is checked too, for models that think regardless.
+                r = w.complete(jid, base, msgs, {"max_tokens": 64, "temperature": 0,
+                                                 "chat_template_kwargs": {"enable_thinking": False}},
+                               publish=False)
+                reply = r["result"]["message"]
+                answer = ((reply.get("content") or "") + " " + (reply.get("reasoning_content") or "")).strip()
                 pt = (r["result"].get("usage") or {}).get("prompt_tokens")
                 row.update(ok=True, recall=code in answer, prompt_tokens=pt)
                 if pt:                                   # calibrate the next sizes to the real tokenizer

@@ -22,7 +22,6 @@ wheels = [
 
 [[package]]
 name = "law"
-version = "2.0.0.dev11"
 source = { editable = "." }
 dependencies = [
     { name = "psutil" },

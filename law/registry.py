@@ -47,7 +47,13 @@ class Registry:
 
     @property
     def max_weights_gb(self) -> float:
-        return float(self.raw["machine"]["max_weights_gb"])
+        m = self.raw["machine"]
+        v = m.get("max_weights_gb", "auto")
+        if v in (None, "auto"):
+            import psutil
+            total = round(psutil.virtual_memory().total / 1024**3)
+            return float(max(8, total - int(m.get("reserve_gb", 18))))
+        return float(v)
 
     @property
     def personas(self) -> dict[str, dict]:
@@ -81,6 +87,13 @@ class Registry:
             except Exception:  # noqa: BLE001
                 env = ""
         return env or str(self.raw.get("network", {}).get("bind_host", "127.0.0.1"))
+
+    @property
+    def local_host(self) -> str:
+        """Address THIS Mac uses to reach its own services: 127.0.0.1 unless they are bound to
+        one specific interface address (e.g. a Tailscale IP), which then must be used."""
+        b = self.bind_host
+        return "127.0.0.1" if b in ("", "0.0.0.0", "::", "127.0.0.1", "localhost") else b
 
     def model(self, mid: str) -> Model:
         if mid not in self.models:

@@ -26,9 +26,11 @@ import json
 import logging
 import os
 import re
+import shutil
 import signal
 import socket
 import subprocess
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -46,6 +48,41 @@ from . import memory
 
 KIND_TO_TYPE = {"lm": "lm", "vlm": "multimodal", "embed": "embeddings"}
 SERVER_PROMPT_LIMIT_S = 300          # mlx-openai-server 1.8.1: internal RPC timeout
+PROMPT_CACHE_PREFIX = "mlx-openai-prompt-cache-"
+
+
+def sweep_prompt_caches(tmp_root: Path | None = None) -> tuple[int, int]:
+    """Delete prompt-cache folders left in the system temp folder by model servers that were
+    killed (mlx-openai-server only removes its tempfile.mkdtemp() folder on a clean shutdown, and
+    law always kills it — before this fix every model swap leaked up to ~16 GB here).
+    Only runs when NO mlx-openai-server is alive, so a folder in use is never touched.
+    Returns (folders removed, bytes freed)."""
+    for p in psutil.process_iter(["cmdline"]):
+        try:
+            if any("mlx-openai-server" in str(a) for a in (p.info.get("cmdline") or [])):
+                return 0, 0
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    root = Path(tmp_root or tempfile.gettempdir())
+    n = freed = 0
+    for d in root.glob(PROMPT_CACHE_PREFIX + "*"):
+        if not d.is_dir() or d.is_symlink():
+            continue
+        freed += dir_size(d)
+        shutil.rmtree(d, ignore_errors=True)
+        n += 1
+    return n, freed
+
+
+def dir_size(d: Path) -> int:
+    total = 0
+    for root, _, files in os.walk(d):
+        for f in files:
+            try:
+                total += os.lstat(os.path.join(root, f)).st_blocks * 512   # allocated, not apparent (sparse VM disks)
+            except OSError:
+                pass
+    return total
 
 
 class ModelError(RuntimeError):
@@ -189,8 +226,9 @@ class MlxOpenAIServerLauncher:
     """Builds the mlx-openai-server command. Optional flags are only passed if this
     version's `launch --help` lists them, so a CLI change can't break startup."""
 
-    def __init__(self, exe: Path):
+    def __init__(self, exe: Path, prompt_cache_max_gb: float | None = None):
         self.exe = Path(exe)
+        self.prompt_cache_max_gb = prompt_cache_max_gb
         self._help: str | None = None
 
     def help(self) -> str:
@@ -227,6 +265,9 @@ class MlxOpenAIServerLauncher:
             cmd += [flag, str(val)]
         if m.tool_parser and "--enable-auto-tool-choice" in h:
             cmd.append("--enable-auto-tool-choice")
+        # the server's default prompt-cache limit is 1<<63 bytes (= none); cap it
+        if self.prompt_cache_max_gb and m.kind in ("lm", "vlm") and "--max-bytes" in h:
+            cmd += ["--max-bytes", str(int(float(self.prompt_cache_max_gb) * 1024**3))]
         return cmd
 
     marker = "mlx-openai-server"
@@ -242,8 +283,10 @@ class ModelManager:
         self.free_gb = free_gb or memory.available_gb
         self.pressure = pressure or memory.pressure
         self.emit: Callable[[str, dict], None] = lambda t, d: None
+        self.reclaim: Callable[[], str | None] = lambda: None    # frees other GPU users; returns what it did
         self.tick: Callable[[], None] = lambda: None          # "still making progress" (watchdog)
         self.pidfile = paths.run / "model.pid"
+        self.tmp_dir = paths.run / "model-tmp"
         self.proc: subprocess.Popen | None = None
         self.current: str | None = None
         self.current_ctx: int | None = None
@@ -289,12 +332,18 @@ class ModelManager:
         self.emit("model", {"state": "loading", "model": mid, "gb": m.weights_gb,
                             **({"context": context} if context else {})})
         t0 = time.time()
+        tmp = self.tmp_dir
+        shutil.rmtree(tmp, ignore_errors=True)
+        tmp.mkdir(parents=True, exist_ok=True)
         with open(logf, "ab") as fh:
             fh.write(f"\n=== {time.ctime()} start: {' '.join(cmd)}\n".encode())
             fh.flush()
             self.proc = subprocess.Popen(cmd, stdout=fh, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                                          start_new_session=True,
-                                         env={**os.environ, "HF_HUB_OFFLINE": "1", "PYTHONUNBUFFERED": "1"})
+                                         env={**os.environ, "HF_HUB_OFFLINE": "1", "PYTHONUNBUFFERED": "1",
+                                              # the server's prompt cache (and any other temp file)
+                                              # lands here and is wiped on stop — never leaks
+                                              "TMPDIR": str(tmp)})
         marker = getattr(self.launcher, "marker", Path(cmd[0]).name)
         self.pidfile.parent.mkdir(parents=True, exist_ok=True)
         self.pidfile.write_text(json.dumps({"pid": self.proc.pid, "model": mid, "marker": marker}))
@@ -307,14 +356,17 @@ class ModelManager:
         self.emit("model", {"state": "ready", "model": mid, "load_s": round(time.time() - t0, 1)})
         return self.base_url
 
-    def stop(self) -> None:
+    def stop(self, grace_s: float = 30) -> None:
+        """Stop the model process: SIGTERM, then SIGKILL after grace_s. Use a short grace when
+        aborting a generation — the server's graceful shutdown would wait for that very request."""
         if self.proc is not None:
-            _kill_tree(self.proc.pid)
+            _kill_tree(self.proc.pid, wait=grace_s)
             try:
                 self.proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 pass
         kill_from_pidfile(self.pidfile)
+        shutil.rmtree(self.tmp_dir, ignore_errors=True)       # the killed server's prompt cache
         self.proc, self.current, self.current_ctx, self.served_name = None, None, None, None
 
     # ── internals ───────────────────────────────────────────────────────
@@ -344,6 +396,11 @@ class ModelManager:
 
     def _wait_ram(self, m: Model) -> None:
         need = m.weights_gb * 1.05 + 2
+        free = self.free_gb()
+        if free < need:
+            did = self.reclaim()                 # e.g. stop the ACE-Step music studio (~15 GB)
+            if did:
+                self.emit("warning", {"message": did})
         deadline = time.time() + self.ram_wait
         free = self.free_gb()
         if free < need:

@@ -321,10 +321,10 @@ def test_info_question_is_grounded_with_web_search(bot, monkeypatch):
     assert m[0]["role"] == "system" and "Web search results" in m[0]["content"] and "32C" in m[0]["content"]
     assert calls                                              # a current-facts question triggers a lookup
     calls.clear()
-    b.answer(ME, "explain how a hash map works")
+    b.answer(ME, "what is 17 * 23?")
     m2 = json.loads(w.q.jobs(1)[0]["payload"])["messages"]
-    assert not calls                                          # general knowledge → no web lookup
-    assert m2[0]["role"] == "system" and "Today is" in m2[0]["content"]   # but still dated
+    assert not calls                                          # self-contained math → no web lookup
+    assert m2[0]["role"] == "system" and "Right now it is" in m2[0]["content"]   # but still dated
 
 
 def test_plain_media_message_routes_to_generation(bot):
@@ -683,7 +683,7 @@ def test_telegram_service_only_when_configured(home):
 def test_watchdog_restarts_a_frozen_bot(home):
     restarts = []
     age = {"v": None}
-    wd = Watchdog(load(get_paths()), Queue(get_paths().queue_db), restart=restarts.append, health=lambda: True,
+    wd = Watchdog(load(get_paths()), Queue(get_paths().queue_db), restart=restarts.append, health=lambda: True, dash_health=lambda: True,
                   telegram_age=lambda: age["v"])
     assert wd.check() == []
     age["v"] = 100

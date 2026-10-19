@@ -285,7 +285,10 @@ def cmd_jobs(a) -> int:
         age = time.time() - j["created"]
         age_s = f"{age:.0f}s" if age < 120 else (f"{age / 60:.0f}m" if age < 7200 else f"{age / 3600:.0f}h")
         try:
-            last = json.loads(j["payload"])["messages"][-1]["content"]
+            pl = json.loads(j["payload"])
+            last = pl.get("task") or pl.get("prompt") or pl.get("text") or pl.get("query") \
+                or (os.path.basename(str(pl.get("image") or pl.get("audio") or pl.get("root") or ""))) \
+                or (pl.get("messages") or [{}])[-1].get("content") or ""
             last = last if isinstance(last, str) else "[multimodal]"
         except Exception:  # noqa: BLE001
             last = ""
@@ -307,9 +310,27 @@ def cmd_cancel(a) -> int:
     err(f"job {a.id} is not queued/running/waiting (status: {q.status(a.id)})"); return 1
 
 
+def cmd_unload(a) -> int:
+    """Free the RAM now: the model is unloaded as the next job (ahead of the queue)."""
+    q = Queue(get_paths().queue_db)
+    w = q.worker_info()
+    if not w or not w.get("model"):
+        ok("no model is loaded"); return 0
+    jid = q.enqueue(w["model"], {}, source="cli", kind="unload", priority=100)
+    _worker_warning(q)
+    with open(os.devnull, "w") as quiet:
+        st = tail_job(q, jid, out=quiet)
+    if st != "done":
+        err(f"unload job {jid} {st}"); return 1
+    ok(f"unloaded {w['model']} — it reloads on the next job")
+    return 0
+
+
 def cmd_logs(a) -> int:
     p = get_paths()
-    f = p.logs / (f"{a.name}.log" if a.name in ("worker", "gateway", "watchdog", "telegram") else f"model-{a.name}.log")
+    f = p.logs / f"{a.name}.log"                 # a service (worker, gateway, dashboard, acestep, …)
+    if not f.exists():
+        f = p.logs / f"model-{a.name}.log"           # or a model id
     if not f.exists():
         err(f"no log at {f}")
         names = sorted(x.stem for x in p.logs.glob("*.log")) if p.logs.is_dir() else []
@@ -421,8 +442,14 @@ def cmd_probe(a) -> int:
         print(res["message"]["content"])
         sug = res["probe"].get("suggested_context")
         if sug and sug != reg.models[mid].context:
-            print(f"\nTo apply it, add to ~/.law/config/models.user.yaml:\n"
-                  f"models:\n  - id: {mid}\n    context: {sug}\nthen run ./install.sh")
+            if a.apply:
+                from .modelcmds import set_context
+                set_context(p, mid, sug)
+                ok(f"{mid}: context {reg.models[mid].context} → {sug} saved in {p.user_models} — "
+                   "run ./install.sh (or law install) so the services pick it up")
+            else:
+                print(f"\nTo apply it: law probe {mid} --apply   (or add to ~/.law/config/models.user.yaml:\n"
+                      f"models:\n  - id: {mid}\n    context: {sug}\nthen run ./install.sh)")
     return 0 if st == "done" else 1
 
 
@@ -523,20 +550,48 @@ def cmd_snapshot(a) -> int:
 
 
 def cmd_reclaim(a) -> int:
-    """Reclaim disk space safely — trims the Docker VM (the usual culprit: it balloons from app builds
-    and doesn't auto-shrink), prunes unused Docker, cleans uv/brew caches, and optionally old generated
-    media. NEVER touches models or databases."""
+    """Reclaim disk space safely — removes model-server prompt caches leaked into the system temp
+    folder, prunes old queue events, trims the Docker VM (it balloons from app builds and doesn't
+    auto-shrink), prunes unused Docker, cleans uv/brew caches, and optionally empties law's trash and
+    old generated media. NEVER touches downloaded models."""
     import shutil
     import subprocess as sp
 
     def free_gb() -> float:
         try:
-            return shutil.disk_usage("/System/Volumes/Data").free / 1e9
+            return shutil.disk_usage("/System/Volumes/Data").free / 1024**3
         except OSError:
-            return shutil.disk_usage("/").free / 1e9
+            return shutil.disk_usage("/").free / 1024**3
 
     before = free_gb()
     print(_dim(f"[free before: {before:.0f} GB]"))
+    p = get_paths()
+    if a.dry_run:
+        from .diskinfo import usage
+        du = usage(p, max_age_s=0)
+        for it in sorted(du["items"], key=lambda x: -x["gb"]):
+            print(f"  {it['gb']:>7.1f} GB  {it['name']:<38} {it['note']}")
+        print("would: remove leaked prompt caches, trim the Docker VM, docker prune, clean uv/brew caches, "
+              "prune old queue events" + (", empty ~/.law/trash" if a.trash else "")
+              + (f", delete media older than {a.media} days" if a.media else ""))
+        return 0
+    from .runtime.modelproc import sweep_prompt_caches
+    n, freed = sweep_prompt_caches()
+    if n:
+        ok(f"removed {n} leaked model-server prompt cache(s) ({freed / 1024**3:.1f} GB)")
+    try:
+        from .runtime.db import Queue
+        if p.queue_db.exists():
+            qc = (load(p).raw.get("runtime") or {}).get("queue") or {}
+            res = Queue(p.queue_db).prune(float(qc.get("keep_events_days", 14)), float(qc.get("keep_jobs_days", 180)))
+            ok(f"queue: pruned {res['events']} old events, {res['jobs']} old jobs")
+    except Exception as e:  # noqa: BLE001
+        warn(f"queue prune skipped: {e}")
+    if a.trash and p.trash.is_dir():
+        items = list(p.trash.iterdir())
+        for d in items:
+            shutil.rmtree(d, ignore_errors=True) if d.is_dir() else d.unlink(missing_ok=True)
+        ok(f"emptied ~/.law/trash ({len(items)} item(s))")
     if shutil.which("colima"):
         print("trimming the Docker VM (fstrim — returns freed space to the host)…")
         try:
@@ -559,7 +614,7 @@ def cmd_reclaim(a) -> int:
             except (sp.TimeoutExpired, OSError):
                 pass
     if a.media:
-        out = get_paths().outputs
+        out = p.outputs
         cutoff, removed = time.time() - a.media * 86400, 0
         for sub in ("images", "video", "audio", "vision", "voice-in"):
             d = out / sub
@@ -646,8 +701,12 @@ def add_parsers(sub) -> None:
     s.add_argument("id", type=int, help="job id (from `law jobs`)")
     s.set_defaults(fn=cmd_cancel)
 
-    s = sub.add_parser("logs", help="show logs: worker | gateway | watchdog | telegram | <model id>")
-    s.add_argument("name", nargs="?", default="worker", help="worker (default), gateway, watchdog, telegram, or a model id")
+    s = sub.add_parser("unload", help="unload the model now to free RAM (it reloads on the next job)")
+    s.set_defaults(fn=cmd_unload)
+
+    s = sub.add_parser("logs", help="show logs: worker | gateway | dashboard | watchdog | telegram | <model id>")
+    s.add_argument("name", nargs="?", default="worker",
+                   help="worker (default), gateway, dashboard, watchdog, telegram, acestep, or a model id")
     s.add_argument("-n", type=int, default=60, help="number of lines (default 60)")
     s.add_argument("-f", "--follow", action="store_true", help="keep printing new lines (Ctrl+C to stop)")
     s.set_defaults(fn=cmd_logs)
@@ -661,6 +720,7 @@ def add_parsers(sub) -> None:
     s.add_argument("ids", nargs="*", help="model id to probe (with --show: models to show, default all)")
     s.add_argument("--sizes", help="context sizes to try, e.g. 4k,16k,32k (default: registry runtime.probe.sizes)")
     s.add_argument("--show", action="store_true", help="show saved results instead of running a probe")
+    s.add_argument("--apply", action="store_true", help="save the recommended context as your override")
     s.add_argument("-d", "--detach", action="store_true", help="queue it and return immediately")
     s.set_defaults(fn=cmd_probe)
 
@@ -697,6 +757,8 @@ def add_parsers(sub) -> None:
     s = sub.add_parser("reclaim", help="reclaim disk space (trim Docker VM, prune, clean caches) — never touches models")
     s.add_argument("--media", type=int, default=0, metavar="DAYS",
                    help="also delete generated images/video/audio older than DAYS")
+    s.add_argument("--trash", action="store_true", help="also empty ~/.law/trash (removed models etc.)")
+    s.add_argument("--dry-run", action="store_true", help="show what uses the disk, change nothing")
     s.set_defaults(fn=cmd_reclaim)
 
     s = sub.add_parser("snapshots", help="list undo points of a project folder")

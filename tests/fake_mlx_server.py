@@ -29,6 +29,7 @@ Env: FAKE_DIE=1 → exit while "loading"; FAKE_LOAD_S → load delay;
 """
 import argparse
 import json
+from pathlib import Path
 import os
 import re
 import sys
@@ -237,4 +238,6 @@ class H(BaseHTTPRequestHandler):
         self.wfile.write(b"data: [DONE]\n\n")
 
 
+import tempfile  # noqa: E402 — like the real server: a process-local prompt-cache folder in $TMPDIR
+(Path(tempfile.mkdtemp(prefix="mlx-openai-prompt-cache-")) / "kv.bin").write_bytes(b"0" * 1024)
 ThreadingHTTPServer(("127.0.0.1", args.port), H).serve_forever()
