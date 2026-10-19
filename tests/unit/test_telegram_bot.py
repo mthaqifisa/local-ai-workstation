@@ -139,3 +139,11 @@ async def test_watcher_reports_each_job_once_and_skips_other_sources(tmp_path: P
     await b._notify({**running, "status": "done", "result": {"answer": "ok"}})
     await b._notify({**running, "status": "done", "result": {"answer": "ok"}})
     assert [s.split()[1] for s in sent] == ["**Started**", "**Done**"]
+
+
+def test_split_dir_uses_an_existing_folder(tmp_path):
+    from law.telegram_bot import split_dir
+
+    assert split_dir(f"{tmp_path} add a login page") == {"dir": str(tmp_path), "prompt": "add a login page"}
+    assert split_dir("Build a todo app") == {"prompt": "Build a todo app"}
+    assert split_dir(f"{tmp_path}/missing fix it") == {"prompt": f"{tmp_path}/missing fix it"}
