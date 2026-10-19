@@ -91,3 +91,15 @@ rm -rf ~/LAW             # remove all machine-local data (models, outputs, secre
 | Operator can't control an app | System Settings → Privacy & Security | Allow the terminal / `law` under Accessibility and Automation, then retry |
 | Open WebUI says it cannot load a model / 507 | A heavy job (agent, image, video) is using the memory | By design on 64 GB: only one large model fits. Pick the model already loaded, or retry when `law jobs` shows the job finished |
 | Video job very slow | Expected: Wan 2.2 14B renders ~5 s of video in several minutes | Use shorter clips (`--seconds 3`) or lower resolution in the job payload |
+
+## Developing LAW itself
+
+The installer's venv has every dependency, so use it for checks (no separate repo venv is needed):
+
+```sh
+P=~/LAW/runtime/law-venv/bin
+$P/ruff check src tests && $P/mypy src && $P/python -m pytest -q tests/unit
+python3 scripts/test_report.py   # every layer, incl. live integration; writes docs/TEST-REPORT.md
+```
+
+After changing `src/`, `law install --only services` restarts the API, worker and Telegram bot.
