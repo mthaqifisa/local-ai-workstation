@@ -247,3 +247,13 @@ async def test_recover_does_not_revive_cancelled_jobs(store):
     await w2.recover()
     assert (await store.require(j.id)).status == Status.CANCELLED
     assert await store.queued() == []
+
+
+async def test_cancel_pipeline_cancels_its_running_stage(store):
+    root = await store.submit(Job(kind="task"))
+    await store.mark_waiting(root)
+    stage = await store.submit(Job(kind="slow", parent=root.id))
+    assert await store.claim(stage)
+    await store.request_cancel(root.id)
+    assert (await store.require(root.id)).status == Status.CANCELLED
+    assert (await store.require(stage.id)).cancel_requested
