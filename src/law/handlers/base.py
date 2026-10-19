@@ -31,6 +31,10 @@ class Runtime:
         return self.reg.model_for_role(self.roles.get(role_name).model_role).id
 
 
+# Agents emit JSON events that embed whole files; asyncio's 64 KiB default line limit is too small.
+MAX_LINE_BYTES = 64 * 1024 * 1024
+
+
 async def run_cmd(ctx: Context, cmd: list[str], *, cwd: Path | None = None, env: dict[str, str] | None = None,
                   timeout_s: float = 3600, progress_every: int = 20,
                   describe: Callable[[str], str | None] | None = None) -> str:
@@ -40,7 +44,7 @@ async def run_cmd(ctx: Context, cmd: list[str], *, cwd: Path | None = None, env:
 
     proc = await asyncio.create_subprocess_exec(
         *cmd, cwd=cwd, env={**os.environ, **(env or {})},
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, limit=MAX_LINE_BYTES)
     lines: list[str] = []
 
     async def pump() -> None:
@@ -63,11 +67,12 @@ async def run_cmd(ctx: Context, cmd: list[str], *, cwd: Path | None = None, env:
     canceller = asyncio.create_task(watch_cancel())
     try:
         await asyncio.wait_for(asyncio.gather(pump(), proc.wait()), timeout=timeout_s)
-    except TimeoutError:
-        proc.kill()
-        raise
     finally:
         canceller.cancel()
+        if proc.returncode is None:  # timeout, cancel or a reader error: never leave the child running
+            with contextlib.suppress(ProcessLookupError):
+                proc.kill()
+            await proc.wait()
     if ctx.cancel_event.is_set():
         raise Cancelled()
     out = "\n".join(lines)
