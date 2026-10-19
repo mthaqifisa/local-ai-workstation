@@ -82,9 +82,14 @@ def parse_opencode_events(output: str) -> str:
 def agent_env(rt: Runtime, role: str) -> dict[str, str]:
     """Role config plus XDG dirs so OpenCode keeps its sessions, cache and state under ~/LAW, not ~/.local."""
     base = rt.paths.data / "opencode"
+    cache = rt.paths.cache
     return {"OPENCODE_CONFIG": str(rt.paths.config / f"opencode-{role}.json"),
             "XDG_DATA_HOME": str(base / "data"), "XDG_STATE_HOME": str(base / "state"),
-            "XDG_CACHE_HOME": str(rt.paths.cache / "opencode")}
+            "XDG_CACHE_HOME": str(cache / "opencode"),
+            # build-tool caches the agents fill (measured: ~/.m2 and ~/.npm grew during one Java/Angular build)
+            "npm_config_cache": str(cache / "npm"), "MAVEN_OPTS": f"-Dmaven.repo.local={cache / 'm2'}",
+            "GRADLE_USER_HOME": str(cache / "gradle"), "PIP_CACHE_DIR": str(cache / "pip"),
+            "UV_CACHE_DIR": str(cache / "uv")}
 
 
 def make_handlers(rt: Runtime) -> dict[str, Any]:

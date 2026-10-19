@@ -8,6 +8,8 @@ machine:
   macos_reserve_gb: 12
   colima: {cpus: 4, memory_gb: 4, disk_gb: 60}
   model_budget_gb: 48
+  # oMLX keeps prompt caches on disk to speed up long agent sessions; capped so it can't fill the SSD.
+  llm_ssd_cache_gb: 20
 
 network:
   # User decision (ADR-0006): user-facing services listen on every interface, no login.

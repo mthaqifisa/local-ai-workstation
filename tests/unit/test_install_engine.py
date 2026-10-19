@@ -366,3 +366,29 @@ def test_code_change_changes_service_stamp(ctx: Ctx, tmp_path: Path):
     after_code = ctx.stamp
     (repo / "settings" / "roles.yaml").write_text((repo / "settings" / "roles.yaml").read_text() + "\n")
     assert ctx.stamp != after_code
+
+
+def test_omlx_disk_cache_is_capped_and_idempotent(ctx: Ctx):
+    import json
+
+    from law.install.steps import OmlxSettings
+
+    class Kick(FakeSys):
+        def __init__(self) -> None:
+            super().__init__()
+            self.kicked: list[str] = []
+
+        def launchd_kickstart(self, label: str) -> Result:
+            self.kicked.append(label)
+            return Result(0, "")
+
+    ctx.sys = Kick()
+    step = OmlxSettings(ctx)
+    assert step.plan() == []  # oMLX hasn't created its settings yet
+    step.file.parent.mkdir(parents=True, exist_ok=True)
+    step.file.write_text(json.dumps({"cache": {"enabled": True, "ssd_cache_max_size": "auto"}, "memory": {"x": 1}}))
+    assert step.plan() == ["cap oMLX disk cache at 20GB"]
+    step.apply()
+    doc = json.loads(step.file.read_text())
+    assert doc["cache"]["ssd_cache_max_size"] == "20GB" and doc["memory"] == {"x": 1}
+    assert ctx.sys.kicked == ["com.law6.omlx"] and step.plan() == []
