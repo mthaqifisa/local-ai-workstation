@@ -56,7 +56,7 @@ class LawBot:
         @dp.message(Command("code"))
         async def code(message: Message, command: CommandObject) -> None:
             if self._ok(message) and command.args:
-                await self._job(message, "task", {"prompt": command.args, "role": "coder"})
+                await self._job(message, "task", {"role": "coder", **split_dir(command.args)})
 
         @dp.message(Command("agent"))
         async def agent(message: Message, command: CommandObject) -> None:
@@ -66,7 +66,7 @@ class LawBot:
             if len(parts) < 2:
                 await self._send(message.chat.id, "Usage: `/agent <role> <task>` — see /roles")
                 return
-            await self._job(message, "task", {"role": parts[0], "prompt": parts[1]})
+            await self._job(message, "task", {"role": parts[0], **split_dir(parts[1])})
 
         @dp.message(Command("image"))
         async def image(message: Message, command: CommandObject) -> None:
@@ -359,7 +359,8 @@ COMMANDS: list[tuple[str, str, str]] = [
     ("help", "Everything Tony can do", "/help"),
     ("ask", "Ask anything (same as just typing)", "/ask Should we lease or buy our office laptops?"),
     ("search", "Web search with sources", "/search latest MAS guidelines on AI risk management"),
-    ("code", "Coding agent builds it in ~/SourceCode", "/code Build a FastAPI expense tracker with tests"),
+    ("code", "Coding agent builds it in ~/SourceCode (start with a folder to work in it)",
+     "/code ~/SourceCode/my-app Add a login page"),
     ("agent", "Run a specific role", "/agent architect Design a payments API for a small bank"),
     ("roles", "List the roles for /agent", "/roles"),
     ("image", "Generate an image", "/image A minimalist poster of a lighthouse at dawn"),
@@ -391,6 +392,14 @@ def roles_text() -> str:
     loaded = roles.load(LawPaths.from_env().settings / "roles.yaml")
     return "**Roles for /agent**\n" + "\n".join(f"`{n}` — {r.summary}" for n, r in loaded.roles.items())
 TELEGRAM_LIMIT = 4000
+
+
+def split_dir(args: str) -> dict[str, str]:
+    """`/code ~/SourceCode/app Add login` works in that existing folder; otherwise the agent starts a new project."""
+    first, _, rest = args.strip().partition(" ")
+    if first.startswith(("~/", "/")) and rest.strip() and Path(first).expanduser().is_dir():
+        return {"dir": str(Path(first).expanduser()), "prompt": rest.strip()}
+    return {"prompt": args.strip()}
 
 
 def split_message(text: str, limit: int = TELEGRAM_LIMIT) -> list[str]:
