@@ -14,15 +14,15 @@
 
 ## Stage B — Execution by Claude Code (P0–P8)
 - [x] P0 Bootstrap
-- [ ] P1 Research verification & architecture
+- [x] P1 Research verification & architecture (ADRs 0001–0010)
 - [x] P2 Inventory & wipe — 177 GiB reclaimed (report: ~/LAW/logs/wipe-report-20261019.md)
-- [ ] P3 Installer
-- [ ] P4 Runtime & models
-- [ ] P4b Queue, scheduler, agents, Telegram & CLI
-- [ ] P5 Capabilities
-- [ ] P6 Quality system
-- [ ] P7 Testing
-- [ ] P8 Docs, handover, storage cleanup
+- [x] P3 Installer (re-run = 0 changes; damaged pieces repaired alone)
+- [x] P4 Runtime & models
+- [x] P4b Queue, scheduler, agents, Telegram & CLI
+- [x] P5 Capabilities (except HELP.md items 2–3: law save/restore-state, song/film planner)
+- [x] P6 Quality system
+- [ ] P7 Testing (in progress: eval rerun, heavy media, operator, lan-chat agent verification)
+- [ ] P8 Docs, handover, storage cleanup (docs + storage done; TEST-REPORT and email pending)
 
 ## Log
 - 2026-10-19: Stage A complete. Brief ready.
@@ -110,3 +110,4 @@ Storage at start: 685Gi used / 208Gi free; ~/LAW 320G.
 - 2026-10-20 05:20 C7 run 2 failed after 4h24m: harness bug (asyncio 64KiB line limit in run_cmd; agent process orphaned). Fixed (99f232a, +2 tests, 163 pass). Applied install: oMLX SSD cache capped, 104.5 GB freed (cache 20G). ~/.m2 moved to ~/LAW/cache/m2. lan-chat run 3 started (log test-lan-chat3.log). Disk: 239Gi free.
 - 2026-10-20 05:33 auto-resume check: lan-chat run 3 in progress (13 min, 6 commands); disk 239Gi free; ~/LAW 293G.
 - 2026-10-20 06:38 auto-resume: queue idle (waiting for user's Telegram /code for lan-chat); started eval rerun. Disk 240Gi free; ~/LAW 293G.
+- 2026-10-20 07:33 auto-resume: eval rerun on case 3/5 (55 min); README/RUNBOOK updated; stale repo .venv removed. Disk 239Gi free; ~/LAW 293G.
