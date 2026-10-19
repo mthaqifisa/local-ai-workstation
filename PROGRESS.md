@@ -102,3 +102,5 @@ Storage at start: 685Gi used / 208Gi free; ~/LAW 320G.
 - 2026-10-20 00:51: C7 run 1 aborted by memory guard (coder-next 47.1 GB peak at 38k ctx; TurboQuant no help). Coder -> Qwen3.8-27B. C7 run 2 started (resumes existing 61 files). Agent progress now readable.
 - 2026-10-20 01:16: Tony now reports CLI/Console/API jobs (start with full prompt, finish with result/review/files); verified with the running lan-chat job.
 - 2026-10-20 01:39: repo was re-cloned from GitHub at 01:28 (public repo); unpushed work squashed into one clean commit (no personal IDs); gitleaks clean. Nothing pushed.
+- 2026-10-20 01:40: storage 695Gi/198Gi free; ~/LAW 333G (oMLX SSD cache 61G -> cap 20G pending restart; ~/.m2 to move after agent).
+- 2026-10-20 01:43: offline client E2E PASSED: install.sh (sandboxed, no internet) + OpenCode with served config wrote correct slugify(); also flagged Unicode limitation unprompted.
