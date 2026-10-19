@@ -25,6 +25,7 @@ class Machine(_Strict):
     macos_reserve_gb: int
     colima: Colima
     model_budget_gb: int
+    llm_ssd_cache_gb: int = Field(default=20, ge=1)
 
     @model_validator(mode="after")
     def _budget_fits(self) -> Machine:

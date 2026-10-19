@@ -103,6 +103,8 @@ class EnvProfile:
             f'export UV_TOOL_BIN_DIR="{h}/runtime/bin"',
             f'export PIP_CACHE_DIR="{h}/cache/pip"',
             f'export npm_config_cache="{h}/cache/npm"',
+            f'export MAVEN_OPTS="-Dmaven.repo.local={h}/cache/m2"',
+            f'export GRADLE_USER_HOME="{h}/cache/gradle"',
             f'export PLAYWRIGHT_BROWSERS_PATH="{h}/cache/playwright"',
             f'export TORCH_HOME="{h}/cache/torch"',
             f'export OPENCODE_CONFIG="{h}/config/opencode.json"',
@@ -738,6 +740,43 @@ class Compose:
         return problems
 
 
+class OmlxSettings:
+    """Settings oMLX reads from its settings.json that the CLI can't set: the on-disk prompt-cache cap.
+
+    Without a cap ("auto") long agent sessions grew the cache to 61 GB in one evening (measured 2026-10-20).
+    Changing the file restarts oMLX so the setting takes effect.
+    """
+
+    name = "omlx-settings"
+
+    def __init__(self, c: Ctx) -> None:
+        self.c = c
+        self.file = c.paths.runtime / "omlx" / "settings.json"
+
+    def _want(self) -> str:
+        return f"{self.c.reg.machine.llm_ssd_cache_gb}GB"
+
+    def _current(self) -> str | None:
+        if not self.file.exists():
+            return None
+        return str(json.loads(self.file.read_text()).get("cache", {}).get("ssd_cache_max_size"))
+
+    def plan(self) -> list[str]:
+        if not self.file.exists():
+            return []  # oMLX creates it on first start; the next run sets the cap
+        return [] if self._current() == self._want() else [f"cap oMLX disk cache at {self._want()}"]
+
+    def apply(self) -> None:
+        doc = json.loads(self.file.read_text())
+        doc.setdefault("cache", {})["ssd_cache_max_size"] = self._want()
+        self.file.write_text(json.dumps(doc, indent=2) + "\n")
+        label = self.c.reg.services["omlx"].label or "com.law6.omlx"
+        self.c.sys.launchd_kickstart(label)
+
+    def verify(self) -> list[str]:
+        return self.plan()
+
+
 class ComfyUIStep:
     """ComfyUI (native Metal) pinned to a release, own venv, models in ~/LAW/models/comfy, launchd on :8188."""
 
@@ -827,5 +866,5 @@ class ComfyUIStep:
 def default_steps(c: Ctx) -> list[Step]:
     return [
         Skeleton(c), EnvProfile(c), Secrets(c), Brew(c), LawVenv(c), CalcEnv(c), MediaTools(c), Models(c),
-        MediaModels(c), OpenCodeConfig(c), Services(c), ComfyUIStep(c), Colima(c), Compose(c),
+        MediaModels(c), OpenCodeConfig(c), Services(c), OmlxSettings(c), ComfyUIStep(c), Colima(c), Compose(c),
     ]
