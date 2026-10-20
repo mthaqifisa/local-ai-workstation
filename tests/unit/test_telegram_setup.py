@@ -75,3 +75,11 @@ def test_recent_senders_parses_updates(monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(ts.httpx, "get", lambda *a, **k: R())
     assert ts.recent_senders(GOOD) == [(2, "Alex (@alex)"), (1, "Old")]
+
+
+def test_ask_email_retries_until_valid_and_can_be_skipped():
+    from law.telegram_setup import ask_email
+
+    answers = iter(["nope", "me@example.com"])
+    assert ask_email(ask=lambda _: next(answers), say=lambda _: None) == {"LAW_REPORT_EMAIL": "me@example.com"}
+    assert ask_email(ask=lambda _: "", say=lambda _: None) == {}

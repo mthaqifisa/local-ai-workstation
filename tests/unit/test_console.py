@@ -129,3 +129,13 @@ def test_client_install_writes_the_login_shells_profile_once(setup, tmp_path, lo
     text = (home / profile).read_text()
     assert text.count("# >>> law-client >>>") == 1
     assert 'export OPENCODE_CONFIG="$HOME/.config/law-client/opencode.json"' in text
+
+
+def test_report_email_is_validated_and_stored_locally(setup):
+    client, paths, applied = setup
+    assert client.get("/settings").json()["email"] == {"address": ""}
+    assert client.put("/settings/email", json={"address": "not-an-email"}).status_code == 422
+    assert client.put("/settings/email", json={"address": " me@example.com "}).json() == {"address": "me@example.com"}
+    assert secrets.read(paths.env_file)["LAW_REPORT_EMAIL"] == "me@example.com"
+    assert client.get("/settings").json()["email"] == {"address": "me@example.com"}
+    assert applied == []  # read at send time: nothing restarts

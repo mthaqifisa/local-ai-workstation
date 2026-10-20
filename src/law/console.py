@@ -87,7 +87,7 @@ def mount(app: Any, llm_internal: str, paths: LawPaths) -> None:
 
     @router.get("/settings")
     def get_settings() -> dict[str, Any]:
-        return {"telegram": edit.telegram_status(paths)}
+        return {"telegram": edit.telegram_status(paths), "email": edit.email_status(paths)}
 
     @router.put("/settings/telegram")
     def put_telegram(upd: edit.TelegramUpdate, tasks: BackgroundTasks) -> dict[str, str]:
@@ -97,6 +97,14 @@ def mount(app: Any, llm_internal: str, paths: LawPaths) -> None:
             raise HTTPException(422, str(exc)) from exc
         tasks.add_task(edit.apply_async, paths, "secrets,services")
         return {"bot": bot}
+
+    @router.put("/settings/email")
+    def put_email(upd: edit.EmailUpdate) -> dict[str, str]:
+        """Read at send time, so no restart is needed."""
+        try:
+            return {"address": edit.update_email(paths, upd)}
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
 
     @router.get("/client/opencode.json", response_class=PlainTextResponse)
     def client_opencode(request: Request) -> str:

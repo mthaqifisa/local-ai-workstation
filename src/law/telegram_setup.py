@@ -52,6 +52,22 @@ def recent_senders(token: str) -> list[tuple[int, str]]:
     return list(seen.items())
 
 
+def ask_email(ask: Ask = input, say: Say = print) -> dict[str, str]:
+    """The address LAW emails reports to (e.g. /proposal PDFs). Returns {} if skipped."""
+    from law.mailer import valid
+
+    say("\nReport email: where LAW sends finished documents (sent with this Mac's Mail app). Enter to skip.")
+    for _ in range(3):
+        address = ask("Your email address: ").strip()
+        if not address:
+            say("Skipped. Set it later in the LAW Console (Settings).")
+            return {}
+        if valid(address):
+            return {"LAW_REPORT_EMAIL": address}
+        say("That doesn't look like an email address. Try again.")
+    return {}
+
+
 def configure(ask: Ask = input, ask_secret: Ask = getpass.getpass, say: Say = print) -> dict[str, str]:
     """Walk the user through Telegram setup. Returns {} if skipped, else the values to store."""
     say("\nTelegram setup (the main way to talk to LAW). Press Enter at any prompt to skip for now.")

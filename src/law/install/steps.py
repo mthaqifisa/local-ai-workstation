@@ -161,6 +161,8 @@ class Secrets:
                 out.append(f"set {k}")
         if self._should_ask(cur) and not out:
             out.append("ask for Telegram bot token")
+        if self._should_ask_email(cur) and not out:
+            out.append("ask for the report email address")
         if self.c.paths.env_file.exists() and (self.c.paths.env_file.stat().st_mode & 0o777) != 0o600:
             out.append("fix .env permissions to 0600")
         return out
@@ -169,6 +171,9 @@ class Secrets:
         """Ask whenever Telegram isn't configured and someone is at the keyboard (skipping asks again next run)."""
         return self.c.interactive and sys.stdin.isatty() and not cur.get("LAW_TELEGRAM_TOKEN")
 
+    def _should_ask_email(self, cur: dict[str, str]) -> bool:
+        return self.c.interactive and sys.stdin.isatty() and not cur.get("LAW_REPORT_EMAIL")
+
     def apply(self) -> None:
         from law import telegram_setup
 
@@ -176,6 +181,8 @@ class Secrets:
         cur = secrets.read(self.c.paths.env_file)
         if self._should_ask(cur) and not imported.get("LAW_TELEGRAM_TOKEN"):
             imported.update(telegram_setup.configure())
+        if self._should_ask_email(cur) and not imported.get("LAW_REPORT_EMAIL"):
+            imported.update(telegram_setup.ask_email())
         secrets.ensure(self.c.paths.env_file, imported=imported)
 
     def verify(self) -> list[str]:
