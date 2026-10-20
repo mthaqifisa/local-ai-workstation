@@ -241,8 +241,10 @@ def section_stages(base: dict[str, Any], args: dict[str, Any], version: int) -> 
     if version > 1:
         sections.insert(1, (f"What changed in version {version}", WHAT_CHANGED.format(version=version)))
     n = len(sections)
+    # Thinking off: the section's content and facts are given (research.md, the brief); measured 6-9x faster for
+    # prose, and the independent review (with thinking) still checks the document.
     return [{"kind": "task_work", "payload": {
-        **base, "role": "writer", "spec_ref": "proposal.section",
+        **base, "role": "writer", "spec_ref": "proposal.section", "effort": "off",
         "section": {"file": f"{args['out']}/proposal.md", "heading": heading, "skip_if_written": version == 1},
         "spec_args": {**args, "k": k, "n": n, "heading": heading, "description": description}}}
         for k, (heading, description) in enumerate(sections, start=1)]

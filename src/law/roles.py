@@ -13,7 +13,7 @@ class Role(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     model_role: str
     temperature: float
-    reasoning: Literal["low", "medium", "xhigh"] = "medium"
+    reasoning: Literal["off", "low", "medium", "xhigh"] = "medium"
     tools: list[str]
     summary: str
     prompt: str
