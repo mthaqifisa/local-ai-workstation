@@ -330,11 +330,12 @@ class LawBot:
             return
         self.following.add(job_id)
         try:
-            await self._follow(job_id, reply)
+            # following a retried job again: its history is old news, show only what happens from now on
+            await self._follow(job_id, reply, since=time.time() - 5 if again else 0.0)
         finally:
             self.following.discard(job_id)
 
-    async def _follow(self, job_id: str, reply: dict[str, Any]) -> None:
+    async def _follow(self, job_id: str, reply: dict[str, Any], since: float = 0.0) -> None:
         last = ""
         while True:  # stream progress; reconnect and poll if the API restarts
             try:
@@ -344,6 +345,8 @@ class LawBot:
                         if not line.startswith("data: "):
                             continue
                         ev = json.loads(line[6:])
+                        if float(ev.get("t", 0)) < since:
+                            continue
                         if ev.get("event") == "started" and not last:
                             await self._edit(reply, "working…")
                         msg = ev.get("data", {}).get("message")
