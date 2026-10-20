@@ -603,7 +603,7 @@ def job_card(j: dict[str, Any], model: dict[str, Any]) -> str:
                      + (f" · last step {last_step['tok_s']} tok/s, context {round(last_step['context'] / 1000)}K"
                         if last_step else ""))
     if j.get("error"):
-        lines.append(f"Error: {j['error'][:300]}")
+        lines.append(f"Error: {j.get('error_line') or j['error'][:240]}")
     if j.get("project"):
         lines.append(f"Folder: `{j['project']}`")
     return "\n".join(lines)

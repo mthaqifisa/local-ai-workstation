@@ -63,3 +63,16 @@ def test_numbered_checklists_count(tmp_path: Path):
     (tmp_path / ".law" / "PLAN.md").write_text("1. [x] read brief\n2. [ ] search market\n* [x] tick\n")
     summary = st.plan_summary(tmp_path)
     assert summary is not None and (summary["done"], summary["total"], summary["next"]) == (2, 3, "search market")
+
+
+async def test_stopped_jobs_in_a_folder_with_newer_work_are_hidden(tmp_path: Path):
+    store = JobStore(fakeredis.FakeAsyncRedis(decode_responses=True))
+    old = await store.submit(Job(kind="task", payload={"prompt": "old run", "dir": str(tmp_path)}, lane="none"))
+    await store.finish(old, Status.FAILED, error="Traceback\n  File x\nValueError: boom")
+    other = await store.submit(Job(kind="task", payload={"prompt": "elsewhere", "dir": "/other"}, lane="none"))
+    await store.finish(other, Status.FAILED, error="bad")
+    new = await store.submit(Job(kind="task", payload={"prompt": "new run", "dir": str(tmp_path)}, lane="none"))
+    assert await store.claim(new)
+    shown = {s["title"]: s for s in await st.statuses(store, {"active": True})}
+    assert set(shown) == {"new run", "elsewhere"} and shown["elsewhere"]["error_line"] == "bad"
+    assert st.last_line("Traceback\n  File x\nValueError: boom") == "ValueError: boom"
