@@ -23,14 +23,17 @@ SEEDS = {
 INSTRUCTIONS = """This project keeps its working memory in {folder}/ (like .claude/). Use it:
 - First read {folder}/PROMPT.md (the brief), then {folder}/PROGRESS.md and {folder}/PLAN.md if they have content.
   If earlier work exists, continue from the next unchecked step; do not start over or re-read the whole codebase.
-- Before coding, record findings in {folder}/RESEARCH.md and numbered steps with checkboxes and gates in
-  {folder}/PLAN.md.
+- Before any work, write this task's to-do list in {folder}/PLAN.md: numbered steps with checkboxes (`- [ ]`) and
+  a gate for each, small enough that each finishes in one step. Record findings in {folder}/RESEARCH.md.
 - After every step, update {folder}/PROGRESS.md: what was done, the gate output, the exact next step. Tick the step
   in {folder}/PLAN.md. Write findings and results to files as you go, never only at the end: your context can be
   summarised at any time, and what is not on disk is lost.
+- Write large files in sections: create the file with the first section, then add one section per edit, at most
+  about 1,500 words per write. A single huge write can be cut off and lost; a section costs little to redo.
 - Never write secrets, keys or passwords into {folder}/."""
 RESUME = ("Your previous session in this project was interrupted. Read {folder}/PROGRESS.md and {folder}/PLAN.md "
-          "and continue from the next unchecked step. Keep {folder}/PROGRESS.md current.")
+          "and continue from the next unchecked step. Keep {folder}/PROGRESS.md current, tick steps as you finish "
+          "them, and write large files one section at a time (at most about 1,500 words per write).")
 
 
 class ProjectMemory:

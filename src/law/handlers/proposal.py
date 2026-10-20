@@ -68,7 +68,9 @@ Rules:
   elements; viewBox 0 0 1200 800; no foreignObject), included as ![Wireframe: <screen>](assets/<file>.svg).
 - Tables are pipe tables with a caption line `: <caption>` under them.
 - Every claim is sourced or labelled as an assumption or estimate; numbers agree across sections.
-- No placeholders, no TODOs, no lorem ipsum. Write the whole document."""
+- No placeholders, no TODOs, no lorem ipsum. Write the whole document.
+- First list the sections as a checklist in .law/PLAN.md. Create proposal.md with the YAML header and section 1,
+  then add one section per edit (at most about 1,500 words per write), ticking each in PLAN.md as you go."""
 
 REVISE_SPEC = """This is version {version} of the proposal. The owner's feedback on the previous version:
 {feedback}
