@@ -161,3 +161,4 @@ Happy path and unhappy paths, all from Telegram, monitored every 5 min:
 - 2026-10-20 21:58 film test PASSED after the LoRA fix: 10.0 s, 2 shots + score, h264 832x480 + aac, 1,823 s end to end (~14 min per 5 s shot). law reclaim: nothing stale (~1 GB Homebrew/Docker); 218Gi free, ~/LAW 307G. Pre-E2E list complete; starting the E2E plan.
 - 2026-10-20 22:33 auto-resume check: E2E proposal v1 research in progress (writing research.md topic by topic). Disk 218Gi free; ~/LAW 310G.
 - 2026-10-20 23:33 auto-resume check: proposal now written one session per section (fix deployed; run migrated, section 1 running). Disk 221Gi free; ~/LAW 307G.
+- 2026-10-21 00:33 auto-resume check: proposal sections 1-2 written, 3 running; fixes today: thinking 'off' for sections, drain-before-restart, section resume prompt. Disk 221Gi free; ~/LAW 307G.
