@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from law.handlers import core, creative, media, proposal, tasks
+from law.handlers import core, creative, media, project, proposal, tasks
 from law.handlers.base import Runtime
 from law.queue.jobs import Job
 from law.queue.scheduler import Capacity
 from law.queue.worker import Handler
 
 # Job kinds that need no model at all.
-NO_MODEL = {"search", "song", "film", "film_join", "proposal", "proposal_render", "proposal_mail"}
+NO_MODEL = {"search", "song", "film", "film_join", "proposal", "proposal_render", "proposal_mail",
+            "project_new", "project_step", "project_gate"}
 # Job kinds whose model comes from the role in the payload (default role in brackets).
 ROLE_KINDS = {"ask": "assistant", "draft": "assistant", "revise": "assistant", "judge": "reviewer",
               "task": "coder", "task_translate": "translator", "task_work": "coder", "task_review": "reviewer",
@@ -26,6 +27,7 @@ def handlers(rt: Runtime) -> dict[str, Handler]:
     table.update(media.make_handlers(rt))
     table.update(creative.make_handlers(rt))
     table.update(proposal.make_handlers(rt))
+    table.update(project.make_handlers(rt))
     return table
 
 

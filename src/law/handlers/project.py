@@ -1,0 +1,165 @@
+"""Project lifecycle jobs (see law.projects for the states and gates).
+
+- `project_new`: create the folder and git repo (or clone `repo_url`), then run the proposal pipeline and stop at
+  the go/no-go gate.
+- `project_step`: apply the owner's decision from Telegram and run the next phase: a revised proposal, the
+  development pipeline, or a push.
+- `project_gate`: the last stage of each phase: records the new state and returns the question with its buttons.
+
+Development: an environment stage (install and select the tools the stack needs, recorded in .law/), then one
+agent session per milestone from .law/PLAN.md (fresh context each time, so it never fills up), then up to three
+independent review and fix rounds, then the verification gate.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+from typing import Any
+
+from law import mailer
+from law.handlers.base import Runtime, run_cmd
+from law.handlers.proposal import proposal_stages
+from law.projects import Project, Projects, TemplateError, decide
+from law.queue.worker import Context, Done, Fatal, Outcome, Stages
+
+OUT = "docs/proposal"
+MILESTONE_STAGES = 12  # unused stages finish at once when every milestone is ticked
+REVIEW_ROUNDS = 3
+
+ENV_SPEC = """This stage prepares the Mac for the project; write no application code.
+Read {out}/proposal.md (the stack and technical design). For every tool the project needs (language runtimes with
+their exact major versions, build tools, package managers, databases, browsers for tests), check what is installed
+(e.g. `java -version`, `/usr/libexec/java_home -V`, `node -v`, `brew list --versions`). You have full access to
+this Mac: install what is missing or the wrong version with Homebrew (e.g. `brew install openjdk@21`) and verify it
+runs. Prefer the current LTS versions the proposal's libraries support.
+Write `.law/env.sh` with the exports this project needs (e.g. `export JAVA_HOME=...`, `export PATH=...:$PATH`);
+LAW loads it into every later agent session for this project. Record each tool in `.law/ENVIRONMENT.md`: required
+version, installed version, how it is selected. Commit `.law/`."""
+
+DEV_SPEC = """Build {name} version {version} as specified in {out}/proposal.md{scope}. The tools are ready
+(.law/ENVIRONMENT.md); do not change versions without updating it.
+Milestones: if .law/PLAN.md has no section "## Version {version}", first add it: a checklist (`- [ ] ...`) of 3 to
+8 milestones in build order, each small enough for one session and ending with a passing build and tests (e.g.
+"Backend: domain model, REST API and unit tests green"). Then implement ONLY the first unchecked milestone of
+version {version}: write the code and its tests, run the build and tests until they pass, commit with a clear
+message, tick it (`- [x]`) in .law/PLAN.md, add an entry to .law/PROGRESS.md, and stop. Do not start the next
+milestone. The last milestone includes a README that explains how to install, run and test the product, including
+from another device if it is a network service."""
+
+FIX_SPEC = """Fix in the codebase, run the full build and tests until they pass, commit, and record the fixes in
+.law/PROGRESS.md. The specification is {out}/proposal.md (version {version})."""
+
+REVIEW_CONTEXT = """
+
+The specification is {out}/proposal.md (version {version}); the milestones are in .law/PLAN.md. Check the delivered
+scope against them, and run the build and tests yourself."""
+
+LEFT = re.compile(r"^\s*- \[ \]\s*(.+)$", re.MULTILINE)
+
+
+def make_handlers(rt: Runtime) -> dict[str, Any]:
+    store = Projects(rt.paths)
+
+    def _gate(project: Project, gate: str) -> dict[str, Any]:
+        return {"kind": "project_gate", "payload": {"project": project.id, "gate": gate}}
+
+    def _proposal(project: Project) -> list[dict[str, Any]]:
+        stages = proposal_stages(rt, project.request(), Path(project.dir), OUT, version=project.version,
+                                 feedback=project.feedback, effort=project.effort, extra={"project": project.id})
+        return [*stages, _gate(project, "proposal")]
+
+    def _develop(project: Project) -> list[dict[str, Any]]:
+        from law.handlers.tasks import CODE_RUBRIC
+
+        v = project.version
+        scope = "" if v == 1 else f', including its section "What changed in version {v}"'
+        base: dict[str, Any] = {"prompt": project.request(), "dir": project.dir, "role": "coder", "version": v,
+                                "effort": project.effort, "project": project.id}
+        review = {**base, "spec": FIX_SPEC.format(out=OUT, version=v),
+                  "rubric": CODE_RUBRIC + REVIEW_CONTEXT.format(out=OUT, version=v)}
+        stages: list[dict[str, Any]] = [
+            {"kind": "task_work", "payload": {**base, "spec": ENV_SPEC.format(out=OUT), "stall_min": 45}}]
+        stages += [{"kind": "task_work", "payload": {**base, "milestone": True, "spec": DEV_SPEC.format(
+            name=project.name, version=v, out=OUT, scope=scope)}}] * MILESTONE_STAGES
+        stages += [{"kind": "task_review", "payload": review}, {"kind": "task_fix", "payload": review}] * REVIEW_ROUNDS
+        return [*stages, _gate(project, "verify")]
+
+    async def _prepare_repo(ctx: Context, project: Project) -> None:
+        folder = Path(project.dir)
+        if not folder.exists() and project.repo_url:
+            await ctx.progress(f"cloning {project.repo_url}")
+            await run_cmd(ctx, ["git", "clone", project.repo_url, str(folder)], timeout_s=900)
+            return
+        folder.mkdir(parents=True, exist_ok=True)
+        if not (folder / ".git").exists():
+            await run_cmd(ctx, ["git", "init", "-q"], cwd=folder, timeout_s=60)
+            if project.repo_url:
+                await run_cmd(ctx, ["git", "remote", "add", "origin", project.repo_url], cwd=folder, timeout_s=60)
+
+    async def project_new(ctx: Context) -> Outcome:
+        p = ctx.job.payload
+        mailer.recipient(rt.paths.env_file)  # the proposal is emailed: fail now if there is no address
+        try:
+            project = store.create(p["fields"], p.get("chat"))
+        except TemplateError as exc:
+            raise Fatal(str(exc)) from exc
+        await _prepare_repo(ctx, project)
+        store.save(project)
+        await ctx.progress(f"📁 {project.dir}: researching and writing proposal v1")
+        return Stages(_proposal(project))
+
+    async def project_step(ctx: Context) -> Outcome:
+        p = ctx.job.payload
+        try:
+            project = store.get(str(p["project"]))
+            phase = decide(project, str(p["action"]), str(p.get("note", "")))
+        except (KeyError, ValueError) as exc:
+            raise Fatal(str(exc).strip("'\"")) from exc
+        if p.get("chat"):
+            project.chat = int(p["chat"])
+        store.save(project)
+        if phase == "proposal":
+            await ctx.progress(f"✏️ writing proposal v{project.version}")
+            return Stages(_proposal(project))
+        if phase == "develop":
+            await ctx.progress(f"🛠 starting development of v{project.version}")
+            return Stages(_develop(project))
+        if phase == "push":
+            await run_cmd(ctx, ["git", "push", "-u", "origin", "HEAD"], cwd=Path(project.dir), timeout_s=600)
+            return Done({"answer": f"⬆️ **{project.name}** pushed to {project.repo_url}."})
+        if project.state == "parked":
+            return Done({"answer": f"⏸ **{project.name}** is parked. Revive it with "
+                                   f"`/resume {project.id} <what to change>`."})
+        actions = ["push"] if project.repo_url else []
+        return Done({"answer": f"🎉 **{project.name}** v{project.version} is done. Thank you!"
+                               + (f" Push it to {project.repo_url} when you are ready." if actions else ""),
+                     "gate": {"project": project.id, "actions": actions}})
+
+    async def project_gate(ctx: Context) -> Outcome:
+        p = ctx.job.payload
+        carry = p.get("_carry") or {}
+        project = store.get(str(p["project"]))
+        review = carry.get("review") or {}
+        score = f"{review.get('score')}/5" if review else "n/a"
+        if p["gate"] == "proposal":
+            project.state = "awaiting_go"
+            project.log("proposal emailed", f"v{project.version}, review {score}")
+            text = (f"📄 **Proposal v{project.version}: {project.name}** is in your email (PDF attached here too). "
+                    f"Independent review: {score}.\n\nShall I start development?")
+            actions = ["go", "nogo"]
+        else:
+            project.state = "awaiting_verification"
+            project.log("built", f"v{project.version}, review {score}")
+            plan = Path(project.dir) / ".law" / "PLAN.md"
+            left = LEFT.findall(plan.read_text()) if plan.exists() else []
+            status = (f"⚠️ {len(left)} milestone(s) not finished: " + "; ".join(left[:5]) + "\n\n") if left else ""
+            text = (f"✅ **{project.name} v{project.version}** is built. Independent review: {score}"
+                    f"{' (' + review.get('summary', '') + ')' if review.get('summary') else ''}.\n\n{status}"
+                    f"Try it: see `README.md` in `{project.dir}`; progress is in `.law/PROGRESS.md`.\n\n"
+                    "Is it good, or what should change?")
+            actions = ["allgood", "changes"]
+        store.save(project)
+        return Done({"answer": text, "gate": {"project": project.id, "actions": actions}})
+
+    return {"project_new": project_new, "project_step": project_step, "project_gate": project_gate}

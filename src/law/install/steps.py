@@ -606,11 +606,14 @@ class OpenCodeConfig:
             role_doc = {**doc, "model": agent["model"], "small_model": agent["model"]}
             # The role's thinking budget. Without it the agent's model thinks unbounded: measured 20-45 minutes
             # between tool calls with Qwen3.8 (2026-10-20). OpenCode sends it as `reasoning_effort`.
+            # A project can ask for another level (its `thinking`), so each role also gets one file per level.
             model_id = agent["model"].removeprefix("law/")
-            provider = json.loads(json.dumps(doc["provider"]))
-            provider["law"]["models"][model_id]["options"] = {"reasoningEffort": roles.get(name).reasoning}
-            role_doc["provider"] = provider
-            out[self.c.paths.config / f"opencode-{name}.json"] = json.dumps(role_doc, indent=2) + "\n"
+            for effort, suffix in ((roles.get(name).reasoning, ""), ("low", "-low"), ("medium", "-medium"),
+                                   ("xhigh", "-xhigh")):
+                provider = json.loads(json.dumps(doc["provider"]))
+                provider["law"]["models"][model_id]["options"] = {"reasoningEffort": effort}
+                body = {**role_doc, "provider": provider}
+                out[self.c.paths.config / f"opencode-{name}{suffix}.json"] = json.dumps(body, indent=2) + "\n"
         return out
 
     def plan(self) -> list[str]:

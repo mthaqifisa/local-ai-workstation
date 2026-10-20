@@ -1,0 +1,197 @@
+"""Project lifecycle: template, state machine, phases and gates (agents and git faked where needed)."""
+
+from __future__ import annotations
+
+import asyncio
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+import pytest
+
+from law import projects, secrets
+from law.handlers import project as project_handlers
+from law.handlers.tasks import agent_env, plan_complete, project_env
+from law.paths import LawPaths
+from law.queue.worker import Done, Fatal, Stages
+
+REPO = Path(__file__).resolve().parents[2]
+FILLED = """/code new
+name: Office Chat
+repo:
+repo_url:
+stack: Spring Boot + Angular
+thinking: high
+summary: Chat for everyone on the office Wi-Fi
+details:
+One username per device.
+Modern UI.
+"""
+
+
+def test_template_round_trip():
+    fields = projects.parse_template(FILLED)
+    assert fields["repo"] == "office-chat" and fields["thinking"] == "high"
+    assert fields["details"] == "One username per device.\nModern UI."
+    assert projects.parse_template(projects.TEMPLATE.replace("name:", "name: X").replace(
+        "summary:", "summary: s").replace("details:", "details: d"))["repo"] == "x"
+
+
+@pytest.mark.parametrize("change,error", [
+    (("name: Office Chat", "name:"), "name"),
+    (("thinking: high", "thinking: max"), "low, medium or high"),
+    (("repo:", "repo: Bad Name"), "folder name"),
+    (("repo_url:", "repo_url: https://user:secret@github.com/me/x.git"), "without a password"),
+])
+def test_template_errors_say_what_is_wrong(change, error):
+    with pytest.raises(projects.TemplateError, match=error):
+        projects.parse_template(FILLED.replace(*change))
+
+
+def test_repo_urls():
+    for url in ("https://github.com/me/office-chat.git", "git@github.com:me/office-chat.git"):
+        assert projects.parse_template(FILLED.replace("repo_url:", f"repo_url: {url}"))["repo_url"] == url
+
+
+def _project(**kw: Any) -> projects.Project:
+    base = dict(id="office-chat", name="Office Chat", dir="/x", summary="s", details="d")
+    return projects.Project(**{**base, **kw})
+
+
+def test_state_machine():
+    p = _project(state="awaiting_go")
+    assert projects.decide(p, "go") == "develop" and p.state == "developing"
+    with pytest.raises(ValueError, match="you can: nothing"):
+        projects.decide(p, "go")
+    p.state = "awaiting_verification"
+    assert projects.decide(p, "changes", "add file sharing") == "proposal"
+    assert (p.state, p.version, p.feedback) == ("proposing", 2, "add file sharing")
+    p.state = "awaiting_go"
+    assert projects.decide(p, "nogo", "") == "" and p.state == "parked"
+    assert projects.decide(p, "resume", "smaller scope") == "proposal" and p.version == 3
+    p.state = "awaiting_verification"
+    assert projects.decide(p, "allgood") == "" and p.state == "done"
+    with pytest.raises(ValueError, match="no repo_url"):
+        projects.decide(p, "push")
+    with pytest.raises(ValueError, match="say what should change"):
+        projects.decide(_project(state="awaiting_verification"), "changes", " ")
+    assert [e.event for e in p.history] == ["go", "changes", "nogo", "resume", "allgood"]
+
+
+def test_store_finds_projects_by_prefix(tmp_path: Path):
+    store = projects.Projects(LawPaths(repo=REPO, home=tmp_path / "LAW", user_home=tmp_path))
+    p = store.create(projects.parse_template(FILLED), chat=7)
+    store.save(p)
+    assert store.get("office").name == "Office Chat" and store.get("office-chat").chat == 7
+    assert (Path(p.dir) / ".law" / "project.json").exists()
+    with pytest.raises(projects.TemplateError, match="already exists"):
+        store.create(projects.parse_template(FILLED), chat=7)
+    with pytest.raises(KeyError, match="office-chat"):
+        store.get("nope")
+
+
+def _rt(tmp_path: Path) -> Any:
+    paths = LawPaths(repo=REPO, home=tmp_path / "LAW", user_home=tmp_path)
+    paths.projects.mkdir(parents=True, exist_ok=True)
+    secrets.write(paths.env_file, {"LAW_REPORT_EMAIL": "me@example.com"})
+    return SimpleNamespace(paths=paths, reg=SimpleNamespace(ports=SimpleNamespace(searxng=8888)))
+
+
+def _ctx(payload: dict[str, Any]) -> Any:
+    async def progress(_: str) -> None:
+        return None
+
+    return SimpleNamespace(job=SimpleNamespace(payload=payload, id="j", parent=None), progress=progress,
+                           cancel_event=asyncio.Event())
+
+
+def _run(rt: Any, kind: str, payload: dict[str, Any]) -> Any:
+    return asyncio.run(project_handlers.make_handlers(rt)[kind](_ctx(payload)))
+
+
+def test_new_project_makes_a_repo_and_runs_the_proposal_to_the_gate(tmp_path: Path):
+    rt = _rt(tmp_path)
+    out = _run(rt, "project_new", {"fields": projects.parse_template(FILLED), "chat": 7})
+    assert isinstance(out, Stages)
+    kinds = [s["kind"] for s in out.specs]
+    assert kinds[0] == "task_translate" and "task_work" in kinds and kinds[-2:] == ["proposal_mail", "project_gate"]
+    folder = rt.paths.projects / "office-chat"
+    assert (folder / ".git").is_dir() and (folder / "docs" / "proposal" / "assets").is_dir()
+    assert all(s["payload"].get("effort") == "xhigh" for s in out.specs if s["kind"] == "task_work")
+
+
+def test_go_runs_environment_milestones_reviews_then_the_verify_gate(tmp_path: Path):
+    rt = _rt(tmp_path)
+    store = projects.Projects(rt.paths)
+    p = store.create(projects.parse_template(FILLED), chat=7)
+    p.state = "awaiting_go"
+    store.save(p)
+    out = _run(rt, "project_step", {"project": "office", "action": "go", "chat": 7})
+    specs = out.specs
+    assert "prepares the Mac" in specs[0]["payload"]["spec"] and specs[0]["payload"]["stall_min"] == 45
+    milestones = [s for s in specs if s["payload"].get("milestone")]
+    assert len(milestones) == project_handlers.MILESTONE_STAGES
+    assert [s["kind"] for s in specs[-7:]] == ["task_review", "task_fix"] * 3 + ["project_gate"]
+    assert "proposal.md (version 1)" in specs[-2]["payload"]["rubric"]
+    assert store.get("office-chat").state == "developing"
+
+
+def test_wrong_decision_fails_with_what_is_allowed(tmp_path: Path):
+    rt = _rt(tmp_path)
+    store = projects.Projects(rt.paths)
+    store.save(store.create(projects.parse_template(FILLED), chat=7))  # state: proposing
+    with pytest.raises(Fatal, match="you can: nothing"):
+        _run(rt, "project_step", {"project": "office-chat", "action": "go"})
+
+
+def test_gates_record_the_state_and_offer_buttons(tmp_path: Path):
+    rt = _rt(tmp_path)
+    store = projects.Projects(rt.paths)
+    p = store.create(projects.parse_template(FILLED), chat=7)
+    Path(p.dir, ".law").mkdir(parents=True)
+    Path(p.dir, ".law", "PLAN.md").write_text("## Version 1\n- [x] backend\n- [ ] frontend UI\n")
+    store.save(p)
+    done = _run(rt, "project_gate", {"project": p.id, "gate": "proposal", "_carry": {"review": {"score": 5}}})
+    assert isinstance(done, Done) and done.result["gate"]["actions"] == ["go", "nogo"]
+    assert "5/5" in done.result["answer"] and store.get(p.id).state == "awaiting_go"
+    done = _run(rt, "project_gate", {"project": p.id, "gate": "verify", "_carry": {"review": {"score": 4}}})
+    assert done.result["gate"]["actions"] == ["allgood", "changes"] and "frontend UI" in done.result["answer"]
+    assert store.get(p.id).state == "awaiting_verification"
+
+
+def test_plan_complete_needs_this_versions_section(tmp_path: Path):
+    law = tmp_path / ".law"
+    law.mkdir()
+    assert not plan_complete(tmp_path, 1)
+    (law / "PLAN.md").write_text("## Version 1\n- [x] a\n- [x] b\n")
+    assert plan_complete(tmp_path, 1) and not plan_complete(tmp_path, 2)
+    (law / "PLAN.md").write_text("## Version 1\n- [x] a\n## Version 2\n- [ ] c\n")
+    assert not plan_complete(tmp_path, 2)
+
+
+def test_project_env_and_thinking_level_reach_the_agent(tmp_path: Path):
+    (tmp_path / ".law").mkdir()
+    (tmp_path / ".law" / "env.sh").write_text('export JAVA_HOME=/opt/jdk21\nexport PATH="/opt/jdk21/bin:$PATH"\n')
+    env = project_env(tmp_path)
+    assert env["JAVA_HOME"] == "/opt/jdk21" and env["PATH"].startswith("/opt/jdk21/bin:")
+    assert project_env(tmp_path / "nope") == {}
+    rt = _rt(tmp_path)
+    rt.paths.config.mkdir(parents=True, exist_ok=True)
+    (rt.paths.config / "opencode-coder-xhigh.json").write_text("{}")
+    assert agent_env(rt, "coder", "xhigh")["OPENCODE_CONFIG"].endswith("opencode-coder-xhigh.json")
+    assert agent_env(rt, "coder", "low")["OPENCODE_CONFIG"].endswith("opencode-coder.json")  # no such file
+
+
+def test_cloning_uses_the_repo_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    rt = _rt(tmp_path)
+    calls: list[list[str]] = []
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        calls.append(cmd)
+        Path(cmd[-1]).mkdir(parents=True)  # noqa: ASYNC240 - the clone creates the folder
+        return ""
+
+    monkeypatch.setattr(project_handlers, "run_cmd", fake_run_cmd)
+    fields = projects.parse_template(FILLED.replace("repo_url:", "repo_url: https://github.com/me/office-chat.git"))
+    _run(rt, "project_new", {"fields": fields, "chat": 7})
+    assert calls[0][:2] == ["git", "clone"] and calls[0][2] == "https://github.com/me/office-chat.git"

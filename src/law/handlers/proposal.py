@@ -68,6 +68,14 @@ Rules:
 - Every claim is sourced or labelled as an assumption or estimate; numbers agree across sections.
 - No placeholders, no TODOs, no lorem ipsum. Write the whole document."""
 
+REVISE_SPEC = """This is version {version} of the proposal. The owner's feedback on the previous version:
+{feedback}
+
+Update {out}/proposal.md in place (keep the YAML header; set the subtitle to end with "(version {version})"):
+keep what still holds, change what the feedback asks for, and add a level-1 section "What changed in version
+{version}" right after the executive summary. If code already exists, read .law/PROGRESS.md and describe the
+current state truthfully, and plan the changes as the next delivery phase. All other rules above still apply."""
+
 DOC_RUBRIC = """You are reviewing a client proposal as a partner at a top-tier strategy firm. Score it 1-5:
 5 = board-ready: answer-first, complete, sourced, consistent numbers, diagrams and wireframes present and correct;
 4 = solid, cosmetic issues only; 3 = usable but has a real gap (missing section, unsourced claim, inconsistent
@@ -108,6 +116,30 @@ def executive_summary(markdown: str, limit: int = 2500) -> str:
     return text if len(text) <= limit else text[:limit].rsplit("\n", 1)[0] + "\n…"
 
 
+def proposal_stages(rt: Runtime, request: str, workdir: Path, out: str, *, version: int = 1, feedback: str = "",
+                    effort: str | None = None, extra: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """The proposal pipeline. Version 1 researches first; later versions revise the existing document."""
+    (workdir / out / "assets").mkdir(parents=True, exist_ok=True)
+    base: dict[str, Any] = {"prompt": request, "dir": str(workdir), "out": out, "version": version,
+                            **({"effort": effort} if effort else {}), **(extra or {})}
+    spec = PROPOSAL_SPEC.format(out=out)
+    if version > 1:
+        spec += "\n\n" + REVISE_SPEC.format(out=out, version=version, feedback=feedback or "(none given)")
+    writer = {**base, "role": "writer", "spec": spec, "rubric": DOC_RUBRIC.format(out=out)}
+    searx = f"http://127.0.0.1:{rt.reg.ports.searxng}"
+    research = [{"kind": "task_work", "payload": {**base, "role": "researcher",
+                                                  "spec": RESEARCH_SPEC.format(out=out, searx=searx)}}]
+    return [
+        {"kind": "task_translate", "payload": {**base, "role": "writer"}},
+        *(research if version == 1 else []),
+        {"kind": "task_work", "payload": writer},
+        {"kind": "task_review", "payload": writer},
+        {"kind": "task_fix", "payload": writer},
+        {"kind": "proposal_render", "payload": base},
+        {"kind": "proposal_mail", "payload": base},
+    ]
+
+
 def make_handlers(rt: Runtime) -> dict[str, Any]:
     def _folders(p: dict[str, Any]) -> tuple[Path, Path]:
         """(agent working folder, document folder)."""
@@ -125,22 +157,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         else:
             workdir = rt.paths.outputs / "docs" / f"proposal-{time.strftime('%Y%m%d-%H%M')}-{slug(request)}"
             out = "."
-        (workdir / out / "assets").mkdir(parents=True, exist_ok=True)
         mailer.recipient(rt.paths.env_file)  # fail now, not after an hour of work, if no address is set
-        searx = f"http://127.0.0.1:{rt.reg.ports.searxng}"
-        base = {"prompt": request, "dir": str(workdir), "out": out}
-        writer = {**base, "role": "writer", "spec": PROPOSAL_SPEC.format(out=out),
-                  "rubric": DOC_RUBRIC.format(out=out)}
-        return Stages([
-            {"kind": "task_translate", "payload": {**base, "role": "writer"}},
-            {"kind": "task_work", "payload": {**base, "role": "researcher",
-                                              "spec": RESEARCH_SPEC.format(out=out, searx=searx)}},
-            {"kind": "task_work", "payload": writer},
-            {"kind": "task_review", "payload": writer},
-            {"kind": "task_fix", "payload": writer},
-            {"kind": "proposal_render", "payload": base},
-            {"kind": "proposal_mail", "payload": base},
-        ])
+        return Stages(proposal_stages(rt, request, workdir, out))
 
     async def proposal_render(ctx: Context) -> Outcome:
         """Diagrams to PNG with mermaid-cli, then pandoc + Typst in the house template."""
@@ -166,7 +184,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                                     f"```\n{code}```\n\n: {caption} (diagram source; it could not be drawn)\n")
         rendered = docs / ".proposal.render.md"
         rendered.write_text(text)
-        pdf = docs / "proposal.pdf"
+        version = int(ctx.job.payload.get("version", 1))
+        pdf = docs / ("proposal.pdf" if version == 1 else f"proposal-v{version}.pdf")
         template = rt.paths.repo / "templates" / "docs" / "proposal.typst"
         await ctx.progress("📄 building the PDF")
         await run_cmd(ctx, ["pandoc", str(rendered), "-o", str(pdf), "--pdf-engine=typst",
@@ -194,9 +213,11 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             lines.append(f"Diagrams shown as source because they could not be drawn: {undrawn}")
         lines += ["", f"Files on the Mac: {docs}", "Request: " + str(p["prompt"])[:500], "", "Sent by LAW"]
         to = mailer.recipient(rt.paths.env_file)
+        version = int(p.get("version", 1))
+        subject = f"Proposal: {title}" if version == 1 else f"Proposal v{version}: {title}"
         await ctx.progress(f"📧 emailing the proposal to {to}")
         try:
-            mailer.send(to, f"Proposal: {title}", "\n".join(lines), [pdf], rt.paths.cache / "tmp")
+            mailer.send(to, subject, "\n".join(lines), [pdf], rt.paths.cache / "tmp")
         except mailer.MailError as exc:
             raise Fatal(f"{exc} (the PDF is at {pdf})") from exc
         return Done({"pdf": str(pdf), "emailed": to,
