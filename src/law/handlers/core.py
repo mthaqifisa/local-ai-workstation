@@ -25,14 +25,32 @@ Recompute every number, rate and total with the run_python tool before scoring; 
 Reply with JSON only: {"score": <1-5>, "issues": ["<problem and fix>"], "summary": "<one sentence>"}"""
 
 
+PROSE_SCORE = re.compile(r"\bscore\b[^0-9\n]{0,12}([0-5])(?:\s*/\s*5)?\b|\b([0-5])\s*/\s*5\b", re.IGNORECASE)
+
+
+def prose_score(text: str) -> int | None:
+    """A judge that answered in prose ("board-ready (Score: 5)", "4/5"): its last stated score, if any."""
+    found = [int(a or b) for a, b in PROSE_SCORE.findall(text)]
+    return found[-1] if found else None
+
+
 def parse_verdict(text: str) -> dict[str, Any]:
+    """The judge's JSON verdict. A reply in prose with a clear score is accepted (seen: a 5/5 'board-ready' verdict
+    without JSON was read as 0 and sent a finished document into a needless fix round); with no score at all it is
+    unparseable (`unscored`, score 0) so the caller can ask again."""
     match = re.search(r"\{.*\}", text, re.DOTALL)
-    if not match:
-        return {"score": 0, "issues": ["judge returned no JSON"], "summary": text[:200]}
-    try:
-        data = json.loads(match.group(0))
-    except json.JSONDecodeError:
-        return {"score": 0, "issues": ["judge returned invalid JSON"], "summary": text[:200]}
+    data: dict[str, Any] | None = None
+    if match:
+        try:
+            data = json.loads(match.group(0))
+        except json.JSONDecodeError:
+            data = None
+    if data is None:
+        score = prose_score(text)
+        if score is None:
+            return {"score": 0, "issues": ["the reviewer gave no score"], "summary": text.strip()[:300],
+                    "unscored": True}
+        return {"score": score, "issues": [], "summary": text.strip()[:300], "format": "prose"}
     try:
         score = int(data.get("score", 0))
     except (TypeError, ValueError):

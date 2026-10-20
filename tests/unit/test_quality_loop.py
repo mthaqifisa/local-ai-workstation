@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from law import registry, roles
 from law.handlers.base import Runtime
 from law.paths import LawPaths
@@ -30,3 +32,23 @@ def runtime(llm: FakeLLM, tmp_path: Path) -> Runtime:
     paths = LawPaths(repo=REPO, home=tmp_path / "LAW", user_home=tmp_path)
     return Runtime(paths, registry.load(paths.registry_file), roles.load(paths.settings / "roles.yaml"),
                    llm)  #
+
+
+@pytest.mark.parametrize("text,score", [
+    ('{"score": 4, "issues": ["x"], "summary": "ok"}', 4),
+    ("The document is board-ready (Score: 5), technically sound.", 5),
+    ("Overall I would rate this 3/5 because the risks section is thin.", 3),
+    ("Score - 4 out of five", 4),
+])
+def test_verdicts_in_json_or_clear_prose(text, score):
+    from law.handlers.core import parse_verdict
+
+    v = parse_verdict(text)
+    assert v["score"] == score and not v.get("unscored")
+
+
+def test_a_verdict_without_any_score_is_marked_for_asking_again():
+    from law.handlers.core import parse_verdict
+
+    v = parse_verdict("I reviewed the files and they look reasonable.")
+    assert v["score"] == 0 and v["unscored"] is True
