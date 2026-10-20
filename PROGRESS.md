@@ -121,3 +121,9 @@ Storage at start: 685Gi used / 208Gi free; ~/LAW 320G.
 - 2026-10-20 09:35 auto-resume: report on heavy video test; lan-chat /code (Telegram, job 2ee5c80be561) queued; fixes (save/restore-state, queued status, silent tests, secrets.py tracked) on branch tony-fixes awaiting merge after report. Disk 228Gi free; ~/LAW 302G.
 - 2026-10-20 09:53 TEST-REPORT generated: all gates PASS (unit 181, integration 9, heavy media 5, installer re-run 0 changes), evals 10/10. Merged tony-fixes (law save/restore-state = HELP #2 done; queued status; silent test jobs; secrets.py tracked). lan-chat agent (Telegram job 2ee5c80be561) running. Next: verify lan-chat independently, then final scan + email.
 - 2026-10-20 10:33 auto-resume: lan-chat agent running (step 1 committed: initial snapshot). Disk 226Gi free; ~/LAW 304G.
+- 2026-10-20 11:33 auto-resume: lan-chat agent 1h35m, 82 steps, no gate run yet (only initial commit). Lightning LoRAs downloaded. Disk 224Gi free; ~/LAW 307G.
+- 2026-10-20 12:33 auto-resume: lan-chat run 5 (reasoning-effort fix) reached ./mvnw verify in 8 min (runs 1-4 never did); running. Disk 223Gi free; ~/LAW 307G.
+- 2026-10-20 13:33 auto-resume: lan-chat run 5 at 1h23m: wrapper added, 3 edits (domain Message/User), still in backend fix loop; no gate commit yet. Disk 222Gi free; ~/LAW 309G.
+- 2026-10-20 14:35 auto-resume check: lan-chat run 5 still running (backend fix loop, ~9 tok/s, steps 1-15 min; no gate commit yet). Disk: 224Gi free; ~/LAW 307G.
+- 2026-10-20 15:25 lan-chat run 5 cancelled: no edits after 12:59 (re-read loop across context compactions); backend only 9 compile errors left. Run 6 (root 1a17f710b7a6) sent via Telegram with a tight compile-fix loop prompt. Follow-up idea: stall guard in task_work (N minutes without a write -> nudge with latest build output).
+- 2026-10-20 15:30 stall guard (32e41eb) + docs; gitleaks false positive ignored (scan clean); HELP.md film line fixed. Handover email drafted.
