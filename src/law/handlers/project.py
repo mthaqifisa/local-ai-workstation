@@ -217,7 +217,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         if p["gate"] == "proposal":
             project.state = "awaiting_go"
             project.log("proposal emailed", f"v{project.version}, review {score}")
-            text = (f"📄 **Proposal v{project.version}: {project.name}** is in your email (PDF attached here too). "
+            where = ("is in your email (PDF attached here too)" if carry.get("emailed")
+                     else f"is attached here (⚠️ email not sent: {carry.get('mail_error') or 'unknown reason'})")
+            text = (f"📄 **Proposal v{project.version}: {project.name}** {where}. "
                     f"Independent review: {score}.\n\nShall I start development?")
             actions = ["go", "nogo"]
         else:
@@ -225,7 +227,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             project.log("built", f"v{project.version}, review {score}")
             left = LEFT.findall(build_section(Path(project.dir), project.version) or "")
             status = (f"⚠️ {len(left)} milestone(s) not finished: " + "; ".join(left[:5]) + "\n\n") if left else ""
-            handover = "the handover document (how to run and use it, with screenshots) is in your email and here"
+            handover = ("the handover document (how to run and use it, with screenshots) is "
+                        + ("in your email and here" if carry.get("emailed") else "attached here (email not sent)"))
             text = (f"✅ **{project.name} v{project.version}** is built. Independent review: {score}"
                     f"{' (' + review.get('summary', '') + ')' if review.get('summary') else ''}.\n\n{status}"
                     f"To try it, {handover if carry.get('pdf') else 'see README.md in `' + project.dir + '`'}; "

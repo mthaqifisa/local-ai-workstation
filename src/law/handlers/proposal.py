@@ -352,16 +352,20 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             undrawn = ", ".join(carry["diagrams_failed"])
             lines.append(f"Diagrams shown as source because they could not be drawn: {undrawn}")
         lines += ["", f"Files on the Mac: {docs}", "Request: " + str(p["prompt"])[:500], "", "Sent by LAW"]
-        to = mailer.recipient(rt.paths.env_file)
         version = int(p.get("version", 1))
         label = info["label"]
         subject = f"{label}: {title}" if version == 1 else f"{label} v{version}: {title}"
-        await ctx.progress(f"📧 emailing the {label.lower()} to {to}")
+        # Email is a second channel: if it fails (no address yet, or macOS has not allowed LAW to control Mail, which
+        # needs one click at an unlocked Mac), the document still reaches the owner in Telegram and the job goes on.
         try:
+            to = mailer.recipient(rt.paths.env_file)
+            await ctx.progress(f"📧 emailing the {label.lower()} to {to}")
             mailer.send(to, subject, "\n".join(lines), [pdf], rt.paths.cache / "tmp")
         except mailer.MailError as exc:
-            raise Fatal(f"{exc} (the PDF is at {pdf})") from exc
-        return Done({"pdf": str(pdf), "emailed": to,
+            await ctx.progress(f"⚠️ email not sent: {exc}")
+            return Done({"pdf": str(pdf), "emailed": None, "mail_error": str(exc),
+                         "answer": f"📄 **{title}**: {label.lower()} ready (PDF attached). ⚠️ Email not sent: {exc}"})
+        return Done({"pdf": str(pdf), "emailed": to, "mail_error": None,
                      "answer": f"📧 **{title}**: {label.lower()} emailed to {to}.\n\nPDF: `{pdf}`"})
 
     return {"proposal": proposal, "proposal_render": proposal_render, "proposal_mail": proposal_mail}
