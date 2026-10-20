@@ -72,15 +72,17 @@ async def run_cmd(ctx: Context, cmd: list[str], *, cwd: Path | None = None, env:
         async for raw in proc.stdout:
             line = raw.decode(errors="replace").rstrip()
             lines.append(line)
-            last_any = time.monotonic()
             if is_work is not None and is_work(line):
                 last_work = time.monotonic()
             if describe is not None:
                 summary = describe(line)
                 if summary:
+                    last_any = time.monotonic()  # an action (read, command, edit); the model's prose is not
                     await ctx.progress(summary)
-            elif len(lines) % progress_every == 0:
-                await ctx.progress(line[-200:])
+            else:
+                last_any = time.monotonic()
+                if len(lines) % progress_every == 0:
+                    await ctx.progress(line[-200:])
 
     async def watch_cancel() -> None:
         await ctx.cancel_event.wait()
