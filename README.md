@@ -326,7 +326,10 @@ OpenCode is the recommended client offline: it is open source and the setup abov
 
 Disk use is bounded: the LLM's SSD prompt cache is capped by `machine.llm_ssd_cache_gb` in
 `settings/registry.yaml` (default 20 GB), agent build caches (Maven, npm, Gradle, pip, uv) go to `~/LAW/cache`,
-and `law reclaim` removes retired models, stale downloads and old logs.
+and `law reclaim` removes retired models, stale downloads and old logs. History is kept for 14 days by default
+(`retention:` in the registry: finished jobs, agent conversations, logs, trash), pruned every 6 hours. The
+Console's **Storage** tab shows every cache with its size and what clearing it costs, clears them with a
+button, and edits the retention and the prompt-cache limit.
 
 Things you create in Open WebUI (model presets, prompts, tools, functions, knowledge-base definitions) are kept
 in the repo with `law save`, which writes `settings/openwebui/`, refuses to save if it finds anything that
