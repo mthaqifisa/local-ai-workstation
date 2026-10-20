@@ -51,17 +51,29 @@ def main() -> int:
     code, out, secs = run([str(VENV_BIN / "mypy")])
     rows.append({"layer": "types (mypy --strict)", "ok": code == 0, "seconds": secs, "detail": out.splitlines()[-1:]})
     rows.append(pytest_layer("unit", ["tests/unit", "tests/wipe"]))
-    rows.append(pytest_layer("integration", ["-m", "integration", "tests/integration"]))
+    rows.append(pytest_layer("integration", ["-m", "integration and not heavy", "tests/integration"]))
+    if "--heavy" in sys.argv:  # image, edit, music, vocals, video: about an hour
+        rows.append(pytest_layer("integration-heavy (media)", ["-m", "integration and heavy", "tests/integration"]))
     code, out, secs = run([str(LAW_HOME / "runtime" / "bin" / "law"), "install"])
     rows.append({"layer": "installer re-run (expect 0 changes)", "ok": code == 0 and "changed 0 item(s)" in out,
                  "seconds": secs, "detail": out.splitlines()[-1:]})
 
     evals = sorted((ART / "evals").glob("eval-*.json"))
-    eval_rows = json.loads(evals[-1].read_text()) if evals else []
+    eval_rows = latest_per_case(evals)
+    sources = ", ".join(f"`{e.name}`" for e in evals) or None
 
     (ART / "report.json").write_text(json.dumps({"layers": rows, "eval": eval_rows}, indent=2))
-    write_markdown(rows, eval_rows, evals[-1].name if evals else None)
+    write_markdown(rows, eval_rows, sources)
     return 0 if all(r["ok"] for r in rows) else 1
+
+
+def latest_per_case(files: list[Path]) -> list[dict[str, object]]:
+    """Each case's most recent result across runs (`law eval --only` reruns a subset), in golden-set order."""
+    latest: dict[str, dict[str, object]] = {}
+    for f in files:  # oldest first, so later runs overwrite earlier results
+        for row in json.loads(f.read_text()):
+            latest[str(row["id"])] = row
+    return list(latest.values())
 
 
 def write_markdown(rows: list[dict[str, object]], eval_rows: list[dict[str, object]], eval_file: str | None) -> None:
@@ -84,7 +96,7 @@ def write_markdown(rows: list[dict[str, object]], eval_rows: list[dict[str, obje
     lines += ["", "## Capability evaluation (golden set, independent judge)", ""]
     if eval_rows:
         passed = sum(bool(e["passed"]) for e in eval_rows)
-        lines += [f"Source: `{eval_file}`. **{passed}/{len(eval_rows)} passed.**", "",
+        lines += [f"Latest result per case from {eval_file}. **{passed}/{len(eval_rows)} passed.**", "",
                   "| Case | Domain | Result | Checks | Judge | Time (s) |", "|---|---|---|---|---|---|"]
         for e in eval_rows:
             checks = e["checks"] if isinstance(e["checks"], dict) else {}

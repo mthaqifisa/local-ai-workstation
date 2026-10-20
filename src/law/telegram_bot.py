@@ -81,7 +81,7 @@ class LawBot:
         @dp.message(Command("music"))
         async def music(message: Message, command: CommandObject) -> None:
             if self._ok(message) and command.args:
-                await self._job(message, "music", {"caption": command.args, "duration": 60}, file_field="audio")
+                await self._job(message, "song", {"prompt": command.args, "duration": 60}, file_field="audio")
 
         @dp.message(Command("say"))
         async def say(message: Message, command: CommandObject) -> None:
@@ -367,7 +367,8 @@ COMMANDS: list[tuple[str, str, str]] = [
     ("edit", "Edit a photo: send a photo with this caption", "(photo) /edit make the sky stormy"),
     ("video", "Make a video: duration, theme, style", "/video 8s, cinematic drone shot over Kuala Lumpur at sunset"),
     ("animate", "Animate a photo: send a photo with this caption", "(photo) /animate slow push-in, leaves moving"),
-    ("music", "Make a song: genre, vibe, duration, lyrics", "/music 90s upbeat Malay pop about rainy KL nights"),
+    ("music", "Make a song: theme, genre/vibe, duration; Tony writes lyrics unless you add a 'lyrics:' line",
+     "/music 90s upbeat Malay pop about rainy KL nights, 2 min"),
     ("say", "Reply with a voice message", "/say Good morning, here is today's plan"),
     ("jobs", "Recent jobs and their status", "/jobs"),
     ("cancel", "Stop a job (newest if no id)", "/cancel"),
