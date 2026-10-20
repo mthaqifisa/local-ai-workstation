@@ -145,7 +145,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
 
     async def music(ctx: Context) -> Outcome:
         spec = rt.reg.media["music"]
-        p = ctx.job.payload
+        p = {**ctx.job.payload.get("_carry", {}), **ctx.job.payload}  # a song plan's caption/lyrics arrive as carry
         caption, lyrics = split_lyrics(str(p.get("caption", p.get("prompt", ""))))
         seconds, caption = parse_duration(caption, float(p.get("duration", 60)), 15, 240)
         lyrics = p.get("lyrics") or lyrics or "[instrumental]"

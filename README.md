@@ -199,7 +199,7 @@ law install
 | `/code <task>` | The coding agent builds a new project in `~/SourceCode/` |
 | `/code <folder> <task>` | Works in an existing project, e.g. `/code ~/SourceCode/my-app add a login page` |
 | `/image <prompt>` | Generates an image and sends it back |
-| `/music <prompt>` | Generates music and sends it back |
+| `/music <request>` | A full song: theme, genre/vibe and length (e.g. `2 min`). Tony writes the lyrics, or add a `lyrics:` line with your own; say `instrumental` for no vocals |
 | `/agent <role> <task>` | Runs a role, e.g. `/agent architect design a payments API` or `/agent operator play jazz on Spotify` |
 | `/jobs` | Recent jobs and their status |
 

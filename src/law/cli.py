@@ -135,8 +135,14 @@ def stt(audio: str, quiet: bool = False) -> None:
 
 
 @app.command()
+def song(prompt: Annotated[list[str], typer.Argument()], duration: int = 60, quiet: bool = False) -> None:
+    """Make a song from a theme, genre/vibe and duration; lyrics are written unless given after 'lyrics:'."""
+    _run_job("song", {"prompt": " ".join(prompt), "duration": duration}, quiet=quiet, field="audio")
+
+
+@app.command()
 def music(prompt: Annotated[list[str], typer.Argument()], duration: int = 30, quiet: bool = False) -> None:
-    """Generate music from a description."""
+    """Render music exactly as described (no lyric writing); see `law song` for full songs."""
     _run_job("music", {"caption": " ".join(prompt), "duration": duration}, quiet=quiet, field="audio")
 
 
