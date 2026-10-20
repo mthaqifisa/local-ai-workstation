@@ -20,6 +20,7 @@ from typing import Any
 from law import mailer
 from law.handlers.base import Runtime, run_cmd
 from law.handlers.proposal import proposal_stages
+from law.handlers.tasks import build_section
 from law.projects import Project, Projects, TemplateError, decide
 from law.queue.worker import Context, Done, Fatal, Outcome, Stages
 
@@ -39,10 +40,10 @@ version, installed version, how it is selected. Commit `.law/`."""
 
 DEV_SPEC = """Build {name} version {version} as specified in {out}/proposal.md{scope}. The tools are ready
 (.law/ENVIRONMENT.md); do not change versions without updating it.
-Milestones: if .law/PLAN.md has no section "## Version {version}", first add it: a checklist (`- [ ] ...`) of 3 to
-8 milestones in build order, each small enough for one session and ending with a passing build and tests (e.g.
-"Backend: domain model, REST API and unit tests green"). Then implement ONLY the first unchecked milestone of
-version {version}: write the code and its tests, run the build and tests until they pass, commit with a clear
+Milestones: if .law/PLAN.md has no section "## Build version {version}", first add it with exactly that heading:
+a checklist (`- [ ] ...`) of 3 to 8 milestones in build order, each small enough for one session and ending with a passing build and tests (e.g.
+"Backend: domain model, REST API and unit tests green"). Then implement ONLY the first unchecked milestone in
+"## Build version {version}": write the code and its tests, run the build and tests until they pass, commit with a clear
 message, tick it (`- [x]`) in .law/PLAN.md, add an entry to .law/PROGRESS.md, and stop. Do not start the next
 milestone. The last milestone includes a README that explains how to install, run and test the product, including
 from another device if it is a network service."""
@@ -55,7 +56,7 @@ REVIEW_CONTEXT = """
 The specification is {out}/proposal.md (version {version}); the milestones are in .law/PLAN.md. Check the delivered
 scope against them, and run the build and tests yourself."""
 
-LEFT = re.compile(r"^\s*- \[ \]\s*(.+)$", re.MULTILINE)
+LEFT = re.compile(r"^\s*- \[ \]\s*(.+)$", re.MULTILINE)  # unticked milestones in a build section
 
 
 def make_handlers(rt: Runtime) -> dict[str, Any]:
@@ -151,8 +152,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         else:
             project.state = "awaiting_verification"
             project.log("built", f"v{project.version}, review {score}")
-            plan = Path(project.dir) / ".law" / "PLAN.md"
-            left = LEFT.findall(plan.read_text()) if plan.exists() else []
+            left = LEFT.findall(build_section(Path(project.dir), project.version) or "")
             status = (f"⚠️ {len(left)} milestone(s) not finished: " + "; ".join(left[:5]) + "\n\n") if left else ""
             text = (f"✅ **{project.name} v{project.version}** is built. Independent review: {score}"
                     f"{' (' + review.get('summary', '') + ')' if review.get('summary') else ''}.\n\n{status}"

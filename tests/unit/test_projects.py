@@ -149,24 +149,32 @@ def test_gates_record_the_state_and_offer_buttons(tmp_path: Path):
     store = projects.Projects(rt.paths)
     p = store.create(projects.parse_template(FILLED), chat=7)
     Path(p.dir, ".law").mkdir(parents=True)
-    Path(p.dir, ".law", "PLAN.md").write_text("## Version 1\n- [x] backend\n- [ ] frontend UI\n")
+    Path(p.dir, ".law", "PLAN.md").write_text("## Proposal v1 sections\n- [ ] appendix\n"
+                                              "## Build version 1\n- [x] backend\n- [ ] frontend UI\n")
     store.save(p)
     done = _run(rt, "project_gate", {"project": p.id, "gate": "proposal", "_carry": {"review": {"score": 5}}})
     assert isinstance(done, Done) and done.result["gate"]["actions"] == ["go", "nogo"]
     assert "5/5" in done.result["answer"] and store.get(p.id).state == "awaiting_go"
     done = _run(rt, "project_gate", {"project": p.id, "gate": "verify", "_carry": {"review": {"score": 4}}})
     assert done.result["gate"]["actions"] == ["allgood", "changes"] and "frontend UI" in done.result["answer"]
+    assert "appendix" not in done.result["answer"]  # only the build's unfinished milestones are reported
     assert store.get(p.id).state == "awaiting_verification"
 
 
-def test_plan_complete_needs_this_versions_section(tmp_path: Path):
+def test_plan_complete_counts_only_this_versions_build_section(tmp_path: Path):
     law = tmp_path / ".law"
     law.mkdir()
     assert not plan_complete(tmp_path, 1)
-    (law / "PLAN.md").write_text("## Version 1\n- [x] a\n- [x] b\n")
+    (law / "PLAN.md").write_text("## Build version 1\n- [x] a\n- [x] b\n")
     assert plan_complete(tmp_path, 1) and not plan_complete(tmp_path, 2)
-    (law / "PLAN.md").write_text("## Version 1\n- [x] a\n## Version 2\n- [ ] c\n")
+    (law / "PLAN.md").write_text("## Build version 1\n- [x] a\n## Build version 2\n- [ ] c\n")
+    assert plan_complete(tmp_path, 1) and not plan_complete(tmp_path, 2)
+    # a finished proposal checklist for v2 must not look like a finished v2 build
+    (law / "PLAN.md").write_text("## Proposal v2 sections\n- [x] summary\n## Build version 1\n- [x] a\n")
     assert not plan_complete(tmp_path, 2)
+    # unticked research steps elsewhere don't block a finished build
+    (law / "PLAN.md").write_text("## Research\n- [ ] more sources\n## Build version 2\n- [x] c\n### Notes\nx\n")
+    assert plan_complete(tmp_path, 2)
 
 
 def test_project_env_and_thinking_level_reach_the_agent(tmp_path: Path):
