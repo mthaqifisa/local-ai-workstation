@@ -3,17 +3,49 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 import httpx
 
 from law.handlers.base import Runtime, Stalled, run_cmd
-from law.handlers.core import PASS_SCORE, parse_verdict
+from law.handlers.core import PASS_SCORE, answer, parse_verdict
+from law.project_memory import FOLDER, ProjectMemory, project_listing
 from law.queue.worker import Context, Done, Fatal, Outcome, Stages
 
-# Roles whose output is code or files get an independent review + one fix pass by default.
+# Roles whose output is code or files get a translated brief, an independent review and one fix pass by default.
 REVIEWED_ROLES = {"coder", "writer", "designer", "architect", "analyst"}
+
+TRANSLATE = """Write the brief for a {role} agent.
+
+The user's REQUEST:
+{request}
+
+Project folder: {folder}
+Files there now:
+{listing}
+
+Plan and progress recorded so far:
+{memory}{choose}"""
+
+# A coder request without a folder: the translator names the project folder; LAW validates and creates it, so
+# every project gets its own folder (never ~/SourceCode itself, never an unrelated project).
+CHOOSE_FOLDER = """
+
+Existing projects in {root}: {projects}
+Begin your reply with one line `Project folder: {root}/<name>`. Use an existing project's folder only when the
+REQUEST refers to that project by name. Otherwise choose a new, short kebab-case name: the project name the user
+gave, or one that describes the project. Then write the brief."""
+PROJECT_LINE = re.compile(r"^\W*Project folder:\**\s*`?([^`\s]+)`?\s*$", re.MULTILINE | re.IGNORECASE)
+PROJECT_NAME = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
+
+NEW_PROJECT_MEMORY = ("Create the project in a new folder ~/SourceCode/<project-name>/, named after the project the "
+                      "user named. Never write files directly in ~/SourceCode or into another project's folder.\n"
+                      f"In the new project folder, create {FOLDER}/ first: {FOLDER}/PROMPT.md holding the brief "
+                      f"below word for word, plus {FOLDER}/RESEARCH.md, {FOLDER}/PLAN.md (numbered steps with "
+                      f"checkboxes and gates) and {FOLDER}/PROGRESS.md (done, gate output, next step), and keep "
+                      f"them current after every step. Never write secrets into {FOLDER}/.")
 
 CODE_RUBRIC = """You are reviewing work for production use at a bank. Score it 1-5:
 5 = correct, complete, clean, well tested, docs accurate; 4 = solid, cosmetic issues only;
@@ -37,6 +69,20 @@ async def searx(rt: Runtime, query: str, limit: int = 8) -> list[dict[str, Any]]
 TOOL_ICONS = {"write": "✏️ writing", "edit": "✏️ editing", "patch": "✏️ patching", "read": "📖 reading",
               "bash": "▶ running", "grep": "🔎 searching", "glob": "🔎 finding", "list": "📂 listing",
               "webfetch": "🌐 fetching", "todowrite": "🗒 planning"}
+
+
+def project_folder(brief: str, root: Path) -> Path | None:
+    """The folder the translator chose: a valid name directly under the projects root, or None."""
+    match = PROJECT_LINE.search(brief)
+    if not match:
+        return None
+    path = Path(match.group(1)).expanduser()
+    if not path.is_absolute():
+        path = root / path
+    name = path.name.lower()
+    if path.parent.resolve() != root.resolve() or not PROJECT_NAME.match(name):
+        return None
+    return root / name
 
 
 def describe_opencode_line(line: str) -> str | None:
@@ -125,18 +171,33 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         hits = await searx(rt, ctx.job.payload["query"], int(ctx.job.payload.get("limit", 8)))
         return Done({"results": hits})
 
-    async def _agent(ctx: Context, role: str, prompt: str, workdir: Path, *, writes: bool = True) -> str:
+    async def _agent(ctx: Context, role: str, prompt: str, workdir: Path, *, writes: bool = True,
+                     memory: ProjectMemory | None = None) -> str:
         """Run one OpenCode agent. A writing agent that stalls (no file change for STALL_MINUTES) is stopped and
-        its session resumed with a nudge to build and fix."""
+        its session resumed with a nudge to build and fix. With project memory, the session is recorded in
+        `.law/session.json`, and a job that restarts (e.g. after a worker restart) resumes that session."""
         rt.roles.get(role)  # validate
         model = f"law/{rt.model_id(role)}"
         stall_min = float(ctx.job.payload.get("stall_min", STALL_MINUTES))
-        await ctx.progress(f"{role} agent working in {workdir}")
         base = ["opencode", "run", "--agent", role, "-m", model, "--format", "json", "--dir", str(workdir)]
-        cmd = [*base, prompt]
+        resumed = memory.session_for(ctx.job.id) if memory else None
+        if resumed:
+            await ctx.progress(f"{role} agent resuming its interrupted session in {workdir}")
+            cmd = [*base, "--session", resumed, memory.resume_prompt() if memory else ""]
+        else:
+            await ctx.progress(f"{role} agent working in {workdir}")
+            cmd = [*base, prompt]
+
+        def describe(line: str) -> str | None:
+            if memory is not None and line.startswith('{"'):
+                sid = session_id(line)
+                if sid:
+                    memory.save_session(ctx.job.id, role, sid)
+            return describe_opencode_line(line)
+
         for attempt in range(STALL_NUDGES + 1):
             try:
-                out = await run_cmd(ctx, cmd, cwd=workdir, env=agent_env(rt, role), describe=describe_opencode_line,
+                out = await run_cmd(ctx, cmd, cwd=workdir, env=agent_env(rt, role), describe=describe,
                                     timeout_s=float(ctx.job.payload.get("timeout_s", 4 * 3600)),
                                     stall_s=stall_min * 60 if writes and stall_min > 0 else None,
                                     is_work=is_file_change)
@@ -149,15 +210,37 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 cmd = [*base, "--session", sid, NUDGE.format(minutes=f"{stall_min:.0f}")]
         raise AssertionError("unreachable")
 
-    def _scoped(p: dict[str, Any]) -> str:
-        """When the user named a directory, the agent must build there, not in a new folder."""
-        if p.get("dir"):
-            return (f"Work in this directory and create the project files directly in it: {p['dir']}\n"
-                    f"Do not create a different project folder.\n\n{p['prompt']}")
-        return str(p["prompt"])
+    def _scoped(p: dict[str, Any], memory: ProjectMemory | None = None, writes: bool = True) -> str:
+        """The agent's prompt: the brief (or the raw request), the folder to work in, and how to keep `.law/`."""
+        carry = p.get("_carry") or {}
+        parts = []
+        if _dir(p):  # a named or chosen folder: build there, not in a new one
+            parts.append(f"Work in this directory and create the project files directly in it: {_workdir(p)}\n"
+                         f"Do not create a different project folder.")
+        if memory is not None:
+            parts.append(memory.instructions())
+        elif writes:
+            parts.append(NEW_PROJECT_MEMORY)
+        parts.append(str(carry.get("brief") or p["prompt"]))
+        return "\n\n".join(parts)
+
+    def _memory(ctx: Context, p: dict[str, Any]) -> ProjectMemory | None:
+        """Project memory lives in the folder the user named; a new project creates its own `.law/`."""
+        if not _dir(p):
+            return None
+        memory = ProjectMemory(_workdir(p))
+        memory.prepare(ctx.job.parent or ctx.job.id, str(p["prompt"]), (p.get("_carry") or {}).get("brief"))
+        return memory
+
+    def _dir(p: dict[str, Any]) -> str | None:
+        """The folder the user named, or the one the translator chose for a new project."""
+        return p.get("dir") or (p.get("_carry") or {}).get("dir")
 
     def _workdir(p: dict[str, Any]) -> Path:
-        workdir = Path(p.get("dir") or rt.paths.projects).expanduser()
+        named = _dir(p)
+        workdir = Path(named or rt.paths.projects).expanduser()
+        if named and not workdir.exists() and workdir.parent.resolve() == rt.paths.projects.resolve():
+            workdir.mkdir()  # `/code ~/SourceCode/new-app ...` starts a new project in that folder
         if not workdir.is_dir():
             raise Fatal(f"directory does not exist: {workdir}")
         return workdir
@@ -167,21 +250,63 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         p = ctx.job.payload
         role = p.get("role", "coder")
         workdir = _workdir(p)
-        if p.get("review", role in REVIEWED_ROLES) and ctx.job.parent is None:
-            base = {"prompt": p["prompt"], "dir": str(workdir), "role": role}
-            return Stages([{"kind": "task_work", "payload": base}, {"kind": "task_review", "payload": base},
-                           {"kind": "task_fix", "payload": base}])
-        answer = await _agent(ctx, role, _scoped(p), workdir, writes=role in REVIEWED_ROLES)
-        return Done({"answer": answer, "dir": str(workdir)})
+        translate = p.get("translate", role in REVIEWED_ROLES)
+        review = p.get("review", role in REVIEWED_ROLES)
+        if (translate or review) and ctx.job.parent is None:
+            base = {"prompt": p["prompt"], "role": role, **({"dir": str(workdir)} if p.get("dir") else {})}
+            stages = [{"kind": "task_translate", "payload": base}] if translate else []
+            stages.append({"kind": "task_work", "payload": base})
+            if review:
+                stages += [{"kind": "task_review", "payload": base}, {"kind": "task_fix", "payload": base}]
+            return Stages(stages)
+        writes = role in REVIEWED_ROLES
+        memory = _memory(ctx, p) if writes else None
+        text = await _agent(ctx, role, _scoped(p, memory, writes), workdir, writes=writes, memory=memory)
+        return Done({"answer": text, "dir": str(workdir)})
+
+    async def task_translate(ctx: Context) -> Outcome:
+        """The translator turns the request into a precise brief, aware of what the project folder already holds."""
+        p = ctx.job.payload
+        workdir = _workdir(p)
+        named = bool(p.get("dir"))
+        choose = not named and p["role"] == "coder"
+        root = rt.paths.projects
+        projects = sorted(d.name for d in root.iterdir() if d.is_dir() and not d.name.startswith(".")) \
+            if root.is_dir() else []
+        prompt = TRANSLATE.format(
+            role=p["role"], request=p["prompt"],
+            folder=workdir if named else "a new folder (see below)",
+            listing=project_listing(workdir) if named else "(new project)",
+            memory=(ProjectMemory(workdir).context() if named else "") or "(none)",
+            choose=CHOOSE_FOLDER.format(root=root, projects=", ".join(projects) or "(none)") if choose else "")
+        await ctx.progress("📝 translating the request into a brief")
+        brief = (await answer(rt, "translator", [{"role": "user", "content": prompt}], ctx)).strip()
+        if not brief:
+            raise Fatal("the translator returned an empty brief")
+        result: dict[str, Any] = {"brief": brief}
+        if choose:
+            folder = project_folder(brief, root)
+            if folder is None:
+                raise Fatal("the translator did not name a valid project folder under " + str(root))
+            folder.mkdir(parents=True, exist_ok=True)
+            result["dir"] = str(folder)
+            await ctx.progress(f"📁 project folder: {folder}")
+        await ctx.progress(f"📝 brief ready ({len(brief.split())} words)")
+        return Done(result)
 
     async def task_work(ctx: Context) -> Outcome:
         p = ctx.job.payload
-        return Done({"answer": await _agent(ctx, p["role"], _scoped(p), _workdir(p)), "dir": p["dir"]})
+        memory = _memory(ctx, p)
+        text = await _agent(ctx, p["role"], _scoped(p, memory), _workdir(p), memory=memory)
+        return Done({"answer": text, "dir": str(_workdir(p))})
 
     async def task_review(ctx: Context) -> Outcome:
         p = ctx.job.payload
-        report = ctx.job.payload["_carry"].get("answer", "")
-        prompt = (f"{CODE_RUBRIC}\n\nThe REQUEST was:\n{p['prompt']}\n\nThe author reported:\n{report[:4000]}\n\n"
+        carry = ctx.job.payload["_carry"]
+        report = carry.get("answer", "")
+        brief = f"\n\nThe author worked from this brief:\n{carry['brief'][:6000]}" if carry.get("brief") else ""
+        prompt = (f"{CODE_RUBRIC}\n\nThe REQUEST was:\n{p['prompt']}{brief}\n\nThe author reported:\n"
+                  f"{report[:4000]}\n\n"
                   "Inspect the files the author created or changed (the project may be in a new folder under "
                   "~/SourceCode named after it). Verify claims against the code; do not trust the report.")
         verdict = parse_verdict(await _agent(ctx, "reviewer", prompt, _workdir(p), writes=False))
@@ -192,12 +317,16 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         carry = ctx.job.payload["_carry"]
         verdict = carry["review"]
         if verdict["score"] >= PASS_SCORE:
-            return Done({"answer": carry["answer"], "review": verdict, "fixed": False, "dir": p["dir"]})
+            return Done({"answer": carry["answer"], "review": verdict, "fixed": False, "dir": carry.get("dir")})
         issues = "\n".join(f"- {i}" for i in verdict["issues"]) or "- raise the quality to client-ready"
         prompt = (f"An independent reviewer scored your work {verdict['score']}/5 for this request:\n{p['prompt']}\n\n"
                   f"Fix every issue below, then rerun the project's checks until they pass and report the output:\n"
                   f"{issues}")
-        answer = await _agent(ctx, p["role"], prompt, _workdir(p))
-        return Done({"answer": answer, "review": verdict, "fixed": True, "dir": p["dir"]})
+        memory = _memory(ctx, p)
+        if memory is not None:
+            prompt = f"{memory.instructions()}\n\n{prompt}"
+        text = await _agent(ctx, p["role"], prompt, _workdir(p), memory=memory)
+        return Done({"answer": text, "review": verdict, "fixed": True, "dir": carry.get("dir")})
 
-    return {"search": search, "task": task, "task_work": task_work, "task_review": task_review, "task_fix": task_fix}
+    return {"search": search, "task": task, "task_translate": task_translate, "task_work": task_work,
+            "task_review": task_review, "task_fix": task_fix}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import fakeredis
@@ -363,3 +364,144 @@ async def test_reviewer_is_never_treated_as_stalled(setup, sandbox, monkeypatch)
     await store.submit(resolver(rt)(Job(kind="task", payload={"prompt": "x", "role": "coder", "dir": str(sandbox)})))
     await w.drain()
     assert seen == {"coder": 25 * 60, "reviewer": None}
+
+
+async def test_translated_brief_drives_the_agent_and_lands_in_project_memory(setup, sandbox, monkeypatch):
+    from law.handlers import tasks
+
+    rt, store, w = setup
+    prompts: list[tuple[str, str]] = []
+
+    async def fake_answer(rt_, role, messages, ctx=None):  # type: ignore[no-untyped-def]
+        prompts.append((role, messages[-1]["content"]))
+        return "## Goal\nA LAN chat app\n## Acceptance criteria\n- ./mvnw verify passes"
+
+    async def fake_run_cmd(ctx, cmd, **kw):  # type: ignore[no-untyped-def]
+        ctx_line = _tool_event("edit", "/x", "ses_7")
+        kw["describe"](ctx_line)  # the agent's first event records its session
+        prompts.append((cmd[cmd.index("--agent") + 1], cmd[-1]))
+        return _opencode_json("done")
+
+    monkeypatch.setattr(tasks, "answer", fake_answer)
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    (sandbox / "pom.xml").write_text("<project/>")
+    job = await store.submit(resolver(rt)(Job(kind="task", payload={"prompt": "make the chat app work",
+                                                                        "role": "coder", "dir": str(sandbox),
+                                                                        "review": False})))
+    await w.drain()
+    assert (await store.require(job.id)).status == Status.DONE
+    (t_role, t_prompt), (a_role, a_prompt) = prompts
+    assert t_role == "translator" and "make the chat app work" in t_prompt and "pom.xml" in t_prompt
+    assert a_role == "coder" and "## Acceptance criteria" in a_prompt and ".law/PROGRESS.md" in a_prompt
+    law = sandbox / ".law"
+    assert "./mvnw verify passes" in (law / "PROMPT.md").read_text()
+    assert "make the chat app work" in (law / "REQUESTS.md").read_text()
+    assert json.loads((law / "session.json").read_text())["session"] == "ses_7"
+
+
+async def test_restarted_job_resumes_its_recorded_session(setup, sandbox, monkeypatch):
+    from law.handlers import tasks
+    from law.project_memory import ProjectMemory
+
+    rt, store, w = setup
+    cmds: list[list[str]] = []
+
+    async def fake_run_cmd(ctx, cmd, **kw):  # type: ignore[no-untyped-def]
+        cmds.append(cmd)
+        return _opencode_json("continued")
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    job = resolver(rt)(Job(kind="task", payload={"prompt": "x", "role": "coder", "dir": str(sandbox),
+                                                  "review": False, "translate": False}))
+    ProjectMemory(sandbox).save_session(job.id, "coder", "ses_old")  # the session that died
+    await store.submit(job)
+    await w.drain()
+    assert cmds[0][cmds[0].index("--session") + 1] == "ses_old" and "interrupted" in cmds[0][-1]
+
+
+async def test_new_project_without_folder_is_told_to_create_its_memory(setup, sandbox, monkeypatch):
+    from law.handlers import tasks
+
+    rt, store, w = setup
+    rt.paths.projects.mkdir(parents=True, exist_ok=True)
+    seen: list[str] = []
+
+    async def fake_run_cmd(ctx, cmd, **kw):  # type: ignore[no-untyped-def]
+        seen.append(cmd[-1])
+        return _opencode_json("done")
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    await store.submit(resolver(rt)(Job(kind="task", payload={"prompt": "build a todo app", "role": "coder",
+                                                                "review": False, "translate": False})))
+    await w.drain()
+    assert "Work in this directory" not in seen[0]  # no folder named: the agent makes its own project folder
+    assert "create .law/ first" in seen[0] and seen[0].endswith("build a todo app")
+    assert not (rt.paths.projects / ".law").exists()
+
+
+async def test_translator_runs_on_the_same_model_as_the_coder(setup):
+    rt, _, _ = setup
+    translate = resolver(rt)(Job(kind="task_translate", payload={"role": "coder"}))
+    work = resolver(rt)(Job(kind="task_work", payload={"role": "coder"}))
+    assert translate.resource == work.resource  # no model swap between the two stages
+
+
+@pytest.mark.parametrize("line,expected", [
+    ("Project folder: {root}/lan-chat", "lan-chat"),
+    ("**Project folder:** `{root}/Invoice-API`", "invoice-api"),
+    ("Project folder: invoice-api", "invoice-api"),
+    ("Project folder: {root}", None),  # never the projects root itself
+    ("Project folder: {root}/a/b", None),  # only directly under the root
+    ("Project folder: /tmp/elsewhere", None),
+    ("no folder line", None),
+])
+def test_project_folder_is_validated(tmp_path, line, expected):
+    from law.handlers.tasks import project_folder
+
+    got = project_folder(line.format(root=tmp_path) + "\n## Goal\nx", tmp_path)
+    assert got == (tmp_path / expected if expected else None)
+
+
+async def test_new_project_gets_the_folder_the_translator_names(setup, sandbox, monkeypatch):
+    from law.handlers import tasks
+
+    rt, store, w = setup
+    (rt.paths.projects / "lan-chat").mkdir(parents=True)
+    seen: dict[str, str] = {}
+
+    async def fake_answer(rt_, role, messages, ctx=None):  # type: ignore[no-untyped-def]
+        seen["translator"] = messages[-1]["content"]
+        return f"Project folder: {rt.paths.projects}/invoice-api\n## Goal\nAn invoice API"
+
+    async def fake_run_cmd(ctx, cmd, **kw):  # type: ignore[no-untyped-def]
+        seen["coder"] = cmd[-1]
+        seen["cwd"] = str(kw["cwd"])
+        return _opencode_json("done")
+
+    monkeypatch.setattr(tasks, "answer", fake_answer)
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    job = await store.submit(resolver(rt)(Job(kind="task", payload={"prompt": "build the invoice-api project",
+                                                                        "role": "coder", "review": False})))
+    await w.drain()
+    done = await store.require(job.id)
+    target = rt.paths.projects / "invoice-api"
+    assert done.status == Status.DONE and done.result["dir"] == str(target)
+    assert "lan-chat" in seen["translator"]  # it knows the existing projects
+    assert seen["cwd"] == str(target) and f"directly in it: {target}" in seen["coder"]
+    assert (target / ".law" / "PROMPT.md").exists() and not (rt.paths.projects / "lan-chat" / ".law").exists()
+
+
+async def test_translator_without_a_valid_folder_fails_the_job(setup, monkeypatch):
+    from law.handlers import tasks
+
+    rt, store, w = setup
+    rt.paths.projects.mkdir(parents=True, exist_ok=True)
+
+    async def fake_answer(rt_, role, messages, ctx=None):  # type: ignore[no-untyped-def]
+        return f"Project folder: {rt.paths.projects}\n## Goal\nx"
+
+    monkeypatch.setattr(tasks, "answer", fake_answer)
+    job = await store.submit(resolver(rt)(Job(kind="task", payload={"prompt": "build x", "role": "coder"})))
+    await w.drain()
+    done = await store.require(job.id)
+    assert done.status == Status.FAILED and "valid project folder" in (done.error or "")
