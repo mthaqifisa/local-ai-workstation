@@ -144,9 +144,9 @@ Storage at start: 685Gi used / 208Gi free; ~/LAW 320G.
 Happy path and unhappy paths, all from Telegram, monitored every 5 min:
 - [x] Incomplete template -> Tony names the missing fields (21:54)
 - [x] /code init -> template -> filled template -> project folder, git, .law/ (21:55, root 86d87bf7fed9, low/brief)
-- [ ] Proposal v1 (brief) emailed + PDF in Telegram + Go / No go buttons
-- [ ] Wrong-time decision (e.g. /allgood while proposing) -> clear refusal
-- [ ] No go with a pivot (changed requirement) -> proposal v2 reflects it, emailed + posted
+- [x] Proposal v1 (brief) PDF in Telegram + Go / No go buttons (01:34; email blocked: Mac locked, needs one Automation click; review 5/5 after prose-verdict fix)
+- [x] Wrong-time decision (Go while v2 is written) -> refused, state unchanged (now an info message, not a failure)
+- [~] No go with a pivot (DMs + 200-message history) -> v2 pipeline running (01:37)
 - [ ] No go + "stop" -> parked; /resume <note> -> revived (v3)
 - [ ] Go -> environment stage (tools checked/installed, .law/env.sh, ENVIRONMENT.md)
 - [ ] Milestones on a ticket board (## Build version 1, KEY-n tickets), one session each
@@ -162,3 +162,4 @@ Happy path and unhappy paths, all from Telegram, monitored every 5 min:
 - 2026-10-20 22:33 auto-resume check: E2E proposal v1 research in progress (writing research.md topic by topic). Disk 218Gi free; ~/LAW 310G.
 - 2026-10-20 23:33 auto-resume check: proposal now written one session per section (fix deployed; run migrated, section 1 running). Disk 221Gi free; ~/LAW 307G.
 - 2026-10-21 00:33 auto-resume check: proposal sections 1-2 written, 3 running; fixes today: thinking 'off' for sections, drain-before-restart, section resume prompt. Disk 221Gi free; ~/LAW 307G.
+- 2026-10-21 01:45 E2E fixes: section-per-session writing with thinking off (sections 4-7 ~4-8 min each vs 10-45), drain-before-restart, prose verdicts read, diagrams drawn before review, email failure non-blocking, Tony follows externally submitted Telegram jobs, wrong-moment decisions answered as information.
