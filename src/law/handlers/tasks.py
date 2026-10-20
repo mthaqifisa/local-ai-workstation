@@ -109,12 +109,23 @@ def project_env(project: Path) -> dict[str, str]:
     return {k: v for k, v in pairs if os.environ.get(k) != v and k not in {"_", "SHLVL", "PWD", "OLDPWD"}}
 
 
-def plan_complete(project: Path, version: int) -> bool:
-    """True when .law/PLAN.md has this version's milestones and every checkbox in it is ticked."""
+def build_section(project: Path, version: int) -> str | None:
+    """The `## Build version N` section of .law/PLAN.md (the development milestones), or None."""
     plan = project / ".law" / "PLAN.md"
     text = plan.read_text() if plan.exists() else ""
-    return bool(re.search(rf"^#+ .*\bversion {version}\b", text, re.IGNORECASE | re.MULTILINE)) \
-        and "- [x]" in text.lower() and "- [ ]" not in text
+    head = re.search(rf"^(#+)\s*Build version {version}\b.*$", text, re.IGNORECASE | re.MULTILINE)
+    if not head:
+        return None
+    level = len(head.group(1))
+    nxt = re.compile(rf"^#{{1,{level}}}\s", re.MULTILINE).search(text, head.end())
+    return text[head.end():nxt.start() if nxt else len(text)]
+
+
+def plan_complete(project: Path, version: int) -> bool:
+    """True when this version's build section exists and every milestone in it is ticked. Other checklists in
+    PLAN.md (a proposal's sections, a research plan, another version) do not count."""
+    section = build_section(project, version)
+    return section is not None and "- [x]" in section.lower() and "- [ ]" not in section
 
 
 def describe_opencode_line(line: str) -> str | None:
