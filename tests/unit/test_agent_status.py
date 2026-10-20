@@ -21,7 +21,9 @@ def test_health_states():
     running = _job(Status.RUNNING, started=NOW - 3000)
     assert st.health(running, None, NOW - 60, NOW - 60, True, NOW) == "working"
     assert st.health(running, None, NOW - 900, NOW - 900, True, NOW) == "thinking"
-    assert st.health(running, None, NOW - 900, NOW - 1500, True, NOW) == "stalled"
+    assert st.health(running, None, NOW - 900, NOW - 1500, True, NOW) == "thinking"  # generating: grace applies
+    assert st.health(running, None, NOW - 900, NOW - 2400, True, NOW) == "stalled"
+    assert st.health(running, None, NOW - 900, NOW - 1500, False, NOW) == "stalled"
     assert st.health(running, None, None, None, False, NOW) == "stalled"
     root = _job(Status.WAITING, stages=True)
     assert st.health(root, None, None, None, True, NOW) == "stuck"  # nothing running, nothing failed
