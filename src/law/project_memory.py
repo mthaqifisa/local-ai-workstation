@@ -45,8 +45,10 @@ class ProjectMemory:
                 path.write_text(text)
         (self.dir / ".gitignore").write_text("session.json\n")
         stamp = time.strftime("%Y-%m-%d %H:%M")
-        with (self.dir / "REQUESTS.md").open("a") as f:
-            f.write(f"\n## {stamp} · job {job_id}\n\n{request.strip()}\n")
+        log = self.dir / "REQUESTS.md"
+        if f"· job {job_id}\n" not in (log.read_text() if log.exists() else ""):  # once per job, not per stage
+            with log.open("a") as f:
+                f.write(f"\n## {stamp} · job {job_id}\n\n{request.strip()}\n")
         (self.dir / "PROMPT.md").write_text(f"# Brief (job {job_id}, {stamp})\n\n{(brief or request).strip()}\n")
 
     def instructions(self) -> str:

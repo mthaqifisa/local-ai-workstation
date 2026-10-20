@@ -147,6 +147,17 @@ def film(prompt: Annotated[list[str], typer.Argument()], duration: int = 20, qui
 
 
 @app.command()
+def proposal(prompt: Annotated[list[str], typer.Argument()],
+             project: Annotated[str | None, typer.Option(help="Prototype project folder")] = None,
+             quiet: bool = False) -> None:
+    """Research and write a consultant-grade proposal, review it independently, and email the PDF to you."""
+    payload: dict[str, Any] = {"prompt": " ".join(prompt)}
+    if project:
+        payload["dir"] = str(Path(project).expanduser())
+    _run_job("proposal", payload, quiet=quiet, field="pdf")
+
+
+@app.command()
 def music(prompt: Annotated[list[str], typer.Argument()], duration: int = 30, quiet: bool = False) -> None:
     """Render music exactly as described (no lyric writing); see `law song` for full songs."""
     _run_job("music", {"caption": " ".join(prompt), "duration": duration}, quiet=quiet, field="audio")

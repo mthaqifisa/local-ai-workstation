@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
+import shutil
 import socket
 import sys
 import time
@@ -941,9 +943,71 @@ class OpenWebUIState:
         return self.plan()
 
 
+class DocTools:
+    """The headless browser mermaid-cli renders diagrams with (for /proposal PDFs). Homebrew's mermaid-cli does not
+    download one; this installs the exact chrome-headless-shell its puppeteer pins into ~/LAW/runtime/chrome and
+    writes ~/LAW/config/puppeteer.json for `mmdc -p`."""
+
+    name = "doc-tools"
+    URL = "https://storage.googleapis.com/chrome-for-testing-public/{v}/mac-arm64/chrome-headless-shell-mac-arm64.zip"
+
+    def __init__(self, c: Ctx) -> None:
+        self.c = c
+        self.root = c.paths.runtime / "chrome"
+        self.config = c.paths.config / "puppeteer.json"
+
+    def _version(self) -> str | None:
+        """The browser version mermaid-cli's puppeteer expects, read from its pinned revisions."""
+        mmdc = shutil.which("mmdc")
+        if not mmdc:
+            return None
+        # `mmdc` links into the package (…/@mermaid-js/mermaid-cli/src/cli.js); walk up to the folder that holds
+        # its own puppeteer-core.
+        rel = Path("node_modules") / "puppeteer-core" / "lib" / "puppeteer" / "revisions.js"
+        rev = next((d / rel for d in Path(mmdc).resolve().parents if (d / rel).exists()), None)
+        if rev is None:
+            return None
+        m = re.search(r"'chrome-headless-shell':\s*'([\d.]+)'", rev.read_text())
+        return m.group(1) if m else None
+
+    def _exe(self, version: str) -> Path:
+        return self.root / version / "chrome-headless-shell-mac-arm64" / "chrome-headless-shell"
+
+    def plan(self) -> list[str]:
+        version = self._version()
+        if version is None:
+            return []  # mermaid-cli comes with the brew step; nothing to pair it with yet
+        want = json.dumps({"executablePath": str(self._exe(version))})
+        ok = self._exe(version).exists() and self.config.exists() and self.config.read_text().strip() == want
+        return [] if ok else [f"install chrome-headless-shell {version} for diagram rendering"]
+
+    def apply(self) -> None:
+        version = self._version()
+        if version is None:
+            return
+        dest = self.root / version
+        if not self._exe(version).exists():
+            dest.mkdir(parents=True, exist_ok=True)
+            archive = dest / "shell.zip"
+            for cmd in (["curl", "-fsSL", "-o", str(archive), self.URL.format(v=version)],
+                        ["ditto", "-x", "-k", str(archive), str(dest)]):
+                res = self.c.sys.run(cmd, timeout=900)
+                if not res.ok:
+                    raise RuntimeError(res.out[-1500:])
+            archive.unlink(missing_ok=True)
+        for old in self.root.iterdir():  # keep only the version in use
+            if old.is_dir() and old.name != version:
+                shutil.rmtree(old)
+        self.config.parent.mkdir(parents=True, exist_ok=True)
+        self.config.write_text(json.dumps({"executablePath": str(self._exe(version))}) + "\n")
+
+    def verify(self) -> list[str]:
+        return self.plan()
+
+
 def default_steps(c: Ctx) -> list[Step]:
     return [
-        Skeleton(c), EnvProfile(c), Secrets(c), Brew(c), LawVenv(c), CalcEnv(c), MediaTools(c), Models(c),
+        Skeleton(c), EnvProfile(c), Secrets(c), Brew(c), LawVenv(c), CalcEnv(c), DocTools(c), MediaTools(c), Models(c),
         MediaModels(c), OpenCodeConfig(c), Services(c), OmlxSettings(c), ComfyUIStep(c), Colima(c), Compose(c),
         OpenWebUIState(c),
     ]
