@@ -70,6 +70,25 @@ class ProjectMemory:
                 parts.append(f"{FOLDER}/{name}:\n{path.read_text()[:limit]}")
         return "\n\n".join(parts)
 
+    def ensure_progress(self, started: float, role: str, summary: str, edits: list[str]) -> bool:
+        """If the agent did not update PROGRESS.md during its step, LAW records the step itself (what the agent
+        reported and the files it changed), so progress is never lost. Returns True when LAW wrote the entry."""
+        progress = self.dir / "PROGRESS.md"
+        if progress.exists() and progress.stat().st_mtime >= started:
+            return False
+        self.dir.mkdir(exist_ok=True)
+        stamp = time.strftime("%Y-%m-%d %H:%M")
+        minutes = max(1, round((time.time() - started) / 60))
+        files = "\n".join(f"- {e}" for e in sorted(set(edits))[:40]) or "- (no files changed)"
+        text = summary.strip()[-1500:] or "(the agent reported nothing)"
+        entry = (f"\n## {stamp} · {role} step, {minutes} min (recorded by LAW: the agent did not update this file)\n\n"
+                 f"{text}\n\nFiles changed:\n{files}\n")
+        with progress.open("a") as f:
+            if not progress.exists() or progress.stat().st_size == 0:
+                f.write(SEEDS["PROGRESS.md"])
+            f.write(entry)
+        return True
+
     def session_for(self, job_id: str) -> str | None:
         """The OpenCode session this job already started, if it was interrupted."""
         data = self._session()
