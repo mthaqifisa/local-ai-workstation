@@ -421,6 +421,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 '{"score": <1-5>, "issues": ["<file or section: problem and fix>"], "summary": "<one sentence>"}')}],
                 ctx)
             verdict = parse_verdict(again)
+        if carry.get("diagram_errors"):  # checked by drawing them: the reviewer cannot see this
+            verdict = {**verdict, "score": min(int(verdict.get("score") or 0), PASS_SCORE - 1),
+                       "issues": [*carry["diagram_errors"], *verdict.get("issues", [])][:12]}
         return Done({"review": verdict})
 
     async def task_fix(ctx: Context) -> Outcome:

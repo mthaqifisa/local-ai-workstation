@@ -267,6 +267,7 @@ def proposal_stages(rt: Runtime, request: str, workdir: Path, out: str, *, versi
                                                "spec_args": args}},
         *(research if version == 1 else []),
         *section_stages(base, args, version),
+        {"kind": "proposal_check", "payload": base},
         {"kind": "task_review", "payload": {**base, "role": "writer", "spec_ref": "proposal.fixrules",
                                             "rubric_ref": "proposal.rubric", "spec_args": args}},
         {"kind": "task_fix", "payload": {**base, "role": "writer", "spec_ref": "proposal.fixrules",
@@ -296,6 +297,39 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         mailer.recipient(rt.paths.env_file)  # fail now, not after an hour of work, if no address is set
         return Stages(proposal_stages(rt, request, workdir, out))
 
+    async def _draw(ctx: Context, docs: Path, n: int, caption: str, code: str) -> str | None:
+        """Draw one Mermaid diagram to assets/diagram-<n>.png. Returns the parse error, or None when it drew."""
+        mmd = docs / "assets" / f"diagram-{n}.mmd"
+        mmd.parent.mkdir(parents=True, exist_ok=True)
+        mmd.write_text(code)
+        cmd = ["mmdc", "-i", str(mmd), "-o", str(docs / "assets" / f"diagram-{n}.png"), "-s", "3", "-b", "white"]
+        config = rt.paths.config / "puppeteer.json"
+        if config.exists():
+            cmd[1:1] = ["-p", str(config)]
+        try:
+            await run_cmd(ctx, cmd, cwd=docs, timeout_s=180)
+        except Fatal as exc:
+            lines = [ln.strip() for ln in str(exc).splitlines() if ln.strip()]
+            where = next((i for i, ln in enumerate(lines) if "Parse error" in ln or "Error:" in ln), None)
+            return " ".join(lines[where:where + 4])[:300] if where is not None else "Mermaid could not draw it"
+        return None
+
+    async def proposal_check(ctx: Context) -> Outcome:
+        """Before the review: draw every diagram. The reviewer reads text and cannot tell that a diagram will not
+        draw (seen: invalid Mermaid passed a 5/5 review), so failures go to the review as issues to fix."""
+        _, docs = _folders(ctx.job.payload)
+        source = docs / f"{ctx.job.payload.get('doc', 'proposal')}.md"
+        if not source.exists():
+            raise Fatal(f"the agent did not produce {source}")
+        _, diagrams = extract_diagrams(source.read_text())
+        errors = []
+        for n, (caption, code) in enumerate(diagrams, start=1):
+            await ctx.progress(f"🖼 checking diagram {n}/{len(diagrams)}: {caption}")
+            error = await _draw(ctx, docs, n, caption, code)
+            if error:
+                errors.append(f"Diagram \"{caption}\" does not draw: {error}. Fix its Mermaid syntax.")
+        return Done({"diagram_errors": errors})
+
     async def proposal_render(ctx: Context) -> Outcome:
         """Diagrams to PNG with mermaid-cli, then pandoc + Typst in the house template."""
         _, docs = _folders(ctx.job.payload)
@@ -305,17 +339,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             raise Fatal(f"the agent did not produce {source}")
         text, diagrams = extract_diagrams(source.read_text())
         failed: list[str] = []
-        config = rt.paths.config / "puppeteer.json"
         for n, (caption, code) in enumerate(diagrams, start=1):
             await ctx.progress(f"🖼 rendering diagram {n}/{len(diagrams)}: {caption}")
-            mmd = docs / "assets" / f"diagram-{n}.mmd"
-            mmd.write_text(code)
-            cmd = ["mmdc", "-i", str(mmd), "-o", str(docs / "assets" / f"diagram-{n}.png"), "-s", "3", "-b", "white"]
-            if config.exists():
-                cmd[1:1] = ["-p", str(config)]
-            try:
-                await run_cmd(ctx, cmd, cwd=docs, timeout_s=180)
-            except Fatal:
+            if await _draw(ctx, docs, n, caption, code):
                 failed.append(caption)
                 text = text.replace(f"![{caption}](assets/diagram-{n}.png){{width=100%}}\n",
                                     f"```\n{code}```\n\n: {caption} (diagram source; it could not be drawn)\n")
@@ -368,4 +394,5 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         return Done({"pdf": str(pdf), "emailed": to, "mail_error": None,
                      "answer": f"📧 **{title}**: {label.lower()} emailed to {to}.\n\nPDF: `{pdf}`"})
 
-    return {"proposal": proposal, "proposal_render": proposal_render, "proposal_mail": proposal_mail}
+    return {"proposal": proposal, "proposal_check": proposal_check, "proposal_render": proposal_render,
+            "proposal_mail": proposal_mail}
