@@ -12,6 +12,7 @@ With a project folder (e.g. the working prototype) the files go in `<project>/do
 
 from __future__ import annotations
 
+import asyncio
 import re
 import time
 from pathlib import Path
@@ -142,6 +143,23 @@ def extract_diagrams(markdown: str) -> tuple[str, list[tuple[str, str]]]:
         return f"![{caption}](assets/diagram-{n}.png){{width=100%}}\n"
 
     return MERMAID.sub(swap, markdown), diagrams
+
+
+def mermaid_error(output: str) -> str:
+    """The useful part of mmdc's failure: 'Parse error on line N:' with the offending line and what it expected
+    (it sits above a long stack trace)."""
+    lines = [ln.rstrip() for ln in output.splitlines() if ln.strip()]
+    start = next((i for i, ln in enumerate(lines) if "Parse error" in ln or "Lexical error" in ln), None)
+    if start is None:
+        start = next((i for i, ln in enumerate(lines) if ln.lstrip().startswith("Error")), None)
+    if start is None:
+        return "Mermaid could not draw it"
+    picked = []
+    for ln in lines[start:start + 6]:
+        if ln.lstrip().startswith("at ") or "Parser." in ln:
+            break
+        picked.append(ln.strip())
+    return " | ".join(picked)[:400]
 
 
 def executive_summary(markdown: str, limit: int = 2500, heading: str = "Executive summary") -> str:
@@ -306,13 +324,16 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         config = rt.paths.config / "puppeteer.json"
         if config.exists():
             cmd[1:1] = ["-p", str(config)]
+        proc = await asyncio.create_subprocess_exec(*cmd, cwd=docs, stdout=asyncio.subprocess.PIPE,
+                                                    stderr=asyncio.subprocess.STDOUT)
         try:
-            await run_cmd(ctx, cmd, cwd=docs, timeout_s=180)
-        except Fatal as exc:
-            lines = [ln.strip() for ln in str(exc).splitlines() if ln.strip()]
-            where = next((i for i, ln in enumerate(lines) if "Parse error" in ln or "Error:" in ln), None)
-            return " ".join(lines[where:where + 4])[:300] if where is not None else "Mermaid could not draw it"
-        return None
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=180)
+        except TimeoutError:
+            proc.kill()
+            return "Mermaid timed out drawing it"
+        if proc.returncode == 0:
+            return None
+        return mermaid_error(out.decode(errors="replace"))
 
     async def proposal_check(ctx: Context) -> Outcome:
         """Before the review: draw every diagram. The reviewer reads text and cannot tell that a diagram will not

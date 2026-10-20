@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -12,7 +13,7 @@ import pytest
 from law import mailer, secrets, specs
 from law.handlers import proposal
 from law.paths import LawPaths
-from law.queue.worker import Done, Fatal, Stages
+from law.queue.worker import Done, Stages
 
 REPO = Path(__file__).resolve().parents[2]
 DOC = """---
@@ -110,10 +111,15 @@ def test_render_draws_diagrams_and_builds_the_pdf(tmp_path: Path, monkeypatch: p
     (docs / "proposal.md").write_text(DOC)
     calls: list[list[str]] = []
 
+    tool = tmp_path / "bin" / "mmdc"  # fake mermaid-cli: draws diagram 1, cannot draw diagram 2
+    tool.parent.mkdir()
+    tool.write_text("#!/bin/sh\ncase \"$*\" in *diagram-2*) echo 'Error: Parse error on line 2:'; exit 1;; esac\n"
+                    "for a; do [ \"$prev\" = -o ] && : > \"$a\"; prev=$a; done\nexit 0\n")
+    tool.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tool.parent}:{os.environ['PATH']}")
+
     async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
         calls.append(cmd)
-        if cmd[0] == "mmdc" and "diagram-2" in " ".join(cmd):
-            raise Fatal("parse error")  # one diagram cannot be drawn: kept as source, reported
         target = Path(cmd[cmd.index("-o") + 1])
         target.write_bytes(b"x" * (20_000 if target.suffix == ".pdf" else 10))  # noqa: ASYNC240
         if cmd[0] == "pandoc":
@@ -244,23 +250,30 @@ def test_revisions_revise_each_section_and_add_what_changed():
     assert not stages[0]["payload"]["section"]["skip_if_written"]  # revisions always run
 
 
-def test_undrawable_diagrams_reach_the_review_as_issues(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_mermaid_errors_name_the_line_and_the_problem():
+    out = ("Generating single mermaid chart\n\nError: Parse error on line 3:\n...D1[\"Phone\"], D2[\"Tablet\"]\n"
+           "-----------------------^\nExpecting 'SEMI', 'NEWLINE', got 'COMMA'\nParser.parseError (https://x)\n"
+           "    at Parser.parse (https://y)\n" + "    at z\n" * 40)
+    msg = proposal.mermaid_error(out)
+    assert "Parse error on line 3" in msg and "got 'COMMA'" in msg and "Parser.parseError" not in msg
+    assert proposal.mermaid_error("nothing useful") == "Mermaid could not draw it"
+
+
+async def test_undrawable_diagrams_reach_the_review_as_issues(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     rt = _rt(tmp_path)
     docs = tmp_path / "p" / "docs" / "proposal"
     (docs / "assets").mkdir(parents=True)
     (docs / "proposal.md").write_text(DOC)
-
-    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
-        if "diagram-2" in " ".join(cmd):
-            raise Fatal("mmdc exited 1: Error: Parse error on line 3:\n...D1, D2\nExpecting 'SEMI', got ','")
-        return ""
-
-    monkeypatch.setattr(proposal, "run_cmd", fake_run_cmd)
-    done = asyncio.run(proposal.make_handlers(rt)["proposal_check"](
-        _ctx({"dir": str(tmp_path / "p"), "out": "docs/proposal", "prompt": "x"})))
-    assert isinstance(done, Done)
+    tool = tmp_path / "mmdc"  # a fake mermaid-cli that fails on the second diagram
+    tool.write_text("#!/bin/sh\ncase \"$*\" in *diagram-2*) echo 'Error: Parse error on line 3:'; "
+                    "echo \"Expecting 'SEMI', got 'COMMA'\"; exit 1;; esac\nexit 0\n")
+    tool.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
+    done = await proposal.make_handlers(rt)["proposal_check"](
+        _ctx({"dir": str(tmp_path / "p"), "out": "docs/proposal", "prompt": "x"}))
     errors = done.result["diagram_errors"]
     assert len(errors) == 1 and "Diagram 2" in errors[0] and "Parse error on line 3" in errors[0]
+    assert "got 'COMMA'" in errors[0]
 
 
 async def test_review_cannot_pass_with_undrawable_diagrams(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
