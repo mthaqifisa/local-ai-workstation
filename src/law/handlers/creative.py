@@ -20,11 +20,18 @@ INSTRUMENTAL = re.compile(r"\b(instrumental|no vocals|without vocals|no lyrics)\
 
 PLAN_PROMPT = """You are a songwriter. Plan a song for this request: {request}
 
-It will be about {seconds} seconds long, so write about {lines} short singable lines in total.
+It will be about {seconds} seconds long, so write at most {lines} short singable lines in total (no more:
+extra lines will not fit).
 Return only JSON with two keys:
 - "caption": one line of comma-separated music tags: genre, mood, tempo in bpm, lead instruments, vocal type.
   Keep every style, genre, vibe and vocal choice the request gives; add sensible ones it leaves open.
 - "lyrics": the lyrics with section tags on their own lines, like [verse], [chorus], [bridge], [outro]."""
+
+
+def lyric_lines(seconds: float) -> int:
+    """About one sung line per 6 s after a 10 s intro. More lyrics make ACE-Step plan a longer song than asked,
+    and the render then stops before the vocals arrive."""
+    return max(4, int((seconds - 10) / 6))
 
 
 def parse_plan(text: str) -> dict[str, str]:
@@ -57,7 +64,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
     async def song_plan(ctx: Context) -> Outcome:
         p = ctx.job.payload
         seconds = float(p["seconds"])
-        prompt = PLAN_PROMPT.format(request=p["request"], seconds=int(seconds), lines=max(4, int(seconds / 4)))
+        prompt = PLAN_PROMPT.format(request=p["request"], seconds=int(seconds), lines=lyric_lines(seconds))
         await ctx.progress("writing lyrics")
         return Done(parse_plan(await answer(rt, "writer", [{"role": "user", "content": prompt}], ctx)))
 

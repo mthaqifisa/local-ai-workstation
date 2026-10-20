@@ -48,3 +48,9 @@ def test_instrumental_skips_lyric_writing():
     out = _song({"prompt": "lofi instrumental beat for studying", "seed": 3})
     assert [s["kind"] for s in out.specs] == ["music"]
     assert out.specs[0]["payload"]["lyrics"] == "[instrumental]" and out.specs[0]["payload"]["seed"] == 3
+
+
+def test_lyric_length_fits_the_duration():
+    assert creative.lyric_lines(15) == 4
+    assert creative.lyric_lines(60) == 8
+    assert creative.lyric_lines(240) == 38

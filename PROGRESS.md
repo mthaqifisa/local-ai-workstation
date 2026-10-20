@@ -111,3 +111,7 @@ Storage at start: 685Gi used / 208Gi free; ~/LAW 320G.
 - 2026-10-20 05:33 auto-resume check: lan-chat run 3 in progress (13 min, 6 commands); disk 239Gi free; ~/LAW 293G.
 - 2026-10-20 06:38 auto-resume: queue idle (waiting for user's Telegram /code for lan-chat); started eval rerun. Disk 240Gi free; ~/LAW 293G.
 - 2026-10-20 07:33 auto-resume: eval rerun on case 3/5 (55 min); README/RUNBOOK updated; stale repo .venv removed. Disk 239Gi free; ~/LAW 293G.
+- 2026-10-20 07:48 Eval rerun 5/5 PASS (judge 5/5 each); with round 2 = 10/10. Slow: doc-exec-memo 31 min, judgement 18 min. Starting heavy media tests.
+- 2026-10-20 08:33 auto-resume: heavy media: image PASS, edit PASS, music FAIL (investigating), video running. Disk 238Gi free; ~/LAW 292G.
+- 2026-10-20 08:47 Heavy media: image/edit/video PASS. Music was broken (no mlx-audio release has ACE-Step) -> fixed via pinned branch venv + 4B planner (ADR-0011); music + new vocal-lyrics test PASS (Whisper hears the verse). Starting silent operator test.
+- 2026-10-20 08:51 Operator agent test PASS (3m23s): TextEdit doc saved with exact text, volume 19->10->19 restored, TextEdit quit; verified independently. Fixed blank progress lines for multi-line commands.
