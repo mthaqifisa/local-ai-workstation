@@ -2,6 +2,6 @@
   "stage": "C-user-requests",
   "task": "C4 film render test, C7 lan-chat verification, C8 reclaim + email",
   "status": "in_progress",
-  "next_step": "When lan-chat run 7 (root 3749d7abaa03) finishes: verify independently (mvnw verify, npm test/build, 2 clients, screenshots) and email the coding result. Then law install (deploys stall guard, translator, .law/ memory, /proposal, report email, doc-tools). Then send '/proposal ~/SourceCode/lan-chat ...' to Tony via Telegram.app and monitor every 5 min; the pipeline emails the PDF itself (first send may need Automation permission for Mail). Then film timing, law reclaim, gitleaks, final handover email (draft ~/LAW/state/handover-draft.md).",
-  "timestamp": "2026-10-20T17:10:00"
+  "next_step": "E2E of the project lifecycle (lan-chat, root 8f22ebbaef49): wait for proposal v1 (email + Telegram), press No go with a minor tweak, confirm v2 reflects it and is emailed + posted, then press Go; monitor development every 5 min (env stage, milestones, review rounds) to the verify gate; then verify the app independently and email the result with screenshots. Then film timing, law reclaim, gitleaks, final handover email (draft ~/LAW/state/handover-draft.md).",
+  "timestamp": "2026-10-20T18:33:00"
 }
