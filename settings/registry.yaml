@@ -61,10 +61,10 @@ llm_models:
     mem_gb: 40
     lane: heavy
     vision: true
-    # Hybrid attention (16 of 64 layers keep a KV cache: ~64 KB/token), so 128K costs ~8 GB on top of the
-    # 29 GB weights, under oMLX's 45.6 GB guard. At 64K, agents that read web pages or many files hit
-    # compaction and lost their findings (2026-10-20).
-    context: 131072
+    # Hybrid attention (16 of 64 layers keep a KV cache: ~64 KB/token). At 64K, agents that read web pages or
+    # many files hit compaction and lost their findings; at 98-103K, prefill buffers briefly touched oMLX's
+    # 48 GB ceiling (it recovered each time). 96K keeps headroom (2026-10-20).
+    context: 98304
     roles: [reasoner, writer, analyst, architect, designer, coder, default]
   - id: qwen3-coder-next-4bit
     repo: lmstudio-community/Qwen3-Coder-Next-MLX-4bit

@@ -283,8 +283,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 sid = session_id(exc.output)
                 if sid is None or attempt == STALL_NUDGES:
                     raise Fatal(f"{role} agent stalled: {exc}") from exc
-                await ctx.progress(f"⚠️ no file changed for {stall_min:.0f} min: nudging the agent to build and fix")
                 nudge = NUDGE_DOCS if role in DOC_ROLES else NUDGE
+                what = "save the next section" if role in DOC_ROLES else "build and fix"
+                await ctx.progress(f"⚠️ nothing saved for {stall_min:.0f} min: nudging the agent to {what}")
                 cmd = [*base, "--session", sid, nudge.format(minutes=f"{stall_min:.0f}")]
         raise AssertionError("unreachable")
 
