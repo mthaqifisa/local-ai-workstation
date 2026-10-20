@@ -148,8 +148,8 @@ Happy path and unhappy paths, all from Telegram, monitored every 5 min:
 - [x] Wrong-time decision (Go while v2 is written) -> refused, state unchanged (now an info message, not a failure)
 - [x] No go with a pivot (DMs + 200-message history) -> v2 reflects it fully ('What changed' section, effort, risks, new DM wireframe), PDF in Telegram (03:49)
 - [ ] No go + "stop" -> parked; /resume <note> -> revived (v3)
-- [~] Go -> environment stage (tools checked/installed, .law/env.sh, ENVIRONMENT.md) — started 03:53, root 2292ed0603bb
-- [ ] Milestones on a ticket board (## Build version 1, KEY-n tickets), one session each
+- [x] Go -> environment stage: JDK 21 installed via brew and pinned in .law/env.sh; ENVIRONMENT.md; committed (04:41)
+- [~] Milestones on a ticket board: Build version 2, M1-M5, LC-1..LC-17 with acceptance; LC-1 committed + independently green (05:18)
 - [ ] Deploy during a step -> worker restarts only between steps
 - [ ] Retry / Skip / Restart / Cancel exercised at least once on real steps
 - [ ] Review/fix rounds -> handover document with real screenshots, emailed + posted
@@ -168,3 +168,4 @@ Happy path and unhappy paths, all from Telegram, monitored every 5 min:
 - 2026-10-21 03:35 auto-resume check: v2 diagram auto-repair running live (3,4 fixed; 6 in progress). Disk 221Gi free; ~/LAW 307G.
 - 2026-10-21 03:53 v2 fixes: diagrams auto-repaired (verified by drawing, exact mmdc errors), repairs on later tries saved, gate explains diagram fixes. Go pressed (API; screen locked) -> development v2 started (env stage).
 - 2026-10-21 04:33 auto-resume check: development v2 environment stage (JDK 21 installed + pinned via .law/env.sh). Disk 220Gi free; ~/LAW 307G.
+- 2026-10-21 05:33 auto-resume check: development v2 LC-2 in progress; LC-1 verified green on a clean clone. Disk 219Gi free; ~/LAW 307G.
