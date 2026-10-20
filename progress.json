@@ -1,7 +1,7 @@
 {
   "stage": "C-user-requests",
-  "task": "C1..C8 in PROGRESS.md",
+  "task": "C4 film render test, C7 lan-chat verification, C8 reclaim + email",
   "status": "in_progress",
-  "next_step": "Work C1->C8 in order; check boxes in PROGRESS.md as each lands (tests + commit).",
-  "timestamp": "2026-10-20T00:11:30"
+  "next_step": "When lan-chat job 2ee5c80be561 finishes: verify it independently (mvnw verify, npm test/build, run 2 clients, screenshots). Then law install (applies film/fast-video services), render a 20 s test film and record timing, law reclaim, final README/gitleaks pass, email summary via Apple Mail.",
+  "timestamp": "2026-10-20T11:10:15"
 }

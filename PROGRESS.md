@@ -88,14 +88,16 @@ Storage at start: 685Gi used / 208Gi free; ~/LAW 320G.
 - [x] C1 Telegram "/" menu: register commands with setMyCommands (Bot API supports it) + /help listing every capability
 - [x] C2 Telegram rich text everywhere (HTML) — done for answers; extend to status/progress
 - [x] C3 Telegram live thinking: stream reasoning/progress into the status message
-- [ ] C4 Tony: /video and /music (proper songs with vocals + instruments) with user-chosen duration, theme, lyrics/script, genre/vibe;
+- [~] C4 Tony: /video and /music (proper songs with vocals + instruments) with user-chosen duration, theme, lyrics/script, genre/vibe;
       writer drafts lyrics/script when not given
+      → songs done + verified (/music, law song); films built + unit-tested (/film, law film, ADR-0012); real film render pending GPU
 - [x] C5 Dashboard: correct CPU/RAM/storage (host, not VM); agent/job progress with cancel; view & edit personas;
       update config (Telegram token etc.)
 - [x] C6 README: full "how it works" + stack, architecture and flow diagrams
-- [ ] C7 Prod-ready code test: agent builds a LAN chat room (Spring Boot + Angular, unique per device, modern UI, standard architecture)
+- [~] C7 Prod-ready code test: agent builds a LAN chat room (Spring Boot + Angular, unique per device, modern UI, standard architecture)
 - [ ] C8 Remaining items + tech debt: switch judge to Gemma 8-bit; rerun eval (5 left) + heavy media tests; operator agent test;
       HELP item 2 (law save/restore-state); TEST-REPORT; reclaim; email report via Apple Mail
+      → done: judge 8-bit, evals 10/10, heavy media 5/5, operator test, HELP 1-3, TEST-REPORT. Left: reclaim, email
 - 2026-10-20 00:15: C4 song/film planner stopped by safety check -> HELP.md item 3; /music,/video,/animate map directly to media handlers meanwhile.
 - 2026-10-20 00:29: C5 done (LAW Console verified in Chrome). C7 started: agent building ~/SourceCode/lan-chat (Spring Boot + Angular); JDK 25 + Maven added.
 - 2026-10-20 00:33: auto-resume: storage 661Gi used / 230Gi free; ~/LAW 300G. C7 agent running (30 files so far).
@@ -118,3 +120,4 @@ Storage at start: 685Gi used / 208Gi free; ~/LAW 320G.
 - 2026-10-20 09:01 Song pipeline (HELP #3) built + verified: theme -> writer lyrics -> ACE-Step; Whisper hears the chorus. Report rerun next.
 - 2026-10-20 09:35 auto-resume: report on heavy video test; lan-chat /code (Telegram, job 2ee5c80be561) queued; fixes (save/restore-state, queued status, silent tests, secrets.py tracked) on branch tony-fixes awaiting merge after report. Disk 228Gi free; ~/LAW 302G.
 - 2026-10-20 09:53 TEST-REPORT generated: all gates PASS (unit 181, integration 9, heavy media 5, installer re-run 0 changes), evals 10/10. Merged tony-fixes (law save/restore-state = HELP #2 done; queued status; silent test jobs; secrets.py tracked). lan-chat agent (Telegram job 2ee5c80be561) running. Next: verify lan-chat independently, then final scan + email.
+- 2026-10-20 10:33 auto-resume: lan-chat agent running (step 1 committed: initial snapshot). Disk 226Gi free; ~/LAW 304G.
