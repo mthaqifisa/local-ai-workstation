@@ -105,6 +105,40 @@ def update_email(paths: LawPaths, upd: EmailUpdate) -> str:
     return address
 
 
+class StorageUpdate(BaseModel):
+    jobs_days: int = Field(ge=1, le=3650)
+    agent_sessions_days: int = Field(ge=1, le=3650)
+    logs_days: int = Field(ge=1, le=3650)
+    trash_days: int = Field(ge=1, le=3650)
+    llm_ssd_cache_gb: int = Field(ge=1, le=500)
+
+
+def storage_settings(paths: LawPaths) -> dict[str, Any]:
+    reg = registry.load(paths.registry_file)
+    return {**reg.retention.model_dump(), "llm_ssd_cache_gb": reg.machine.llm_ssd_cache_gb}
+
+
+def update_storage(paths: LawPaths, upd: StorageUpdate) -> bool:
+    """Write retention and the prompt-cache cap into settings/registry.yaml (comments kept). Returns True when the
+    cache cap changed, which needs the omlx-settings install step."""
+    path = paths.registry_file
+    yaml = YAML()
+    yaml.preserve_quotes = True
+    yaml.width = 4096
+    doc = yaml.load(path.read_text())
+    cap_changed = int(doc["machine"].get("llm_ssd_cache_gb", 20)) != upd.llm_ssd_cache_gb
+    doc["machine"]["llm_ssd_cache_gb"] = upd.llm_ssd_cache_gb
+    keep = doc.setdefault("retention", {})
+    for key in ("jobs_days", "agent_sessions_days", "logs_days", "trash_days"):
+        keep[key] = getattr(upd, key)
+    tmp = path.with_suffix(".yaml.tmp")
+    with tmp.open("w") as fh:
+        yaml.dump(doc, fh)
+    registry.load(tmp)  # validate before replacing the real file
+    tmp.replace(path)
+    return cap_changed
+
+
 def apply_async(paths: LawPaths, steps: str) -> None:
     """Re-run the relevant install steps in the background (they may restart this API)."""
     law = paths.runtime / "law-venv" / "bin" / "law"

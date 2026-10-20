@@ -94,6 +94,7 @@
     <button data-tab="overview" class="active">Overview</button>
     <button data-tab="agents">Agents</button>
     <button data-tab="jobs">Jobs</button>
+    <button data-tab="storage">Storage</button>
     <button data-tab="personas">Personas</button>
     <button data-tab="settings">Settings</button>
   </nav>
@@ -130,6 +131,27 @@
     <div class="card" style="padding:6px 8px">
       <table><thead><tr><th>Job</th><th>What</th><th>Status</th><th>Progress</th><th>Age</th><th></th></tr></thead>
         <tbody id="job-rows"></tbody></table>
+    </div>
+  </section>
+
+  <section id="storage">
+    <div class="toolbar"><h2>Storage</h2><span class="sub" id="free-gb"></span><span class="spacer"></span>
+      <button class="btn primary" id="clear-law">Clear all LAW caches</button></div>
+    <div class="card" style="padding:6px 8px">
+      <table><thead><tr><th>Cache</th><th>Size</th><th>If you clear it</th><th></th></tr></thead>
+        <tbody id="cache-rows"><tr><td colspan="4" class="empty">Measuring…</td></tr></tbody></table>
+    </div>
+    <div class="card" style="margin-top:16px"><h3>Retention and limits</h3>
+      <div class="sub">How long history is kept, applied every 6 hours and by <code>law reclaim</code>. Running jobs are never removed.</div>
+      <div class="grid" style="margin-top:8px">
+        <div><label>Finished jobs and their logs (days)</label><input type="number" min="1" id="r-jobs_days"></div>
+        <div><label>Agent conversations (days)</label><input type="number" min="1" id="r-agent_sessions_days"></div>
+        <div><label>Service logs (days)</label><input type="number" min="1" id="r-logs_days"></div>
+        <div><label>Trash (days)</label><input type="number" min="1" id="r-trash_days"></div>
+        <div><label>Model prompt cache limit (GB)</label><input type="number" min="1" id="r-llm_ssd_cache_gb"></div>
+      </div>
+      <div class="toolbar" style="margin-top:16px"><span class="sub">Saved to settings/registry.yaml, so it travels with the repo.</span>
+        <span class="spacer"></span><button class="btn primary" id="r-save">Save</button></div>
     </div>
   </section>
 
@@ -173,6 +195,7 @@ document.querySelectorAll("nav button").forEach((b) => b.onclick = () => {
   if (b.dataset.tab === "personas") loadRoles();
   if (b.dataset.tab === "settings") loadSettings();
   if (b.dataset.tab === "agents") refreshAgents();
+  if (b.dataset.tab === "storage") loadStorage();
 });
 
 // ---- overview ----
@@ -238,6 +261,37 @@ async function refreshAgents() {
 }
 $("#agent-q").oninput = () => refreshAgents();
 setInterval(() => { if ($("#agents").classList.contains("active")) refreshAgents(); }, 4000);
+
+// ---- storage ----
+const RKEYS = ["jobs_days", "agent_sessions_days", "logs_days", "trash_days", "llm_ssd_cache_gb"];
+const gbs = (b) => b >= 1e9 ? (b / 1e9).toFixed(1) + " GB" : Math.round(b / 1e6) + " MB";
+async function clearCaches(ids, label) {
+  if (!confirm(`Clear ${label}?`)) return;
+  toast("Clearing…");
+  try {
+    const r = await api("/storage/clear", {method: "POST", body: JSON.stringify({ids})});
+    toast(`Freed ${gbs(r.freed_bytes)}` + (r.skipped_busy.length ? ` · skipped while jobs run: ${r.skipped_busy.join(", ")}` : ""));
+  } catch (e) { toast("Not cleared: " + e.message); }
+  loadStorage();
+}
+async function loadStorage() {
+  const s = await api("/storage");
+  $("#free-gb").textContent = `${s.free_gb} GB free`;
+  $("#cache-rows").innerHTML = s.items.map((i) => `<tr>
+      <td>${esc(i.label)}${i.outside_law ? ' <span class="chip">outside LAW</span>' : ""}${i.note ? `<div class="sub">${esc(i.note)}</div>` : ""}</td>
+      <td class="mono">${gbs(i.bytes)}</td>
+      <td class="sub">${esc(i.effect)}</td>
+      <td><button class="btn" data-clear="${i.id}" data-label="${esc(i.label)}">Clear</button></td></tr>`).join("");
+  document.querySelectorAll("[data-clear]").forEach((b) => b.onclick = () => clearCaches([b.dataset.clear], b.dataset.label));
+  const law = s.items.filter((i) => !i.outside_law).map((i) => i.id);
+  $("#clear-law").onclick = () => clearCaches(law, "all LAW caches (the model prompt cache only if nothing is running)");
+  RKEYS.forEach((k) => $("#r-" + k).value = s.settings[k]);
+}
+$("#r-save").onclick = async () => {
+  const body = Object.fromEntries(RKEYS.map((k) => [k, parseInt($("#r-" + k).value, 10)]));
+  try { await api("/settings/storage", {method: "PUT", body: JSON.stringify(body)}); toast("Saved"); }
+  catch (e) { toast("Not saved: " + e.message); }
+};
 
 // ---- jobs ----
 const LIVE = new Set(["queued", "running", "waiting"]);

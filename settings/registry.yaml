@@ -11,6 +11,13 @@ machine:
   # oMLX keeps prompt caches on disk to speed up long agent sessions; capped so it can't fill the SSD.
   llm_ssd_cache_gb: 20
 
+# How long history is kept (Console → Storage to change). Live jobs are never pruned.
+retention:
+  jobs_days: 14            # finished jobs and their progress logs (Console Jobs, /jobs)
+  agent_sessions_days: 14  # agents' full conversations (OpenCode sessions)
+  logs_days: 14            # rotated logs in ~/LAW/logs
+  trash_days: 7            # ~/LAW/trash
+
 network:
   # User decision (ADR-0006): user-facing services listen on every interface, no login.
   bind: 0.0.0.0

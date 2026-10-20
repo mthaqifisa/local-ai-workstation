@@ -66,6 +66,48 @@ def system_stats(llm_internal: str) -> dict[str, Any]:
 def mount(app: Any, llm_internal: str, paths: LawPaths) -> None:
     router = APIRouter()
 
+    def _restart_llm() -> None:
+        law = paths.runtime / "law-venv" / "bin" / "law"
+        subprocess.run([str(law), "services", "restart", "omlx"], capture_output=True, timeout=300, check=False)
+
+    @router.get("/storage")
+    async def storage_report() -> dict[str, Any]:
+        """Each cache with its size and what clearing it costs, plus the retention settings and free disk."""
+        import asyncio
+
+        from law import storage
+
+        def gather() -> dict[str, Any]:
+            disk = shutil.disk_usage(DATA_VOLUME if Path(DATA_VOLUME).exists() else "/")
+            return {"items": storage.report(paths, _restart_llm), "settings": edit.storage_settings(paths),
+                    "free_gb": round(disk.free / 1024 ** 3)}
+
+        return await asyncio.to_thread(gather)
+
+    @router.post("/storage/clear")
+    async def storage_clear(request: Request, body: dict[str, list[str]]) -> dict[str, Any]:
+        """Clear the chosen caches; ones a running job may use are skipped until the Mac is idle."""
+        import asyncio
+
+        from law import storage
+
+        store = request.app.state.store
+        busy = bool(await store.queued() or await store.running_ids())
+        try:
+            return await asyncio.to_thread(storage.clear, paths, body.get("ids", []), _restart_llm, busy)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @router.put("/settings/storage")
+    def put_storage(upd: edit.StorageUpdate, tasks: BackgroundTasks) -> dict[str, Any]:
+        try:
+            cap_changed = edit.update_storage(paths, upd)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        if cap_changed:
+            tasks.add_task(edit.apply_async, paths, "omlx-settings")
+        return edit.storage_settings(paths)
+
     @router.get("/agents")
     async def agents(request: Request, q: str = "") -> dict[str, Any]:
         """Every live job (and those that stopped in the last day) with its health, stage, plan and last actions."""

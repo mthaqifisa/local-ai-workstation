@@ -27,14 +27,42 @@ def build_worker(paths: LawPaths) -> tuple[Worker, JobStore]:
     return worker, store
 
 
+PRUNE_EVERY_S = 6 * 3600
+
+
+async def prune_once(paths: LawPaths, store: JobStore) -> tuple[int, int]:
+    """Apply the retention settings (read fresh, so Console edits take effect): old finished jobs and old agent
+    conversations. Returns (jobs, sessions) deleted."""
+    import time
+
+    from law import registry, storage
+
+    keep = registry.load(paths.registry_file).retention
+    jobs = await store.prune(time.time() - keep.jobs_days * 86400)
+    sessions = await asyncio.to_thread(storage.prune_sessions, paths, keep.agent_sessions_days)
+    return jobs, sessions
+
+
+async def _prune_forever(paths: LawPaths, store: JobStore) -> None:
+    while True:
+        try:
+            jobs, sessions = await prune_once(paths, store)
+            logging.getLogger("law.worker").info("retention: pruned %s jobs, %s agent sessions", jobs, sessions)
+        except Exception:  # never let housekeeping take the worker down
+            logging.getLogger("law.worker").exception("retention prune failed")
+        await asyncio.sleep(PRUNE_EVERY_S)
+
+
 async def _run(paths: LawPaths) -> None:
     worker, store = build_worker(paths)
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, worker.stop)
+    pruner = asyncio.create_task(_prune_forever(paths, store))
     try:
         await worker.run()
     finally:
+        pruner.cancel()
         await store.close()
 
 
