@@ -2,6 +2,6 @@
   "stage": "C-user-requests",
   "task": "C4 film render test, C7 lan-chat verification, C8 reclaim + email",
   "status": "in_progress",
-  "next_step": "When lan-chat run 6 (root 1a17f710b7a6, sent via Telegram) finishes: verify it independently (mvnw verify, npm test/build, run 2 clients, screenshots) and email the result. Then law install (applies stall guard, film/fast-video), render a 20 s test film and record timing, law reclaim, final gitleaks pass, send the handover email (draft: ~/LAW/state/handover-draft.md).",
-  "timestamp": "2026-10-20T15:30:00"
+  "next_step": "When lan-chat run 7 (root 3749d7abaa03) finishes: verify independently (mvnw verify, npm test/build, 2 clients, screenshots) and email the coding result. Then law install (deploys stall guard, translator, .law/ memory, /proposal, report email, doc-tools). Then send '/proposal ~/SourceCode/lan-chat ...' to Tony via Telegram.app and monitor every 5 min; the pipeline emails the PDF itself (first send may need Automation permission for Mail). Then film timing, law reclaim, gitleaks, final handover email (draft ~/LAW/state/handover-draft.md).",
+  "timestamp": "2026-10-20T17:10:00"
 }
