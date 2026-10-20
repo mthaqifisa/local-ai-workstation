@@ -90,7 +90,7 @@ async def test_judge_uses_a_different_model_family_than_the_generator(setup):
 async def test_resolver_sets_resources_from_registry(setup):
     rt, _, _ = setup
     j = resolver(rt)(Job(kind="task", payload={"role": "coder"}))
-    assert j.resource == "llm:qwen3.8-27b-8bit" and j.lane == "heavy" and j.mem_gb == 34
+    assert j.resource == "llm:qwen3.8-27b-8bit" and j.lane == "heavy" and j.mem_gb == 40
     s = resolver(rt)(Job(kind="search", payload={}))
     assert s.lane == "none"
 

@@ -26,7 +26,8 @@ INSTRUCTIONS = """This project keeps its working memory in {folder}/ (like .clau
 - Before coding, record findings in {folder}/RESEARCH.md and numbered steps with checkboxes and gates in
   {folder}/PLAN.md.
 - After every step, update {folder}/PROGRESS.md: what was done, the gate output, the exact next step. Tick the step
-  in {folder}/PLAN.md.
+  in {folder}/PLAN.md. Write findings and results to files as you go, never only at the end: your context can be
+  summarised at any time, and what is not on disk is lost.
 - Never write secrets, keys or passwords into {folder}/."""
 RESUME = ("Your previous session in this project was interrupted. Read {folder}/PROGRESS.md and {folder}/PLAN.md "
           "and continue from the next unchecked step. Keep {folder}/PROGRESS.md current.")
