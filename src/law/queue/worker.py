@@ -15,6 +15,7 @@ import time
 import traceback
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Protocol
 
 from law.queue.jobs import Job, Priority, Status
@@ -168,7 +169,8 @@ retry_pipeline = retry_job
 class Worker:
     def __init__(self, store: JobStore, handlers: dict[str, Handler], capacity: Capacity,
                  resolve: Resolver, models: ModelControl | None = None, tick_s: float = 0.5,
-                 job_timeout_s: float = 6 * 3600) -> None:
+                 job_timeout_s: float = 6 * 3600, restart_flag: Path | None = None) -> None:
+        self.restart_flag = restart_flag  # set by `law install` when new code waits for a pause between steps
         self.store = store
         self.handlers = handlers
         self.cap = capacity
@@ -207,6 +209,11 @@ class Worker:
         listener = asyncio.create_task(self._listen())
         try:
             while not self._stop.is_set():
+                if self.restart_flag is not None and self.restart_flag.exists() and not self.tasks:
+                    # new code was installed while jobs ran: restart now, between steps (launchd brings us back)
+                    self.restart_flag.unlink(missing_ok=True)
+                    log.info("restarting on newly installed code (no step running)")
+                    break
                 await self.schedule_once()
                 self._wake.clear()
                 with contextlib.suppress(TimeoutError):

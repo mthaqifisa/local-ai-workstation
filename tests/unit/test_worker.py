@@ -350,3 +350,26 @@ async def test_skip_continues_after_the_failed_stage_and_single_jobs_retry_as_ne
     assert again.id != single.id and again.payload == {"prompt": "x"} and again.status == Status.QUEUED
     with pytest.raises(ValueError, match="nothing to skip"):
         await skip_stage(store, lambda j: j, single.id)
+
+
+async def test_worker_restarts_on_new_code_only_between_steps(tmp_path):
+    from law.queue.worker import Worker
+
+    store = JobStore(fakeredis.FakeAsyncRedis(decode_responses=True))
+    flag = tmp_path / "worker-restart.pending"
+    release = asyncio.Event()
+
+    async def step(ctx):  # type: ignore[no-untyped-def]
+        await release.wait()
+        return Done({})
+
+    w = Worker(store, {"step": step}, Capacity(budget_gb=48), lambda j: j, restart_flag=flag, tick_s=0.02)
+    job = await store.submit(Job(kind="step", payload={}, lane="none"))
+    runner = asyncio.create_task(w.run())
+    await asyncio.sleep(0.2)
+    flag.write_text("new")
+    await asyncio.sleep(0.2)
+    assert not runner.done()  # a step is running: no restart yet
+    release.set()
+    await asyncio.wait_for(runner, 5)  # finished the step, then exited for the restart
+    assert (await store.require(job.id)).status == Status.DONE and not flag.exists()

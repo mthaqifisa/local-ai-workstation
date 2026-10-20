@@ -393,6 +393,20 @@ def _uv_env(paths: LawPaths) -> dict[str, str]:
             "UV_CACHE_DIR": str(paths.cache / "uv"), "UV_PYTHON_INSTALL_DIR": str(paths.runtime / "python")}
 
 
+WORKER_RESTART_FLAG = "worker-restart.pending"
+
+
+def jobs_running(reg: Registry) -> int:
+    """How many jobs the worker is running now (0 if the queue store is unreachable)."""
+    import redis
+
+    try:
+        client = redis.Redis(host=reg.network.loopback, port=reg.ports.valkey, socket_timeout=3)
+        return int(client.zcard("law:running"))
+    except redis.RedisError:
+        return 0
+
+
 class Services:
     """launchd agents for valkey, oMLX, Caddy, API, worker, Telegram."""
 
@@ -460,9 +474,34 @@ class Services:
     def apply(self) -> None:
         cf = self.c.paths.config / "Caddyfile"
         cf.write_text(self.caddyfile())
+        worker = self.c.reg.services["worker"].label or "com.law6.worker"
         for agent in self.agents():
+            if agent.label == worker and self._defer_worker(agent):
+                continue
             launchd.apply(self.c.paths, agent, self.c.stamp, self.c.sys)
             record_owned(self.c.paths, "launchd", agent.label)
+
+    def _defer_worker(self, agent: launchd.Agent) -> bool:
+        """Never restart the worker in the middle of an agent step. With jobs running, a code-only change is
+        written and the worker restarts itself between steps (it watches WORKER_RESTART_FLAG); any other change
+        waits for the next `law install` when idle. LAW_FORCE_RESTART=1 restarts at once."""
+        if os.environ.get("LAW_FORCE_RESTART") == "1" or not launchd.needs_update(self.c.paths, agent, self.c.stamp):
+            return False
+        running = jobs_running(self.c.reg)
+        if not running:
+            return False
+        plist = launchd.plist_path(self.c.paths, agent.label)
+        current = plist.read_bytes() if plist.exists() else b""
+        old_stamp = launchd.stamp_of(current)
+        if old_stamp is not None and agent.render(self.c.paths, old_stamp) == current:
+            plist.write_bytes(agent.render(self.c.paths, self.c.stamp))
+            self.c.paths.state.mkdir(parents=True, exist_ok=True)
+            (self.c.paths.state / WORKER_RESTART_FLAG).write_text(self.c.stamp + "\n")
+            print(f"  worker: {running} job step(s) running; it restarts on the new code between steps")
+        else:
+            print(f"  worker: update postponed while {running} job step(s) run; run `law install` again when idle "
+                  "(or LAW_FORCE_RESTART=1)")
+        return True
 
     def verify(self) -> list[str]:
         reg = self.c.reg

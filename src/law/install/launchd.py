@@ -52,6 +52,17 @@ class Agent:
         return plistlib.dumps(doc, sort_keys=True)
 
 
+def stamp_of(plist: bytes) -> str | None:
+    """The LAW_STAMP a rendered plist carries (None if absent or unreadable)."""
+    try:
+        doc = plistlib.loads(plist)
+    except Exception:
+        return None
+    env = doc.get("EnvironmentVariables") or {}
+    stamp = env.get("LAW_STAMP")
+    return str(stamp) if stamp else None
+
+
 def plist_path(paths: LawPaths, label: str) -> Path:
     return paths.launch_agents / f"{label}.plist"
 
