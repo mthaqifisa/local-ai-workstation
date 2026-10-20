@@ -139,3 +139,34 @@ def test_report_email_is_validated_and_stored_locally(setup):
     assert secrets.read(paths.env_file)["LAW_REPORT_EMAIL"] == "me@example.com"
     assert client.get("/settings").json()["email"] == {"address": "me@example.com"}
     assert applied == []  # read at send time: nothing restarts
+
+
+def test_storage_settings_round_trip_into_the_registry(setup):
+    client, paths, applied = setup
+    s = client.get("/storage").json()
+    assert s["settings"] == {"jobs_days": 14, "agent_sessions_days": 14, "logs_days": 14, "trash_days": 7,
+                             "llm_ssd_cache_gb": 20}
+    assert {i["id"] for i in s["items"]} >= {"llm_prompt_cache", "uv", "npm", "homebrew", "npm_user"}
+    assert all(i["bytes"] >= 0 for i in s["items"]) and next(i for i in s["items"] if i["id"] == "npm_user")[
+        "outside_law"]
+    body = {"jobs_days": 30, "agent_sessions_days": 7, "logs_days": 14, "trash_days": 7, "llm_ssd_cache_gb": 20}
+    assert client.put("/settings/storage", json=body).json()["jobs_days"] == 30 and applied == []
+    text = paths.registry_file.read_text()
+    assert "jobs_days: 30" in text and "# How long history is kept" in text  # comments kept
+    assert client.put("/settings/storage", json={**body, "llm_ssd_cache_gb": 40}).status_code == 200
+    assert applied == ["omlx-settings"]  # the cache cap is applied by its install step
+    assert client.put("/settings/storage", json={**body, "jobs_days": 0}).status_code == 422
+
+
+def test_clearing_caches_skips_busy_items_while_jobs_run(setup):
+    from law.queue.jobs import Job
+
+    client, paths, _ = setup
+    npm = paths.cache / "npm"
+    (npm / "pkg").mkdir(parents=True)
+    (npm / "pkg" / "a.tgz").write_bytes(b"x" * 50_000)
+    assert client.post("/storage/clear", json={"ids": ["nope"]}).status_code == 422
+    store = client.app.state.store  # type: ignore[attr-defined]
+    client.portal.call(store.submit, Job(kind="ask", payload={}))  # a queued job: the Mac is busy
+    r = client.post("/storage/clear", json={"ids": ["npm"]}).json()
+    assert r["skipped_busy"] == ["npm"] and (npm / "pkg" / "a.tgz").exists()

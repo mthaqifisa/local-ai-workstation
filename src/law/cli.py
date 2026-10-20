@@ -384,10 +384,32 @@ def restore_state() -> None:
 
 @app.command()
 def reclaim(dry_run: Annotated[bool, typer.Option("--dry-run")] = False) -> None:
-    """Free disk space: unused model caches, old trash/logs/temp files, tool caches."""
+    """Free disk space: unused model caches, old trash/logs/temp files, tool caches, and job history and agent
+    conversations older than the retention settings (settings/registry.yaml, or Console -> Storage)."""
+    import asyncio
+
+    from law import registry
     from law.ops import reclaim as do_reclaim
     from law.sysapi import SysAPI
-    do_reclaim(_paths(), SysAPI(), con, dry_run=dry_run)
+    paths = _paths()
+    keep = registry.load(paths.registry_file).retention
+    do_reclaim(paths, SysAPI(), con, dry_run=dry_run, trash_days=keep.trash_days, log_days=keep.logs_days)
+    if dry_run:
+        return
+    from law.api import redis_url
+    from law.queue.store import JobStore
+    from law.worker_main import prune_once
+
+    async def prune() -> tuple[int, int]:
+        store = JobStore.connect(redis_url(registry.load(paths.registry_file)))
+        try:
+            return await prune_once(paths, store)
+        finally:
+            await store.close()
+
+    jobs, sessions = asyncio.run(prune())
+    con.print(f"history: removed {jobs} jobs older than {keep.jobs_days} days and {sessions} agent conversations "
+              f"older than {keep.agent_sessions_days} days")
 
 
 @app.command()

@@ -128,6 +128,15 @@ class TelegramSettings(_Strict):
     notify_sources: list[str] = Field(default_factory=lambda: ["cli", "api", "console"])
 
 
+class Retention(_Strict):
+    """How long LAW keeps history. Pruned every 6 hours by the worker and by `law reclaim`; editable in the
+    Console (Storage). Live jobs are never pruned."""
+    jobs_days: int = Field(default=14, ge=1)            # finished jobs and their progress logs
+    agent_sessions_days: int = Field(default=14, ge=1)  # agents' full conversations (OpenCode sessions)
+    logs_days: int = Field(default=14, ge=1)            # rotated logs in ~/LAW/logs
+    trash_days: int = Field(default=7, ge=1)            # ~/LAW/trash
+
+
 class Registry(_Strict):
     version: int
     machine: Machine
@@ -139,6 +148,7 @@ class Registry(_Strict):
     tools: list[Tool] = []
     comfyui: ComfyUI | None = None
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
+    retention: Retention = Field(default_factory=Retention)
 
     @model_validator(mode="after")
     def _models_fit(self) -> Registry:

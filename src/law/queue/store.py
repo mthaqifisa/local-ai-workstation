@@ -190,6 +190,27 @@ class JobStore:
         jobs = [await self.get(str(i)) for i in ids]
         return [j for j in jobs if j is not None]
 
+    async def prune(self, older_than: float) -> int:
+        """Delete finished jobs created before `older_than` with their progress logs. Live jobs, and the stages of
+        a pipeline that is still live (a retry needs them), are kept. Returns how many were deleted."""
+        deleted = 0
+        for raw in await self.r.zrangebyscore(f"{P}history", 0, older_than):
+            job_id = str(raw)
+            job = await self.get(job_id)
+            if job is not None and not job.status.terminal:
+                continue
+            if job is not None and job.parent:
+                root = await self.get(job.parent)
+                if root is not None and not root.status.terminal:
+                    continue
+            async with self.r.pipeline(transaction=True) as pipe:
+                pipe.delete(f"{P}job:{job_id}", f"{P}events:{job_id}")
+                pipe.zrem(f"{P}history", job_id)
+                pipe.zrem(f"{P}dead", job_id)
+                await pipe.execute()
+            deleted += 1
+        return deleted
+
     async def children(self, root_id: str) -> list[Job]:
         out = []
         for job in await self.history(limit=1000):
