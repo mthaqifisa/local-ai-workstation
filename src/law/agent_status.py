@@ -26,8 +26,8 @@ from law.queue.store import JobStore
 ACTIVE_S = 300
 STALL_S = 1200
 COMPLETION = re.compile(r"Chat completion: model=(\S+), (\d+) tokens in ([\d.]+)s \(([\d.]+) tok/s\), prompt: (\d+)")
-TICK = re.compile(r"^\s*- \[[xX]\]", re.MULTILINE)
-OPEN = re.compile(r"^\s*- \[ \]\s*(.+)$", re.MULTILINE)
+TICK = re.compile(r"^\s*(?:[-*]|\d+\.)\s*\[[xX]\]", re.MULTILINE)  # "- [x]", "* [x]" or "1. [x]"
+OPEN = re.compile(r"^\s*(?:[-*]|\d+\.)\s*\[ \]\s*(.+)$", re.MULTILINE)
 
 
 def model_activity(llm_internal: str, log: Path) -> dict[str, Any]:
@@ -168,8 +168,12 @@ async def statuses(store: JobStore, model: dict[str, Any], query: str = "", rece
     now = time.time()
     jobs = [j for j in await store.history(300) if j.parent is None and matches(j, query)]
     live = [j for j in jobs if j.status in {Status.QUEUED, Status.RUNNING, Status.WAITING}]
-    stopped = [j for j in jobs if j.status in {Status.FAILED, Status.DEAD, Status.CANCELLED}
-               and now - (j.finished or j.created) < recent_s]
+    def age(j: Job) -> float:
+        return now - (j.finished or j.created)
+
+    # failures stay a day (they need a decision); cancels are deliberate, so only an hour
+    stopped = [j for j in jobs if (j.status in {Status.FAILED, Status.DEAD} and age(j) < recent_s)
+               or (j.status is Status.CANCELLED and age(j) < 3600)]
     finished = [j for j in jobs if j.status is Status.DONE and now - (j.finished or j.created) < 3600] if query else []
     picked = (live + stopped + finished)[:limit]
     return [await job_status(store, j, model, now) for j in picked]
