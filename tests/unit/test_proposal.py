@@ -149,7 +149,7 @@ def test_mail_sends_the_pdf_with_the_summary(tmp_path: Path, monkeypatch: pytest
     assert "Recommendation:** proceed" in sent["body"] and "5/5" in sent["body"]
 
 
-def test_mail_failure_says_where_the_pdf_is(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_mail_failure_does_not_stop_the_job(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     rt = _rt(tmp_path)
     (tmp_path / "proposal.md").write_text(DOC)
     pdf = tmp_path / "proposal.pdf"
@@ -159,9 +159,10 @@ def test_mail_failure_says_where_the_pdf_is(tmp_path: Path, monkeypatch: pytest.
         raise mailer.MailError("Mail did not respond")
 
     monkeypatch.setattr(mailer, "send", boom)
-    with pytest.raises(Fatal, match=f"the PDF is at {pdf}"):
-        asyncio.run(proposal.make_handlers(rt)["proposal_mail"](
-            _ctx({"dir": str(tmp_path), "out": ".", "prompt": "x", "_carry": {"pdf": str(pdf)}})))
+    done = asyncio.run(proposal.make_handlers(rt)["proposal_mail"](
+        _ctx({"dir": str(tmp_path), "out": ".", "prompt": "x", "_carry": {"pdf": str(pdf)}})))
+    assert isinstance(done, Done) and done.result["emailed"] is None and done.result["pdf"] == str(pdf)
+    assert "Email not sent: Mail did not respond" in done.result["answer"]
 
 
 def test_translator_sees_the_fixed_proposal_structure(tmp_path: Path):
