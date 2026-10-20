@@ -221,7 +221,8 @@ async function refreshAgents() {
         <dt>Last 10 min</dt><dd>${c.reads} reads · ${c.commands} commands · ${c.edits} edits · ${c.web} web</dd>
         ${j.last_write ? `<dt>Last file change</dt><dd>${mins(j.last_write)} min ago</dd>` : ""}
         ${plan}${j.project ? `<dt>Folder</dt><dd class="mono">${esc(j.project)}</dd>` : ""}
-        ${j.error ? `<dt>Error</dt><dd>${esc(j.error)}</dd>` : ""}</dl>
+        ${j.error ? `<dt>Error</dt><dd>${esc(j.error.split(/\n|\^{3,}/).filter((x) => x.trim()).pop()?.slice(0, 240) || j.error.slice(0, 240))}</dd>` : ""}</dl>
+      ${j.error && j.error.length > 240 ? `<details><summary>Full error</summary><pre class="note">${esc(j.error)}</pre></details>` : ""}
       ${p && p.progress ? `<details><summary>Latest progress note</summary><pre class="note">${esc(p.progress)}</pre></details>` : ""}
       ${j.recent.length ? `<details><summary>Recent actions</summary><ul class="timeline">${j.recent.slice().reverse().map((e) => `<li><time>${hm(e.t)}</time><span>${esc(e.message)}</span></li>`).join("")}</ul></details>` : ""}
     </div>`;
