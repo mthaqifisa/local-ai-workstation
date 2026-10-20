@@ -163,6 +163,11 @@ STALL_NUDGES = 3
 NUDGE = ("You have not changed any file for {minutes} minutes. Stop reading and exploring. Run the project's "
          "build or tests now, fix the first error they report (open only the file it names), and repeat. "
          "Commit when a gate passes.")
+# Writers, researchers and designers produce documents: the nudge is to save work, a section at a time.
+NUDGE_DOCS = ("You have not saved anything for {minutes} minutes. Save your work now: write the next section of the "
+              "document to its file (at most about 1,500 words per write, appending section by section), tick it in "
+              ".law/PLAN.md, and continue the same way. Do not write the whole document in one step.")
+DOC_ROLES = {"writer", "researcher", "designer", "analyst", "architect"}
 
 
 def is_file_change(line: str) -> bool:
@@ -269,7 +274,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 if sid is None or attempt == STALL_NUDGES:
                     raise Fatal(f"{role} agent stalled: {exc}") from exc
                 await ctx.progress(f"⚠️ no file changed for {stall_min:.0f} min: nudging the agent to build and fix")
-                cmd = [*base, "--session", sid, NUDGE.format(minutes=f"{stall_min:.0f}")]
+                nudge = NUDGE_DOCS if role in DOC_ROLES else NUDGE
+                cmd = [*base, "--session", sid, nudge.format(minutes=f"{stall_min:.0f}")]
         raise AssertionError("unreachable")
 
     def _scoped(p: dict[str, Any], memory: ProjectMemory | None = None, writes: bool = True) -> str:
