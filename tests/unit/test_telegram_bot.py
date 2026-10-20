@@ -93,7 +93,7 @@ async def test_resume_delivers_only_undelivered_recent_telegram_roots(tmp_path: 
 
     delivered: list[str] = []
 
-    async def fake_deliver(job_id, reply):  # type: ignore[no-untyped-def]
+    async def fake_deliver(job_id, reply, again=False):  # type: ignore[no-untyped-def]
         delivered.append(job_id)
 
     monkeypatch.setattr(telegram_bot.httpx, "AsyncClient", FakeClient)
