@@ -425,10 +425,12 @@ def queued_ahead(jobs: list[dict[str, Any]], job_id: str) -> int:
 
 
 def split_dir(args: str) -> dict[str, str]:
-    """`/code ~/SourceCode/app Add login` works in that existing folder; otherwise the agent starts a new project."""
+    """`/code ~/SourceCode/app Add login` works in that folder (a new folder is created when its parent exists, e.g.
+    `/code ~/SourceCode/new-app ...`); otherwise the translator names a new project folder."""
     first, _, rest = args.strip().partition(" ")
-    if first.startswith(("~/", "/")) and rest.strip() and Path(first).expanduser().is_dir():
-        return {"dir": str(Path(first).expanduser()), "prompt": rest.strip()}
+    path = Path(first).expanduser()
+    if first.startswith(("~/", "/")) and rest.strip() and (path.is_dir() or path.parent.is_dir()):
+        return {"dir": str(path), "prompt": rest.strip()}
     return {"prompt": args.strip()}
 
 

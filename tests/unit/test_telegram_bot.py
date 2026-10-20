@@ -146,7 +146,6 @@ def test_split_dir_uses_an_existing_folder(tmp_path):
 
     assert split_dir(f"{tmp_path} add a login page") == {"dir": str(tmp_path), "prompt": "add a login page"}
     assert split_dir("Build a todo app") == {"prompt": "Build a todo app"}
-    assert split_dir(f"{tmp_path}/missing fix it") == {"prompt": f"{tmp_path}/missing fix it"}
 
 
 def test_queued_ahead_counts_older_unfinished_top_level_jobs():
@@ -169,3 +168,10 @@ def test_cancelled_is_not_reported_as_failed():
     assert outcome_line({"status": "cancelled", "error": "cancelled by user"}) == "🚫 cancelled"
     assert outcome_line({"status": "failed", "error": "boom"}) == "❌ failed: boom"
     assert notice_finished({"id": "j1", "kind": "task", "status": "cancelled"}).startswith("🚫 **Cancelled**")
+
+
+def test_split_dir_accepts_a_new_folder_under_an_existing_parent(tmp_path):
+    from law.telegram_bot import split_dir
+
+    assert split_dir(f"{tmp_path}/new-app build it") == {"dir": f"{tmp_path}/new-app", "prompt": "build it"}
+    assert split_dir(f"{tmp_path}/no/such build it") == {"prompt": f"{tmp_path}/no/such build it"}

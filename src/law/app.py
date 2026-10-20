@@ -14,7 +14,8 @@ from law.queue.worker import Handler
 NO_MODEL = {"search", "song", "film", "film_join"}
 # Job kinds whose model comes from the role in the payload (default role in brackets).
 ROLE_KINDS = {"ask": "assistant", "draft": "assistant", "revise": "assistant", "judge": "reviewer",
-              "task": "coder", "task_work": "coder", "task_review": "reviewer", "task_fix": "coder",
+              "task": "coder", "task_translate": "translator", "task_work": "coder", "task_review": "reviewer",
+              "task_fix": "coder",
               "song_plan": "writer", "film_plan": "writer"}
 
 
@@ -36,6 +37,8 @@ def resolver(rt: Runtime) -> Any:
             role = job.payload.get("role", ROLE_KINDS[job.kind])
             if job.kind in {"judge", "task_review"}:
                 role = "reviewer"
+            elif job.kind == "task_translate":
+                role = "translator"
             model = rt.reg.model(rt.model_id(role))
             job.resource, job.lane, job.mem_gb = f"llm:{model.id}", model.lane, model.mem_gb
             return job
