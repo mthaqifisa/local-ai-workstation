@@ -13,7 +13,7 @@ from law import projects, secrets, specs
 from law.handlers import project as project_handlers
 from law.handlers.tasks import agent_env, plan_complete, project_env
 from law.paths import LawPaths
-from law.queue.worker import Done, Fatal, Stages
+from law.queue.worker import Done, Stages
 
 REPO = Path(__file__).resolve().parents[2]
 FILLED = """/code new
@@ -64,7 +64,7 @@ def _project(**kw: Any) -> projects.Project:
 def test_state_machine():
     p = _project(state="awaiting_go")
     assert projects.decide(p, "go") == "develop" and p.state == "developing"
-    with pytest.raises(ValueError, match="you can: nothing"):
+    with pytest.raises(ValueError, match="will ask for your decision when it is ready"):
         projects.decide(p, "go")
     p.state = "awaiting_verification"
     assert projects.decide(p, "changes", "add file sharing") == "proposal"
@@ -149,12 +149,16 @@ def test_go_runs_environment_milestones_reviews_then_the_verify_gate(tmp_path: P
     assert store.get("office-chat").state == "developing"
 
 
-def test_wrong_decision_fails_with_what_is_allowed(tmp_path: Path):
+def test_a_decision_at_the_wrong_moment_is_refused_as_information(tmp_path: Path):
     rt = _rt(tmp_path)
     store = projects.Projects(rt.paths)
     store.save(store.create(projects.parse_template(FILLED), chat=7))  # state: proposing
-    with pytest.raises(Fatal, match="you can: nothing"):
-        _run(rt, "project_step", {"project": "office-chat", "action": "go"})
+    done = _run(rt, "project_step", {"project": "office-chat", "action": "go"})  # e.g. an old Go button
+    assert isinstance(done, Done) and done.result["refused"] is True
+    assert "proposing (version 1)" in done.result["answer"] and "gate" not in done.result
+    assert store.get("office-chat").state == "proposing"
+    unknown = _run(rt, "project_step", {"project": "nope", "action": "go"})
+    assert "no single project matches" in unknown.result["answer"]
 
 
 def test_gates_record_the_state_and_offer_buttons(tmp_path: Path):
