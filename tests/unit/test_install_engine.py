@@ -191,6 +191,9 @@ def test_telegram_setup_runs_while_unset_and_never_once_set(ctx: Ctx, monkeypatc
     answers = iter([{}, {"LAW_TELEGRAM_TOKEN": "1:" + "A" * 35, "LAW_TELEGRAM_USER_IDS": "42"}])
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr(telegram_setup, "configure", lambda: runs.append(1) or next(answers))
+    emails: list[int] = []
+    monkeypatch.setattr(telegram_setup, "ask_email",
+                        lambda: emails.append(1) or {"LAW_REPORT_EMAIL": "me@example.com"})
     ctx.interactive = True
     engine.run(ctx.paths, file_steps(ctx), dry_run=False)  # user skips
     engine.run(ctx.paths, file_steps(ctx), dry_run=False)  # asked again, user configures
@@ -198,6 +201,7 @@ def test_telegram_setup_runs_while_unset_and_never_once_set(ctx: Ctx, monkeypatc
     assert secrets.read(ctx.paths.env_file)["LAW_TELEGRAM_USER_IDS"] == "42"
     engine.run(ctx.paths, file_steps(ctx), dry_run=False)  # configured: never asked again
     assert len(runs) == 2
+    assert emails == [1] and secrets.read(ctx.paths.env_file)["LAW_REPORT_EMAIL"] == "me@example.com"
     assert engine.run(ctx.paths, file_steps(ctx), dry_run=False).changes == 0
 
 def test_launchd_reload_waits_for_async_bootout(ctx: Ctx):

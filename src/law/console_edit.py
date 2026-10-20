@@ -28,6 +28,10 @@ class RoleUpdate(BaseModel):
     tools: list[str]
 
 
+class EmailUpdate(BaseModel):
+    address: str
+
+
 class TelegramUpdate(BaseModel):
     token: str | None = None
     user_ids: str
@@ -85,6 +89,20 @@ def update_telegram(paths: LawPaths, upd: TelegramUpdate) -> str:
         raise ValueError("Telegram rejected the token")
     secrets.ensure(paths.env_file, imported={"LAW_TELEGRAM_TOKEN": token, "LAW_TELEGRAM_USER_IDS": ",".join(ids)})
     return str(bot.get("username"))
+
+
+def email_status(paths: LawPaths) -> dict[str, Any]:
+    return {"address": secrets.read(paths.env_file).get("LAW_REPORT_EMAIL", "")}
+
+
+def update_email(paths: LawPaths, upd: EmailUpdate) -> str:
+    from law.mailer import valid
+
+    address = upd.address.strip()
+    if not valid(address):
+        raise ValueError("not a valid email address")
+    secrets.ensure(paths.env_file, imported={"LAW_REPORT_EMAIL": address})
+    return address
 
 
 def apply_async(paths: LawPaths, steps: str) -> None:

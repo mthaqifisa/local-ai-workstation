@@ -234,7 +234,16 @@ async function loadSettings() {
     <label>New bot token (leave empty to keep the current one)</label><input id="t-token" type="password" autocomplete="off" placeholder="123456789:AAH…">
     <label>Allowed Telegram user IDs (comma-separated)</label><input id="t-ids" value="${esc(s.telegram.user_ids.join(", "))}">
     <div class="toolbar" style="margin-top:16px"><span class="sub">The token is checked with Telegram before it is saved. It is stored only in ~/LAW/state/.env.</span>
-      <span class="spacer"></span><button class="btn primary" id="t-save">Save &amp; restart Tony</button></div>`;
+      <span class="spacer"></span><button class="btn primary" id="t-save">Save &amp; restart Tony</button></div>
+    <h3 style="margin-top:28px">Report email</h3>
+    <div class="sub">Where LAW emails finished documents, e.g. <code>/proposal</code> PDFs (sent with this Mac's Mail app).</div>
+    <label>Email address</label><input id="e-addr" type="email" autocomplete="off" value="${esc(s.email.address)}" placeholder="you@example.com">
+    <div class="toolbar" style="margin-top:16px"><span class="sub">Stored only in ~/LAW/state/.env.</span>
+      <span class="spacer"></span><button class="btn primary" id="e-save">Save email</button></div>`;
+  $("#e-save").onclick = async () => {
+    try { const r = await api("/settings/email", {method: "PUT", body: JSON.stringify({address: $("#e-addr").value})}); toast(`Saved — reports go to ${r.address}`); loadSettings(); }
+    catch (e) { toast("Not saved: " + e.message); }
+  };
   $("#t-save").onclick = async () => {
     const body = {token: $("#t-token").value.trim() || null, user_ids: $("#t-ids").value};
     try { const r = await api("/settings/telegram", {method: "PUT", body: JSON.stringify(body)}); toast(`Saved — connected as @${r.bot}`); loadSettings(); }
