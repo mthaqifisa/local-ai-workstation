@@ -1,11 +1,13 @@
 # HELP: skipped parts
 
-Parts of LAW v6 skipped during the build because an automated safety check stopped the output.
-Each row names the missing file and where to read the context.
+Parts of LAW v6 that were skipped during the build because an automated safety check stopped the output.
 
-| # | Skipped part | File | Context to read |
+**No open items.** All three were completed and verified:
+
+| # | Part | Done | Where |
 |---|---|---|---|
-| 2 | `law save` / `law restore-state`: export Open WebUI presets, prompts and knowledge definitions into `v6/settings/openwebui/` and `v6/knowledge/`, and import them on install (secret scan before commit) | `src/law/state_sync.py` (not present) | `PROMPT.md` §1 rule 1 and P3 "Portable state", `src/law/ops.py`, `compose.yaml`, `src/law/secrets.py` |
+| 1 | Job API | 2026-10-19 (another session); 8 tests, file serving confined to `~/LAW/outputs` | `src/law/api.py` |
+| 2 | `law save` / `law restore-state` (Open WebUI presets, prompts, tools, functions, knowledge definitions; secret scan before anything is written; add-only restore, also run by `law install`) | 2026-10-20; live round trip and secret-guard test on this Mac | `src/law/state_sync.py` |
+| 3 | Song planner (theme, genre/vibe and duration in; lyrics written unless given; rendered with ACE-Step) | 2026-10-20; Whisper hears the planned chorus in the rendered song | `src/law/handlers/creative.py` |
 
-Open items above. (Item 3, the song planner, was done on 2026-10-20: `src/law/handlers/creative.py`, Telegram `/music`, `law song`; film planning is not built. Item 1, `src/law/api.py`, was completed in another session and verified on 2026-10-19:
-8 tests passing, lint clean, file serving confined to `~/LAW/outputs`.)
+Not built: a film planner (script to multi-shot video). Video generation itself works (`/video`, `/animate`).
