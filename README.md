@@ -216,7 +216,8 @@ law install
 | `/music <request>` | A full song: theme, genre/vibe and length (e.g. `2 min`). Tony writes the lyrics, or add a `lyrics:` line with your own; say `instrumental` for no vocals |
 | `/film <request>` | A short film (up to 2 min): shots planned from your theme or a `script:` section, rendered with fast Wan 2.2, scored and cut together. Say `no music` to skip the score |
 | `/agent <role> <task>` | Runs a role, e.g. `/agent architect design a payments API` or `/agent operator play jazz on Spotify` |
-| `/jobs` | Recent jobs and their status |
+| `/jobs [project or keyword]` | What's running and its health: 🟢 working, 🔵 thinking, 🟠 stalled/stuck, 🔴 failed. With a keyword: the step, last action, to-do progress and model activity, with **Retry / Skip / Restart / Cancel** buttons |
+| `/retry <job>` | Run a failed job again from the step that failed (earlier work is kept). Every failed job also asks you **Retry / Skip** with buttons |
 
 A status message updates live while the job runs. Messages from accounts that aren't on your list are ignored.
 
@@ -319,6 +320,7 @@ OpenCode is the recommended client offline: it is open source and the setup abov
 |---|---|---|
 | `v6/` (git) | Code, `settings/` (models, ports, roles), `knowledge/`, `trained/`, docs | Yes, via git |
 | `~/LAW/` | Models, caches, containers, generated media, logs, secrets (`state/.env`) | No, and that's fine |
+| LAW Console → **Agents** | Live health of every running job (working / thinking / stalled / stuck / failed), its step, last actions, to-do progress and the model's activity, with Retry / Skip / Restart / Cancel | — |
 | `<project>/.law/` | A project's brief, requests, research, plan and progress (commit it with the project) | With the project |
 | `<project>/docs/proposal/` or `~/LAW/outputs/docs/` | `/proposal` research, Markdown source, diagrams, wireframes, PDF | With the project |
 

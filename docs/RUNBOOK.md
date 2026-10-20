@@ -8,6 +8,8 @@
 | Live stats, jobs (cancel), personas, settings | LAW Console: `http://<mac-name>.local:8100` |
 | One-line status | `law status` |
 | Recent jobs | `law jobs` |
+| Is an agent working, thinking or stuck? | Console → **Agents**, or `/jobs <project>` in Telegram |
+| A job failed or got stuck | **Retry** (from the failed step, earlier work kept), **Skip** (carry on without that step) or **Restart step** (stuck); buttons in the Console and Telegram, or `law retry <id>` |
 | Cancel a job | `law cancel <id>` (cancelling a pipeline also stops its running stage and agent process) |
 | Service log | `law services logs worker` (also `api`, `omlx`, `caddy`, `valkey`, `telegram`, `comfyui`) |
 | Restart a service | `law services restart worker` |
