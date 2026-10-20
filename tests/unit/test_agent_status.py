@@ -56,3 +56,10 @@ async def test_statuses_report_the_running_stage_and_filter_by_keyword(tmp_path:
     assert s["title"] == "LAN Chat" and s["health"] == "working" and s["stage"]["index"] == 2
     assert s["stage"]["role"] == "writer" and s["last_10min"]["edits"] == 1 and s["project"] == str(tmp_path)
     assert {x["title"] for x in await st.statuses(store, {"active": True})} == {"LAN Chat", "a lighthouse"}
+
+
+def test_numbered_checklists_count(tmp_path: Path):
+    (tmp_path / ".law").mkdir()
+    (tmp_path / ".law" / "PLAN.md").write_text("1. [x] read brief\n2. [ ] search market\n* [x] tick\n")
+    summary = st.plan_summary(tmp_path)
+    assert summary is not None and (summary["done"], summary["total"], summary["next"]) == (2, 3, "search market")
