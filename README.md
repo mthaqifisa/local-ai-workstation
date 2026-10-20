@@ -139,6 +139,8 @@ Exact repos and pinned revisions: `settings/registry.yaml`. Decisions and trade-
 - **No mental arithmetic**: roles that handle numbers must use the `run_python` calculator; the judge recomputes figures.
 - **Bounded reasoning**: each role has a reasoning effort, so the model can't think itself out of an answer.
 - **Agent work is reviewed**: code and documents get a read-and-run review by the judge and a fix pass.
+- **Stuck agents are caught**: a writing agent that changes no file for 25 minutes is stopped and resumed in the same
+  session with a "build and fix the first error" nudge (up to 3 times, then the job fails).
 - **House standard** in every role: answer first, sourced claims, no invented facts, units or currencies.
 - **Measured**: `law eval` runs a verified golden set through the real product; `scripts/test_report.py` writes `docs/TEST-REPORT.md`.
 
