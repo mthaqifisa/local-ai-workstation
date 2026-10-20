@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from law import registry, secrets
+from law import registry, roles, secrets
 from law.install import engine
 from law.install.steps import Ctx, EnvProfile, OpenCodeConfig, Secrets, Skeleton
 from law.paths import LawPaths
@@ -139,6 +139,20 @@ def test_opencode_config_uses_registry_models(ctx: Ctx):
     cfg = json.loads((ctx.paths.config / "opencode.json").read_text())
     assert cfg["model"] == "law/qwen3.8-27b-8bit"
     assert set(cfg["provider"]["law"]["models"]) >= {"qwen3.8-27b-8bit", "gemma-4-31b-8bit"}
+
+
+def test_role_configs_carry_the_roles_reasoning_effort(ctx: Ctx):
+    """Unset, the agent's model thinks unbounded (20-45 min between tool calls in a real run)."""
+    import json
+
+    engine.run(ctx.paths, file_steps(ctx), dry_run=False)
+    coder = json.loads((ctx.paths.config / "opencode-coder.json").read_text())
+    model = coder["model"].removeprefix("law/")
+    assert coder["provider"]["law"]["models"][model]["options"] == {"reasoningEffort": "medium"}
+    architect = json.loads((ctx.paths.config / "opencode-architect.json").read_text())
+    effort = roles.load(REPO / "settings" / "roles.yaml").get("architect").reasoning
+    assert architect["provider"]["law"]["models"][architect["model"].removeprefix("law/")]["options"] == {
+        "reasoningEffort": effort}
 
 
 def test_registry_rejects_over_budget_model():
