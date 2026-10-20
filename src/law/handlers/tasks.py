@@ -11,7 +11,7 @@ from typing import Any
 import httpx
 
 from law import specs
-from law.handlers.base import Runtime, Stalled, run_cmd
+from law.handlers.base import Runtime, Stalled, Steered, run_cmd
 from law.handlers.core import PASS_SCORE, answer, parse_verdict
 from law.project_memory import FOLDER, ProjectMemory, project_listing
 from law.queue.worker import Context, Done, Fatal, Outcome, Stages
@@ -168,6 +168,22 @@ NUDGE = ("You have not changed any file for {minutes} minutes. Stop reading and 
 NUDGE_DOCS = ("You have not saved anything for {minutes} minutes. Save your work now: write the next section of the "
               "document to its file (at most about 1,500 words per write, appending section by section), tick it in "
               ".law/PLAN.md, and continue the same way. Do not write the whole document in one step.")
+# Reading library internals (decompiling jars, listing their contents) instead of letting the compiler and tests
+# show the API: seen in three coder runs, costing hours each. After LIB_DIG_LIMIT such commands in one step the
+# agent is stopped and resumed with LIB_NUDGE.
+LIB_DIG_LIMIT = 3
+
+
+def is_library_dig(command: str) -> bool:
+    """A command that inspects library internals: decompilers, jar listings, or the Maven/Gradle caches' jars."""
+    c = command.lower()
+    if re.search(r"\bjavap\b|\bjar\s+-?t|\bcfr\b|\bprocyon\b|\bfernflower\b", c):
+        return True
+    in_cache = any(k in c for k in (".m2/", "cache/m2", "m2/repository", ".gradle/caches", "cache/gradle"))
+    return in_cache and any(k in c for k in (".jar", ".ja\"", "unzip", "find ", "ls ", "javap"))
+LIB_NUDGE = ("Stop reading library internals (jar contents, javap, the Maven cache). Write the code you need, compile, "
+             "and let the compiler errors and the test output tell you the API; read only the files the errors name. "
+             "Check .law/PROGRESS.md for notes, then continue the current ticket.")
 DOC_ROLES = {"writer", "researcher", "designer", "analyst", "architect"}
 
 
@@ -273,17 +289,36 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 edits.append(summary.split(" ", 2)[-1])
             return summary
 
+        digs = 0
+
+        def steer(summary: str) -> str | None:
+            nonlocal digs
+            if summary.startswith("▶") and is_library_dig(summary):
+                digs += 1
+                if digs >= LIB_DIG_LIMIT:
+                    digs = 0
+                    return LIB_NUDGE
+            return None
+
         for attempt in range(STALL_NUDGES + 1):
             try:
                 env = {**agent_env(rt, role, ctx.job.payload.get("effort")), **project_env(workdir)}
                 out = await run_cmd(ctx, cmd, cwd=workdir, env=env, describe=describe,
                                     timeout_s=float(ctx.job.payload.get("timeout_s", 4 * 3600)),
                                     stall_s=stall_min * 60 if writes and stall_min > 0 else None,
-                                    is_work=is_file_change, alive=model_generating)
+                                    is_work=is_file_change, alive=model_generating,
+                                    steer=steer if role == "coder" else None)
                 answer_text = parse_opencode_events(out)
                 if memory is not None and writes and memory.ensure_progress(started, role, answer_text, edits):
                     await ctx.progress("📝 recorded this step in .law/PROGRESS.md (the agent had not)")
                 return answer_text
+            except Steered as exc:
+                sid = session_id(exc.output)
+                if sid is None or attempt == STALL_NUDGES:
+                    raise Fatal(f"{role} agent kept reading library internals") from exc
+                await ctx.progress("⚠️ reading library internals: redirecting the agent to compile and test instead")
+                cmd = [*base, "--session", sid, exc.message]
+                continue
             except Stalled as exc:
                 sid = session_id(exc.output)
                 if sid is None or attempt == STALL_NUDGES:
