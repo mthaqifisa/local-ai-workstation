@@ -146,9 +146,9 @@ Happy path and unhappy paths, all from Telegram, monitored every 5 min:
 - [x] /code init -> template -> filled template -> project folder, git, .law/ (21:55, root 86d87bf7fed9, low/brief)
 - [x] Proposal v1 (brief) PDF in Telegram + Go / No go buttons (01:34; email blocked: Mac locked, needs one Automation click; review 5/5 after prose-verdict fix)
 - [x] Wrong-time decision (Go while v2 is written) -> refused, state unchanged (now an info message, not a failure)
-- [~] No go with a pivot (DMs + 200-message history) -> v2 pipeline running (01:37)
+- [x] No go with a pivot (DMs + 200-message history) -> v2 reflects it fully ('What changed' section, effort, risks, new DM wireframe), PDF in Telegram (03:49)
 - [ ] No go + "stop" -> parked; /resume <note> -> revived (v3)
-- [ ] Go -> environment stage (tools checked/installed, .law/env.sh, ENVIRONMENT.md)
+- [~] Go -> environment stage (tools checked/installed, .law/env.sh, ENVIRONMENT.md) — started 03:53, root 2292ed0603bb
 - [ ] Milestones on a ticket board (## Build version 1, KEY-n tickets), one session each
 - [ ] Deploy during a step -> worker restarts only between steps
 - [ ] Retry / Skip / Restart / Cancel exercised at least once on real steps
@@ -166,3 +166,4 @@ Happy path and unhappy paths, all from Telegram, monitored every 5 min:
 - 2026-10-21 01:40 auto-resume check: E2E proposal v2 (pivot) in progress. Disk 221Gi free; ~/LAW 307G.
 - 2026-10-21 02:33 auto-resume check: proposal v2 revising sections (wireframes now; new DM wireframe). Disk 221Gi free; ~/LAW 307G.
 - 2026-10-21 03:35 auto-resume check: v2 diagram auto-repair running live (3,4 fixed; 6 in progress). Disk 221Gi free; ~/LAW 307G.
+- 2026-10-21 03:53 v2 fixes: diagrams auto-repaired (verified by drawing, exact mmdc errors), repairs on later tries saved, gate explains diagram fixes. Go pressed (API; screen locked) -> development v2 started (env stage).
