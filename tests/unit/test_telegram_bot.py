@@ -194,3 +194,36 @@ def test_job_status_texts_for_telegram():
     assert line.startswith("🔵 thinking `abc123` **LAN Chat** · step 3/8 writer task_work") and "7 min ago" in line
     card = job_card(j, {"active": True, "last": {"tok_s": 7.6, "context": 98276}})
     assert "To-do: 4/15 done · next: Architecture" in card and "generating now" in card and "context 98K" in card
+
+
+async def test_status_updates_edit_one_message_and_never_flood():
+    from types import SimpleNamespace
+
+    from law.telegram_bot import LawBot
+
+    sent: list[str] = []
+    edits: list[tuple[int, str]] = []
+
+    class FakeBot:
+        async def send_message(self, chat, text, **kw):  # type: ignore[no-untyped-def]
+            sent.append(text)
+            return SimpleNamespace(message_id=100 + len(sent))
+
+        async def edit_message_text(self, text, chat_id, message_id, **kw):  # type: ignore[no-untyped-def]
+            if message_id == 7:
+                raise RuntimeError("Bad Request: message to edit not found")
+            if edits and edits[-1] == (message_id, text):
+                raise RuntimeError("Bad Request: message is not modified")
+            edits.append((message_id, text))
+
+    bot = LawBot.__new__(LawBot)
+    bot.bot = FakeBot()  # type: ignore[assignment]
+    reply = {"chat_id": 1, "status_id": 0}  # a job submitted elsewhere: no status message yet
+    await bot._edit(reply, "… reading a")
+    await bot._edit(reply, "… running b")
+    await bot._edit(reply, "… running b")  # identical text
+    assert sent == ["… reading a"] and edits == [(101, "… running b")]
+    gone = {"chat_id": 1, "status_id": 7}  # a message that can no longer be edited
+    await bot._edit(gone, "… x")
+    await bot._edit(gone, "… y")
+    assert sent[-1] == "… x" and gone["status_id"] == 102 and edits[-1] == (102, "… y")
