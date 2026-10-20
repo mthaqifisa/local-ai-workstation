@@ -40,13 +40,19 @@ version, installed version, how it is selected. Commit `.law/`."""
 
 DEV_SPEC = """Build {name} version {version} as specified in {out}/proposal.md{scope}. The tools are ready
 (.law/ENVIRONMENT.md); do not change versions without updating it.
-Milestones: if .law/PLAN.md has no section "## Build version {version}", first add it with exactly that heading:
-a checklist (`- [ ] ...`) of 3 to 8 milestones in build order, each small enough for one session and ending with a passing build and tests (e.g.
-"Backend: domain model, REST API and unit tests green"). Then implement ONLY the first unchecked milestone in
-"## Build version {version}": write the code and its tests, run the build and tests until they pass, commit with a clear
-message, tick it (`- [x]`) in .law/PLAN.md, add an entry to .law/PROGRESS.md, and stop. Do not start the next
-milestone. The last milestone includes a README that explains how to install, run and test the product, including
-from another device if it is a network service."""
+
+Work like a team on a Jira board, in .law/PLAN.md:
+- If there is no section "## Build version {version}", create it first, with exactly that heading. Split the work
+  into 3 to 8 milestones (epics) in build order, each a level-3 heading such as "### M1 Backend API". Under each,
+  list small tickets as checkboxes with an ID and acceptance criteria, e.g.
+  "- [ ] {key}-3 Join rejects a second username from the same device (acceptance: unit + integration test)".
+  A ticket is one focused change and one commit; a milestone ends with a passing build and tests.
+- Then work on ONLY the first milestone that still has unticked tickets. Take its tickets in order: write the code
+  and tests, run the build and tests until they pass, commit as "{key}-<n>: <summary>", tick the ticket, and add a
+  line to .law/PROGRESS.md. When the milestone's tickets are all ticked, stop; the next session takes the next
+  milestone. If you are interrupted, the next session continues from the first unticked ticket.
+- The last milestone includes a README that explains how to install, run and test the product, including from
+  another device if it is a network service."""
 
 FIX_SPEC = """Fix in the codebase, run the full build and tests until they pass, commit, and record the fixes in
 .law/PROGRESS.md. The specification is {out}/proposal.md (version {version})."""
@@ -81,8 +87,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                   "rubric": CODE_RUBRIC + REVIEW_CONTEXT.format(out=OUT, version=v)}
         stages: list[dict[str, Any]] = [
             {"kind": "task_work", "payload": {**base, "spec": ENV_SPEC.format(out=OUT), "stall_min": 45}}]
+        key = re.sub(r"[^A-Z]", "", project.name.title())[:4] or "PRJ"  # ticket prefix, e.g. "Lan Chat" -> LC
         stages += [{"kind": "task_work", "payload": {**base, "milestone": True, "spec": DEV_SPEC.format(
-            name=project.name, version=v, out=OUT, scope=scope)}}] * MILESTONE_STAGES
+            name=project.name, version=v, out=OUT, scope=scope, key=key)}}] * MILESTONE_STAGES
         stages += [{"kind": "task_review", "payload": review}, {"kind": "task_fix", "payload": review}] * REVIEW_ROUNDS
         return [*stages, _gate(project, "verify")]
 

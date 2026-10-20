@@ -203,3 +203,25 @@ def test_cloning_uses_the_repo_url(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     fields = projects.parse_template(FILLED.replace("repo_url:", "repo_url: https://github.com/me/office-chat.git"))
     _run(rt, "project_new", {"fields": fields, "chat": 7})
     assert calls[0][:2] == ["git", "clone"] and calls[0][2] == "https://github.com/me/office-chat.git"
+
+
+def test_tickets_under_milestones_decide_completion(tmp_path: Path):
+    law = tmp_path / ".law"
+    law.mkdir()
+    board = ("## Build version 1\n### M1 Backend API\n- [x] LC-1 domain\n- [x] LC-2 join endpoint\n"
+             "### M2 Frontend\n- [ ] LC-3 chat screen\n## Proposal v2 sections\n- [x] summary\n")
+    (law / "PLAN.md").write_text(board)
+    assert not plan_complete(tmp_path, 1)  # an unticked ticket in a later milestone keeps the build open
+    (law / "PLAN.md").write_text(board.replace("- [ ] LC-3", "- [x] LC-3"))
+    assert plan_complete(tmp_path, 1)
+
+
+def test_development_spec_asks_for_a_ticket_board(tmp_path: Path):
+    rt = _rt(tmp_path)
+    store = projects.Projects(rt.paths)
+    p = store.create(projects.parse_template(FILLED), chat=7)
+    p.state = "awaiting_go"
+    store.save(p)
+    out = _run(rt, "project_step", {"project": "office-chat", "action": "go"})
+    spec = next(s["payload"]["spec"] for s in out.specs if s["payload"].get("milestone"))
+    assert "### M1" in spec and '"OC-<n>: <summary>"' in spec and "## Build version 1" in spec
