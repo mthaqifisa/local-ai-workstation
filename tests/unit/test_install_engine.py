@@ -372,7 +372,11 @@ def test_each_role_config_uses_one_model_only(ctx: Ctx):
     assert coder["model"] == coder["small_model"] == "law/qwen3.8-27b-8bit"
     operator = json.loads(files[ctx.paths.config / "opencode-operator.json"])
     assert operator["model"] == operator["small_model"]
-    assert len(files) == 1 + len(json.loads(files[ctx.paths.config / "opencode.json"])["agent"])
+    roles = len(json.loads(files[ctx.paths.config / "opencode.json"])["agent"])
+    assert len(files) == 1 + roles * 4  # the role's default plus one file per thinking level
+    high = json.loads(files[ctx.paths.config / "opencode-coder-xhigh.json"])
+    assert high["provider"]["law"]["models"]["qwen3.8-27b-8bit"]["options"] == {"reasoningEffort": "xhigh"}
+    assert high["model"] == high["small_model"] == coder["model"]
 
 
 def test_code_change_changes_service_stamp(ctx: Ctx, tmp_path: Path):

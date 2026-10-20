@@ -85,6 +85,30 @@ def project_folder(brief: str, root: Path) -> Path | None:
     return root / name
 
 
+def project_env(project: Path) -> dict[str, str]:
+    """Variables `<project>/.law/env.sh` sets or changes (e.g. JAVA_HOME, PATH), written by the environment stage."""
+    import os
+    import subprocess
+
+    script = project / ".law" / "env.sh"
+    if not script.is_file():
+        return {}
+    out = subprocess.run(["bash", "-c", 'set -a; source "$1" >/dev/null 2>&1; env -0', "_", str(script)],
+                         capture_output=True, timeout=30, cwd=project)
+    if out.returncode != 0:
+        return {}
+    pairs = (item.split("=", 1) for item in out.stdout.decode(errors="replace").split("\0") if "=" in item)
+    return {k: v for k, v in pairs if os.environ.get(k) != v and k not in {"_", "SHLVL", "PWD", "OLDPWD"}}
+
+
+def plan_complete(project: Path, version: int) -> bool:
+    """True when .law/PLAN.md has this version's milestones and every checkbox in it is ticked."""
+    plan = project / ".law" / "PLAN.md"
+    text = plan.read_text() if plan.exists() else ""
+    return bool(re.search(rf"^#+ .*\bversion {version}\b", text, re.IGNORECASE | re.MULTILINE)) \
+        and "- [x]" in text.lower() and "- [ ]" not in text
+
+
 def describe_opencode_line(line: str) -> str | None:
     """Turn one `opencode run --format json` event into a short, readable progress line (or None to skip)."""
     if not line.startswith("{"):
@@ -154,11 +178,15 @@ def parse_opencode_events(output: str) -> str:
     return texts[-1].strip() if texts else output[-4000:].strip()
 
 
-def agent_env(rt: Runtime, role: str) -> dict[str, str]:
-    """Role config plus XDG dirs so OpenCode keeps its sessions, cache and state under ~/LAW, not ~/.local."""
+def agent_env(rt: Runtime, role: str, effort: str | None = None) -> dict[str, str]:
+    """Role config plus XDG dirs so OpenCode keeps its sessions, cache and state under ~/LAW, not ~/.local.
+    `effort` picks the role's config with that thinking level (a project's `thinking`), when it exists."""
     base = rt.paths.data / "opencode"
     cache = rt.paths.cache
-    return {"OPENCODE_CONFIG": str(rt.paths.config / f"opencode-{role}.json"),
+    config = rt.paths.config / f"opencode-{role}.json"
+    if effort and (rt.paths.config / f"opencode-{role}-{effort}.json").exists():
+        config = rt.paths.config / f"opencode-{role}-{effort}.json"
+    return {"OPENCODE_CONFIG": str(config),
             "XDG_DATA_HOME": str(base / "data"), "XDG_STATE_HOME": str(base / "state"),
             "XDG_CACHE_HOME": str(cache / "opencode"),
             # build-tool caches the agents fill (measured: ~/.m2 and ~/.npm grew during one Java/Angular build)
@@ -198,7 +226,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
 
         for attempt in range(STALL_NUDGES + 1):
             try:
-                out = await run_cmd(ctx, cmd, cwd=workdir, env=agent_env(rt, role), describe=describe,
+                env = {**agent_env(rt, role, ctx.job.payload.get("effort")), **project_env(workdir)}
+                out = await run_cmd(ctx, cmd, cwd=workdir, env=env, describe=describe,
                                     timeout_s=float(ctx.job.payload.get("timeout_s", 4 * 3600)),
                                     stall_s=stall_min * 60 if writes and stall_min > 0 else None,
                                     is_work=is_file_change)
@@ -299,6 +328,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
 
     async def task_work(ctx: Context) -> Outcome:
         p = ctx.job.payload
+        if p.get("milestone") and plan_complete(_workdir(p), int(p.get("version", 1))):
+            return Done({"dir": str(_workdir(p))})  # every milestone of this version is ticked
         memory = _memory(ctx, p)
         text = await _agent(ctx, p["role"], _scoped(p, memory), _workdir(p), memory=memory)
         return Done({"answer": text, "dir": str(_workdir(p))})
@@ -306,6 +337,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
     async def task_review(ctx: Context) -> Outcome:
         p = ctx.job.payload
         carry = ctx.job.payload["_carry"]
+        if carry.get("passed"):  # an earlier review round already passed
+            return Done({})
         report = carry.get("answer", "")
         brief = f"\n\nThe author worked from this brief:\n{carry['brief'][:6000]}" if carry.get("brief") else ""
         rubric = p.get("rubric") or CODE_RUBRIC
@@ -319,8 +352,11 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         p = ctx.job.payload
         carry = ctx.job.payload["_carry"]
         verdict = carry["review"]
+        if carry.get("passed"):
+            return Done({})
         if verdict["score"] >= PASS_SCORE:
-            return Done({"answer": carry["answer"], "review": verdict, "fixed": False, "dir": carry.get("dir")})
+            return Done({"answer": carry.get("answer", ""), "review": verdict, "fixed": False, "passed": True,
+                         "dir": carry.get("dir")})
         issues = "\n".join(f"- {i}" for i in verdict["issues"]) or "- raise the quality to client-ready"
         prompt = (f"An independent reviewer scored your work {verdict['score']}/5 for this request:\n{p['prompt']}\n\n"
                   f"Fix every issue below, then rerun the project's checks until they pass and report the output:\n"
@@ -331,7 +367,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         if memory is not None:
             prompt = f"{memory.instructions()}\n\n{prompt}"
         text = await _agent(ctx, p["role"], prompt, _workdir(p), memory=memory)
-        return Done({"answer": text, "review": verdict, "fixed": True, "dir": carry.get("dir")})
+        return Done({"answer": text, "review": verdict, "fixed": True, "passed": False, "dir": carry.get("dir")})
 
     return {"search": search, "task": task, "task_translate": task_translate, "task_work": task_work,
             "task_review": task_review, "task_fix": task_fix}

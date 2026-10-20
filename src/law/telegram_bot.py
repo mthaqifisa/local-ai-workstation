@@ -16,9 +16,9 @@ from typing import Any
 import httpx
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandObject
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from law import registry, secrets
+from law import projects, registry, secrets
 from law.paths import LawPaths
 from law.tg_format import to_telegram_html
 
@@ -35,6 +35,7 @@ class LawBot:
         self.delivered = Delivered(delivered or LawPaths.from_env().state / "telegram-delivered.txt")
         self._tasks: set[asyncio.Task[None]] = set()
         self.notify_sources = notify_sources or set()
+        self.pending: dict[int, tuple[str, str]] = {}  # chat -> (project, action) waiting for the owner's note
         self._wire()
 
     def _ok(self, message: Message) -> bool:
@@ -55,8 +56,42 @@ class LawBot:
 
         @dp.message(Command("code"))
         async def code(message: Message, command: CommandObject) -> None:
-            if self._ok(message) and command.args:
-                await self._job(message, "task", {"role": "coder", **split_dir(command.args)})
+            if not self._ok(message) or not command.args:
+                return
+            args = command.args.strip()
+            if args.lower() == "init":
+                await self._send(message.chat.id, projects.TEMPLATE_INTRO)
+                await self.bot.send_message(message.chat.id, f"<pre>{projects.TEMPLATE}</pre>", parse_mode="HTML")
+                return
+            if args.lower().startswith("new"):
+                try:
+                    fields = projects.parse_template(args)
+                except projects.TemplateError as exc:
+                    await self._send(message.chat.id, f"Not started: {exc}. Send `/code init` for the template.")
+                    return
+                await self._submit(message.chat.id, "project_new", {"fields": fields, "chat": message.chat.id})
+                return
+            await self._job(message, "task", {"role": "coder", **split_dir(args)})
+
+        for name in ("go", "nogo", "changes", "allgood", "resume", "push"):
+            self._wire_decision(name)
+
+        @dp.message(Command("projects"))
+        async def projects_(message: Message) -> None:
+            if self._ok(message):
+                rows = projects.Projects(LawPaths.from_env()).all()
+                lines = [f"`{p.id}` v{p.version}: {p.state.replace('_', ' ')}" for p in rows]
+                await self._send(message.chat.id, "**Projects**\n" + ("\n".join(lines) or "none yet: `/code init`"))
+
+        @dp.callback_query(F.data.startswith("p|"))
+        async def decision_button(query: CallbackQuery) -> None:
+            if query.from_user.id not in self.allowed or not query.data or not isinstance(query.message, Message):
+                return
+            _, action, pid = query.data.split("|", 2)
+            await query.answer()
+            chat = query.message.chat.id
+            await query.message.edit_reply_markup(reply_markup=None)  # one decision per question
+            await self._decide(chat, pid, action, "")
 
         @dp.message(Command("agent"))
         async def agent(message: Message, command: CommandObject) -> None:
@@ -168,10 +203,38 @@ class LawBot:
         async def text(message: Message) -> None:
             if not self._ok(message) or not message.text:
                 return
+            if message.chat.id in self.pending and not message.text.startswith("/"):
+                pid, action = self.pending.pop(message.chat.id)
+                note = "" if message.text.strip().lower() == "stop" else message.text.strip()
+                await self._submit(message.chat.id, "project_step",
+                                   {"project": pid, "action": action, "note": note, "chat": message.chat.id})
+                return
             if message.text.startswith("/"):
                 await self._send(message.chat.id, "Unknown command. Send /help for the list.")
                 return
             await self._job(message, "ask", {"prompt": message.text, "role": "assistant"})
+
+    def _wire_decision(self, action: str) -> None:
+        """/go <project>, /nogo <project> [what to change], /changes <project> <what>, /allgood, /resume, /push."""
+
+        @self.dp.message(Command(action))
+        async def handler(message: Message, command: CommandObject) -> None:
+            if not self._ok(message):
+                return
+            pid, _, note = (command.args or "").strip().partition(" ")
+            if not pid:
+                await self._send(message.chat.id, f"Usage: `/{action} <project>` (see /projects)")
+                return
+            await self._decide(message.chat.id, pid, action, note.strip())
+
+    async def _decide(self, chat: int, pid: str, action: str, note: str) -> None:
+        """Run the decision, or first ask for the note it needs."""
+        if action in NEEDS_NOTE and not note:
+            self.pending[chat] = (pid, action)
+            extra = " Or send `stop` to park the project." if action == "nogo" else ""
+            await self._send(chat, f"What should change in **{pid}**? Reply with your notes.{extra}")
+            return
+        await self._submit(chat, "project_step", {"project": pid, "action": action, "note": note, "chat": chat})
 
     async def _download(self, file_id: str, ext: str, folder: str) -> str:
         file = await self.bot.get_file(file_id)
@@ -184,9 +247,13 @@ class LawBot:
 
     async def _job(self, message: Message, kind: str, payload: dict[str, Any], *,
                    file_field: str | None = None, then: str | None = None) -> None:
+        await self._submit(message.chat.id, kind, payload, file_field=file_field, then=then)
+
+    async def _submit(self, chat: int, kind: str, payload: dict[str, Any], *,
+                      file_field: str | None = None, then: str | None = None) -> None:
         """Submit a job that remembers where to reply, then deliver the result (resumable after restarts)."""
-        status = await message.answer("⏳ queued")
-        reply = {"chat_id": message.chat.id, "status_id": status.message_id, "file_field": file_field, "then": then}
+        status = await self.bot.send_message(chat, "⏳ queued")
+        reply = {"chat_id": chat, "status_id": status.message_id, "file_field": file_field, "then": then}
         async with httpx.AsyncClient(timeout=30) as client:
             r = await client.post(f"{self.api}/jobs", json={"kind": kind, "payload": payload,
                                                             "source": "telegram", "reply_to": reply})
@@ -254,6 +321,15 @@ class LawBot:
             if r.status_code == 201:
                 await self._deliver(r.json()["id"], follow)
             return
+        if result.get("gate"):  # a project question: the PDF (if any), then the question with its buttons
+            await self._edit(reply, "done")
+            if result.get("pdf"):
+                try:
+                    await self.bot.send_document(chat, FSInputFile(str(result["pdf"])))
+                except Exception:  # the email already has it; the question matters more
+                    log.warning("could not attach %s", result["pdf"])
+            await self._ask(chat, str(result.get("answer", "")), result["gate"])
+            return
         field = reply.get("file_field")
         source = result.get("audio") if field == "voice" else result.get(field) if field else None
         if field and source:
@@ -275,6 +351,16 @@ class LawBot:
         await self._edit(reply, parts[0], rich=True)
         for part in parts[1:]:
             await self._send(chat, part)
+
+    async def _ask(self, chat: int, markdown: str, gate: dict[str, Any]) -> None:
+        buttons = [InlineKeyboardButton(text=BUTTONS[a], callback_data=f"p|{a}|{gate['project']}")
+                   for a in gate.get("actions", []) if a in BUTTONS]
+        markup = InlineKeyboardMarkup(inline_keyboard=[buttons]) if buttons else None
+        try:
+            await self.bot.send_message(chat, to_telegram_html(markdown), parse_mode="HTML",
+                                        disable_web_page_preview=True, reply_markup=markup)
+        except Exception:  # bad markup: plain text, keep the buttons
+            await self.bot.send_message(chat, markdown, reply_markup=markup)
 
     async def _send(self, chat: int, markdown: str) -> None:
         try:
@@ -381,6 +467,9 @@ class LawBot:
 
 
 TERMINAL = {"done", "failed", "cancelled", "dead"}
+BUTTONS = {"go": "✅ Go", "nogo": "❌ No go", "allgood": "👍 All good", "changes": "🛠 Needs changes",
+           "push": "⬆️ Push", "resume": "▶️ Resume"}
+NEEDS_NOTE = {"nogo", "changes", "resume"}
 LIVE = {"queued", "running", "waiting"}
 
 # (command, menu description, help example) — one table drives the "/" menu, /help and the handlers above.
@@ -388,11 +477,19 @@ COMMANDS: list[tuple[str, str, str]] = [
     ("help", "Everything Tony can do", "/help"),
     ("ask", "Ask anything (same as just typing)", "/ask Should we lease or buy our office laptops?"),
     ("search", "Web search with sources", "/search latest MAS guidelines on AI risk management"),
-    ("code", "Coding agent builds it in ~/SourceCode (start with a folder to work in it)",
-     "/code ~/SourceCode/my-app Add a login page"),
+    ("code", "Coding agent. `/code init` starts a full project: template → proposal → your go → build → your "
+     "verification → enhancements. Or `/code [folder] <task>` for a quick task",
+     "/code init"),
+    ("projects", "Your projects and where each one is (go/no go, building, verification)", "/projects"),
+    ("go", "Approve a proposal and start development", "/go office-chat"),
+    ("nogo", "Reject a proposal: say what to change (revised proposal), or `stop` to park it",
+     "/nogo office-chat make it mobile-first"),
+    ("changes", "After you try it: what to change or add (enhanced proposal, then build)",
+     "/changes office-chat add file sharing"),
+    ("allgood", "Accept the build: the project is done", "/allgood office-chat"),
     ("proposal", "Consultant-grade proposal: research, full document (design, architecture, flows, "
      "wireframes, plan, cost), reviewed, PDF emailed to you; start with a project folder to use it as the prototype",
-     "/proposal ~/SourceCode/lan-chat Propose a LAN chat product for offices"),
+     "/proposal ~/SourceCode/my-app Propose this as a product for small offices"),
     ("agent", "Run a specific role", "/agent architect Design a payments API for a small bank"),
     ("roles", "List the roles for /agent", "/roles"),
     ("image", "Generate an image", "/image A minimalist poster of a lighthouse at dawn"),
@@ -415,7 +512,11 @@ HELP_TEXT = (
     "**Voice note** → transcribed and answered. **Photo** → described or answered about "
     "(add a question as caption).\n\n"
     + "\n".join(f"/{c} — {d}\n  e.g. `{ex}`" for c, d, ex in COMMANDS if c != "help")
-    + "\n\n**Music**: say the genre/vibe, duration (up to 4 min) and theme; add your own lyrics after a line "
+    + "\n\n**Projects** (`/code init`): Tony sends a template; fill in name, repo, stack, summary, details and "
+    "thinking level, and send it back. Tony researches and emails a proposal, then asks **Go / No go**. On Go it "
+    "prepares the tools, builds in milestones, tests and fixes until an independent review passes, then asks you to "
+    "verify: **All good** finishes it, **Needs changes** brings an enhanced proposal and the loop repeats.\n"
+    "\n**Music**: say the genre/vibe, duration (up to 4 min) and theme; add your own lyrics after a line "
     "`lyrics:` or Tony writes them.\n"
     "**Video**: say the duration (2-10 s), subject and style; or send a photo with /animate."
 )
