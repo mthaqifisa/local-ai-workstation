@@ -309,6 +309,11 @@ Disk use is bounded: the LLM's SSD prompt cache is capped by `machine.llm_ssd_ca
 `settings/registry.yaml` (default 20 GB), agent build caches (Maven, npm, Gradle, pip, uv) go to `~/LAW/cache`,
 and `law reclaim` removes retired models, stale downloads and old logs.
 
+Things you create in Open WebUI (model presets, prompts, tools, functions, knowledge-base definitions) are kept
+in the repo with `law save`, which writes `settings/openwebui/`, refuses to save if it finds anything that
+looks like a secret, and commits locally. `law install` on another Mac adds them back (`law restore-state` does
+it on demand). Valves, chats, users and uploaded documents are not exported.
+
 No secrets are ever stored in the repo. To reset everything machine-local: `law uninstall && rm -rf ~/LAW`.
 
 ## Docs

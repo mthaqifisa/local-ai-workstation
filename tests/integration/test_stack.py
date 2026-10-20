@@ -53,7 +53,7 @@ def test_ports_bound_on_lan_interface() -> None:
 
 @needs_stack
 def test_quality_pipeline_end_to_end() -> None:
-    r = httpx.post(f"{API}/jobs", json={"kind": "ask",
+    r = httpx.post(f"{API}/jobs", json={"kind": "ask", "source": "test",
                    "payload": {"prompt": "State the capital of Japan in one word.", "role": "assistant"}},
                    timeout=30)
     assert r.status_code == 201
@@ -71,7 +71,7 @@ def test_quality_pipeline_end_to_end() -> None:
 
 
 def _run_job(kind: str, payload: dict[str, object], timeout: float = 900) -> dict[str, object]:
-    r = httpx.post(f"{API}/jobs", json={"kind": kind, "payload": payload}, timeout=30)
+    r = httpx.post(f"{API}/jobs", json={"kind": kind, "payload": payload, "source": "test"}, timeout=30)
     assert r.status_code == 201, r.text
     job_id = r.json()["id"]
     with httpx.stream("GET", f"{API}/jobs/{job_id}/stream", timeout=timeout) as s:

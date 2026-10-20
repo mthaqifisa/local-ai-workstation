@@ -871,8 +871,42 @@ class ComfyUIStep:
         return [] if wait_port(self.c.reg.ports.comfyui, 240) else ["ComfyUI not listening"]
 
 
+class OpenWebUIState:
+    """Restore the repo's saved Open WebUI items (settings/openwebui, written by `law save`). Only adds what is
+    missing, and only re-runs when the saved files change."""
+
+    name = "openwebui-state"
+
+    def __init__(self, c: Ctx) -> None:
+        self.c = c
+        self.folder = c.paths.repo / "settings" / "openwebui"
+        self.stamp = c.paths.state / "openwebui-state.stamp"
+
+    def _digest(self) -> str:
+        files = sorted(self.folder.glob("*.json")) if self.folder.is_dir() else []
+        return hashlib.sha256(b"".join(f.name.encode() + f.read_bytes() for f in files)).hexdigest()
+
+    def plan(self) -> list[str]:
+        if not self.folder.is_dir() or not any(self.folder.glob("*.json")):
+            return []
+        current = self.stamp.read_text().strip() if self.stamp.exists() else ""
+        return [] if current == self._digest() else ["restore saved Open WebUI presets, prompts and knowledge"]
+
+    def apply(self) -> None:
+        from law.state_sync import OpenWebUI, load
+        if not wait_port(self.c.reg.ports.open_webui, 240):
+            raise RuntimeError("Open WebUI is not listening")
+        OpenWebUI(f"http://127.0.0.1:{self.c.reg.ports.open_webui}").restore(load(self.folder))
+        self.stamp.parent.mkdir(parents=True, exist_ok=True)
+        self.stamp.write_text(self._digest() + "\n")
+
+    def verify(self) -> list[str]:
+        return self.plan()
+
+
 def default_steps(c: Ctx) -> list[Step]:
     return [
         Skeleton(c), EnvProfile(c), Secrets(c), Brew(c), LawVenv(c), CalcEnv(c), MediaTools(c), Models(c),
         MediaModels(c), OpenCodeConfig(c), Services(c), OmlxSettings(c), ComfyUIStep(c), Colima(c), Compose(c),
+        OpenWebUIState(c),
     ]
