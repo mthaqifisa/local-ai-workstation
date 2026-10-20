@@ -242,6 +242,7 @@ def test_media_tools_install_once_then_in_sync(ctx: Ctx):
     assert len(cmds) + len(venv_installs) == len(ctx.reg.tools)
     link = ctx.paths.runtime / "bin" / "mlxgen"
     assert link.is_symlink() and link.resolve() == (ctx.paths.runtime / "mlxgen" / "bin" / "mlxgen").resolve()
+    assert not (ctx.paths.runtime / "bin" / "python").exists()  # acestep's venv python is never put on PATH
     mlx_audio = next(c for c in cmds if any("mlx-audio" in x for x in c))
     assert "misaki[en]" in mlx_audio and any("en_core_web_sm" in x for x in mlx_audio)
     assert step.plan() == []
@@ -299,6 +300,8 @@ def test_media_models_prefetch_pinned_once(ctx: Ctx):
     assert any("Qwen/Qwen-Image-2.1@d26bb612" in x for x in planned)
     assert not any("SeedVR2" in x for x in planned)  # prefetch disabled
     assert len([x for x in planned if "Qwen-Image-2.1" in x]) == 1  # image + edit share one repo
+    assert any("ACE-Step/acestep-5Hz-lm-4B@0a3ec94b" in x for x in planned)  # pinned companion repo
+    assert not any("prince-canuma" in x for x in planned)  # unpinned companions are left to the tool
     step.apply()
     downloads = [c for c in ctx.sys.calls if len(c) > 1 and c[1] == "download"]  # type: ignore[attr-defined]
     assert all("--revision" in c for c in downloads)

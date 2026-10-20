@@ -81,7 +81,8 @@ class Media(_Strict):
     model: str
     # The Hugging Face repo the tool actually downloads (mflux resolves short names like qwen-image-2.1).
     hf_repo: str | None = None
-    hf_extra: list[str] = Field(default_factory=list)  # companion repos the tool also downloads
+    # Companion repos the tool also downloads; `repo@revision` is pre-downloaded at that pin like hf_revision.
+    hf_extra: list[str] = Field(default_factory=list)
     hf_revision: str | None = None  # pin; `law install` pre-downloads the repo at this revision
     prefetch: bool = True
     mem_gb: float
@@ -99,6 +100,7 @@ class Tool(_Strict):
     check: str
     with_: list[str] = Field(default_factory=list, alias="with")
     own_venv: bool = False
+    link: bool = True  # own_venv only: link `check` into runtime/bin (off when the name would clash)
 
 
 class ComfyUI(_Strict):
@@ -136,7 +138,7 @@ class Registry(_Strict):
     def hf_repos_in_use(self) -> set[str]:
         """HF cache repos that `law reclaim` must keep."""
         repos = {m.hf_repo or m.model for m in self.media.values()}
-        repos |= {r for m in self.media.values() for r in m.hf_extra}
+        repos |= {r.split("@")[0] for m in self.media.values() for r in m.hf_extra}
         return {r for r in repos if "/" in r}
 
     def model(self, model_id: str) -> LlmModel:

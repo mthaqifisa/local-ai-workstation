@@ -19,7 +19,7 @@ Rules: one heavy model resident (≤ 45 GB); light models (embed, rerank, STT, T
   full token budget on a simple finance question and returned nothing.
 - Arithmetic: roles that handle numbers use the `run_python` calculator; the 27B model's mental arithmetic
   produced a wrong compound-interest figure that the judge also missed.
-- Pending comparison on this Mac: ACE-Step 1.5 vs 1.5 XL (no verified mlx-audio build yet); Wan 2.2 vs LTX-2.5 for video.
+- Pending comparison on this Mac: ACE-Step 1.5 vs 1.5 XL (1.5 runs from a pinned mlx-audio branch; see ADR-0011); Wan 2.2 vs LTX-2.5 for video.
 
 ## Revision 2026-10-20: coder = Qwen3.8-27B (measured)
 - Live test: a 16-minute OpenCode session building a Spring Boot + Angular app on Qwen3-Coder-Next was aborted by
