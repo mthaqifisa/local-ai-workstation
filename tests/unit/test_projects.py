@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from law import projects, secrets
+from law import projects, secrets, specs
 from law.handlers import project as project_handlers
 from law.handlers.tasks import agent_env, plan_complete, project_env
 from law.paths import LawPaths
@@ -127,12 +127,12 @@ def test_go_runs_environment_milestones_reviews_then_the_verify_gate(tmp_path: P
     p.state = "awaiting_go"
     store.save(p)
     out = _run(rt, "project_step", {"project": "office", "action": "go", "chat": 7})
-    specs = out.specs
-    assert "prepares the Mac" in specs[0]["payload"]["spec"] and specs[0]["payload"]["stall_min"] == 45
-    milestones = [s for s in specs if s["payload"].get("milestone")]
+    stages = out.specs
+    assert "prepares the Mac" in specs.resolve(stages[0]["payload"]) and stages[0]["payload"]["stall_min"] == 45
+    milestones = [s for s in stages if s["payload"].get("milestone")]
     assert len(milestones) == project_handlers.MILESTONE_STAGES
-    assert [s["kind"] for s in specs[-7:]] == ["task_review", "task_fix"] * 3 + ["project_gate"]
-    assert "proposal.md (version 1)" in specs[-2]["payload"]["rubric"]
+    assert [s["kind"] for s in stages[-7:]] == ["task_review", "task_fix"] * 3 + ["project_gate"]
+    assert "proposal.md (version 1)" in specs.resolve(stages[-2]["payload"], "rubric")
     assert store.get("office-chat").state == "developing"
 
 
@@ -223,5 +223,5 @@ def test_development_spec_asks_for_a_ticket_board(tmp_path: Path):
     p.state = "awaiting_go"
     store.save(p)
     out = _run(rt, "project_step", {"project": "office-chat", "action": "go"})
-    spec = next(s["payload"]["spec"] for s in out.specs if s["payload"].get("milestone"))
+    spec = next(specs.resolve(s["payload"]) for s in out.specs if s["payload"].get("milestone"))
     assert "### M1" in spec and '"OC-<n>: <summary>"' in spec and "## Build version 1" in spec

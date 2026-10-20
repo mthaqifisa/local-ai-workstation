@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from law import mailer
+from law import mailer, specs
 from law.handlers.base import Runtime, run_cmd
 from law.queue.worker import Context, Done, Fatal, Outcome, Stages
 
@@ -123,21 +123,41 @@ def executive_summary(markdown: str, limit: int = 2500) -> str:
     return text if len(text) <= limit else text[:limit].rsplit("\n", 1)[0] + "\n…"
 
 
+@specs.register("proposal.research")
+def research_spec(a: dict[str, Any]) -> str:
+    return RESEARCH_SPEC.format(out=a["out"], searx=a["searx"])
+
+
+@specs.register("proposal.write")
+def write_spec(a: dict[str, Any]) -> str:
+    text = PROPOSAL_SPEC.format(out=a["out"])
+    if int(a.get("version", 1)) > 1:
+        text += "\n\n" + REVISE_SPEC.format(out=a["out"], version=a["version"],
+                                             feedback=a.get("feedback") or "(none given)")
+    return text
+
+
+@specs.register("proposal.rubric")
+def doc_rubric(a: dict[str, Any]) -> str:
+    return DOC_RUBRIC.format(out=a["out"])
+
+
 def proposal_stages(rt: Runtime, request: str, workdir: Path, out: str, *, version: int = 1, feedback: str = "",
                     effort: str | None = None, extra: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-    """The proposal pipeline. Version 1 researches first; later versions revise the existing document."""
+    """The proposal pipeline. Version 1 researches first; later versions revise the existing document.
+    Instructions are named (spec_ref) and built when each step runs, so they are always the current ones."""
     (workdir / out / "assets").mkdir(parents=True, exist_ok=True)
+    args = {"out": out, "version": version, "feedback": feedback,
+            "searx": f"http://127.0.0.1:{rt.reg.ports.searxng}"}
     base: dict[str, Any] = {"prompt": request, "dir": str(workdir), "out": out, "version": version,
                             **({"effort": effort} if effort else {}), **(extra or {})}
-    spec = PROPOSAL_SPEC.format(out=out)
-    if version > 1:
-        spec += "\n\n" + REVISE_SPEC.format(out=out, version=version, feedback=feedback or "(none given)")
-    writer = {**base, "role": "writer", "spec": spec, "rubric": DOC_RUBRIC.format(out=out)}
-    searx = f"http://127.0.0.1:{rt.reg.ports.searxng}"
-    research = [{"kind": "task_work", "payload": {**base, "role": "researcher",
-                                                  "spec": RESEARCH_SPEC.format(out=out, searx=searx)}}]
+    writer = {**base, "role": "writer", "spec_ref": "proposal.write", "rubric_ref": "proposal.rubric",
+              "spec_args": args}
+    research = [{"kind": "task_work", "payload": {**base, "role": "researcher", "spec_ref": "proposal.research",
+                                                  "spec_args": args}}]
     return [
-        {"kind": "task_translate", "payload": {**base, "role": "writer", "spec": spec}},
+        {"kind": "task_translate", "payload": {**base, "role": "writer", "spec_ref": "proposal.write",
+                                               "spec_args": args}},
         *(research if version == 1 else []),
         {"kind": "task_work", "payload": writer},
         {"kind": "task_review", "payload": writer},
