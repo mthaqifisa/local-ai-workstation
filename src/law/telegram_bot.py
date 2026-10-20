@@ -175,7 +175,7 @@ class LawBot:
     async def _job(self, message: Message, kind: str, payload: dict[str, Any], *,
                    file_field: str | None = None, then: str | None = None) -> None:
         """Submit a job that remembers where to reply, then deliver the result (resumable after restarts)."""
-        status = await message.answer("working…")
+        status = await message.answer("⏳ queued")
         reply = {"chat_id": message.chat.id, "status_id": status.message_id, "file_field": file_field, "then": then}
         async with httpx.AsyncClient(timeout=30) as client:
             r = await client.post(f"{self.api}/jobs", json={"kind": kind, "payload": payload,
@@ -183,7 +183,20 @@ class LawBot:
         if r.status_code != 201:
             await self._edit(reply, f"error: {r.text[:200]}")
             return
-        await self._deliver(r.json()["id"], reply)
+        job_id = r.json()["id"]
+        ahead = await self._ahead_of(job_id)
+        if ahead:
+            await self._edit(reply, f"⏳ queued: {ahead} job{'s' if ahead > 1 else ''} ahead")
+        await self._deliver(job_id, reply)
+
+    async def _ahead_of(self, job_id: str) -> int:
+        """Top-level jobs already running or waiting that this one queues behind."""
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                jobs = (await client.get(f"{self.api}/jobs", params={"limit": 100})).json()
+        except (httpx.HTTPError, ValueError):
+            return 0
+        return queued_ahead(jobs, job_id)
 
     async def _deliver(self, job_id: str, reply: dict[str, Any]) -> None:
         if self.delivered.seen(job_id):
@@ -197,6 +210,8 @@ class LawBot:
                         if not line.startswith("data: "):
                             continue
                         ev = json.loads(line[6:])
+                        if ev.get("event") == "started" and not last:
+                            await self._edit(reply, "working…")
                         msg = ev.get("data", {}).get("message")
                         if ev.get("event") == "progress" and msg and msg != last:
                             last = msg
@@ -393,6 +408,13 @@ def roles_text() -> str:
     loaded = roles.load(LawPaths.from_env().settings / "roles.yaml")
     return "**Roles for /agent**\n" + "\n".join(f"`{n}` — {r.summary}" for n, r in loaded.roles.items())
 TELEGRAM_LIMIT = 4000
+
+
+def queued_ahead(jobs: list[dict[str, Any]], job_id: str) -> int:
+    """How many top-level jobs submitted before `job_id` are still queued, running or waiting (newest first)."""
+    ids = [j["id"] for j in jobs]
+    older = jobs[ids.index(job_id) + 1:] if job_id in ids else []
+    return sum(1 for j in older if j.get("parent") is None and j.get("status") in {"queued", "running", "waiting"})
 
 
 def split_dir(args: str) -> dict[str, str]:

@@ -58,6 +58,8 @@ law secrets export ~/Desktop/law-secrets.env   # keep this in your password mana
 ```bash
 law reclaim --dry-run   # preview
 law reclaim             # remove unused model caches, old trash, temp files; prune uv/Homebrew/Docker caches
+law save                # export Open WebUI presets/prompts/tools/knowledge to settings/openwebui (secret-scanned, committed, not pushed)
+law restore-state       # add the saved ones that are missing on this Mac (also runs in law install)
 du -sh ~/LAW/*          # where the space goes
 ```
 

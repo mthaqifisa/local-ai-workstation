@@ -318,6 +318,44 @@ app.add_typer(secrets_cli, name="secrets")
 
 
 @app.command()
+def save(commit: Annotated[bool, typer.Option("--commit/--no-commit")] = True) -> None:
+    """Export Open WebUI presets, prompts, tools and knowledge definitions into the repo (secret-scanned)."""
+    import subprocess
+
+    from law import registry
+    from law.state_sync import OpenWebUI, StateError
+    from law.state_sync import save as do_save
+    p = _paths()
+    reg = registry.load(p.registry_file)
+    target = p.repo / "settings" / "openwebui"
+    try:
+        files = do_save(OpenWebUI(f"http://127.0.0.1:{reg.ports.open_webui}"), target, p.tmp / "openwebui-export")
+    except StateError as exc:
+        con.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from exc
+    con.print(f"saved {len(files)} files to {target}")
+    if commit:
+        subprocess.run(["git", "-C", str(p.repo), "add", str(target)], check=True)
+        if subprocess.run(["git", "-C", str(p.repo), "diff", "--cached", "--quiet", "--", str(target)]).returncode:
+            subprocess.run(["git", "-C", str(p.repo), "commit", "-m", "state: save Open WebUI settings", "--",
+                            str(target)], check=True)
+            con.print("committed (not pushed)")
+        else:
+            con.print("no changes to commit")
+
+
+@app.command("restore-state")
+def restore_state() -> None:
+    """Add the repo's saved Open WebUI presets, prompts, tools and knowledge bases that are missing here."""
+    from law import registry
+    from law.state_sync import OpenWebUI, load
+    p = _paths()
+    reg = registry.load(p.registry_file)
+    added = OpenWebUI(f"http://127.0.0.1:{reg.ports.open_webui}").restore(load(p.repo / "settings" / "openwebui"))
+    con.print(", ".join(f"{k}: {v} added" for k, v in added.items()))
+
+
+@app.command()
 def reclaim(dry_run: Annotated[bool, typer.Option("--dry-run")] = False) -> None:
     """Free disk space: unused model caches, old trash/logs/temp files, tool caches."""
     from law.ops import reclaim as do_reclaim

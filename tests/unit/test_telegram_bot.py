@@ -147,3 +147,17 @@ def test_split_dir_uses_an_existing_folder(tmp_path):
     assert split_dir(f"{tmp_path} add a login page") == {"dir": str(tmp_path), "prompt": "add a login page"}
     assert split_dir("Build a todo app") == {"prompt": "Build a todo app"}
     assert split_dir(f"{tmp_path}/missing fix it") == {"prompt": f"{tmp_path}/missing fix it"}
+
+
+def test_queued_ahead_counts_older_unfinished_top_level_jobs():
+    from law.telegram_bot import queued_ahead
+
+    jobs = [  # newest first, as GET /jobs returns them
+        {"id": "new", "parent": None, "status": "queued"},
+        {"id": "a", "parent": None, "status": "running"},
+        {"id": "a1", "parent": "a", "status": "running"},  # a stage: counted through its root
+        {"id": "b", "parent": None, "status": "done"},
+        {"id": "c", "parent": None, "status": "waiting"},
+    ]
+    assert queued_ahead(jobs, "new") == 2
+    assert queued_ahead(jobs, "missing") == 0

@@ -395,3 +395,19 @@ def test_omlx_disk_cache_is_capped_and_idempotent(ctx: Ctx):
     doc = json.loads(step.file.read_text())
     assert doc["cache"]["ssd_cache_max_size"] == "20GB" and doc["memory"] == {"x": 1}
     assert ctx.sys.kicked == ["com.law6.omlx"] and step.plan() == []
+
+
+def test_openwebui_state_restores_only_when_saved_files_change(ctx: Ctx):
+    from law.install.steps import OpenWebUIState
+
+    step = OpenWebUIState(ctx)
+    step.folder = ctx.paths.user_home / "repo-settings" / "openwebui"  # never write into the real repo
+    assert step.plan() == []  # nothing saved yet
+    step.folder.mkdir(parents=True)
+    (step.folder / "prompts.json").write_text('[{"command": "memo", "name": "Memo", "content": "Write"}]\n')
+    assert step.plan() == ["restore saved Open WebUI presets, prompts and knowledge"]
+    step.stamp.parent.mkdir(parents=True, exist_ok=True)
+    step.stamp.write_text(step._digest() + "\n")  # what apply() records after a restore
+    assert step.plan() == []
+    (step.folder / "prompts.json").write_text("[]\n")
+    assert step.plan() != []
