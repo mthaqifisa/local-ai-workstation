@@ -130,7 +130,7 @@ def proposal_stages(rt: Runtime, request: str, workdir: Path, out: str, *, versi
     research = [{"kind": "task_work", "payload": {**base, "role": "researcher",
                                                   "spec": RESEARCH_SPEC.format(out=out, searx=searx)}}]
     return [
-        {"kind": "task_translate", "payload": {**base, "role": "writer"}},
+        {"kind": "task_translate", "payload": {**base, "role": "writer", "spec": spec}},
         *(research if version == 1 else []),
         {"kind": "task_work", "payload": writer},
         {"kind": "task_review", "payload": writer},
