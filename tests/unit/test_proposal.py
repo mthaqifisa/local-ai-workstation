@@ -77,7 +77,8 @@ def test_pipeline_for_a_prototype_project(tmp_path: Path):
     kinds = [(s["kind"], s["payload"].get("role")) for s in out.specs]
     sections = [s for s in out.specs if s["payload"].get("spec_ref") == "proposal.section"]
     assert kinds == [("task_translate", "writer"), ("task_work", "researcher")] + [("task_work", "writer")] * 16 + [
-        ("task_review", "writer"), ("task_fix", "writer"), ("proposal_render", None), ("proposal_mail", None)]
+        ("proposal_check", None), ("task_review", "writer"), ("task_fix", "writer"), ("proposal_render", None),
+        ("proposal_mail", None)]
     assert len(sections) == 16  # /proposal is always the full document: one writer session per section
     research = out.specs[1]["payload"]
     assert "http://127.0.0.1:8888/search" in specs.resolve(research) and "docs/proposal/research.md" in specs.resolve(research)
@@ -241,3 +242,39 @@ def test_revisions_revise_each_section_and_add_what_changed():
     text = specs.resolve(stages[2]["payload"])
     assert "Revise this section in place" in text and "make it mobile-first" in text
     assert not stages[0]["payload"]["section"]["skip_if_written"]  # revisions always run
+
+
+def test_undrawable_diagrams_reach_the_review_as_issues(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    rt = _rt(tmp_path)
+    docs = tmp_path / "p" / "docs" / "proposal"
+    (docs / "assets").mkdir(parents=True)
+    (docs / "proposal.md").write_text(DOC)
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        if "diagram-2" in " ".join(cmd):
+            raise Fatal("mmdc exited 1: Error: Parse error on line 3:\n...D1, D2\nExpecting 'SEMI', got ','")
+        return ""
+
+    monkeypatch.setattr(proposal, "run_cmd", fake_run_cmd)
+    done = asyncio.run(proposal.make_handlers(rt)["proposal_check"](
+        _ctx({"dir": str(tmp_path / "p"), "out": "docs/proposal", "prompt": "x"})))
+    assert isinstance(done, Done)
+    errors = done.result["diagram_errors"]
+    assert len(errors) == 1 and "Diagram 2" in errors[0] and "Parse error on line 3" in errors[0]
+
+
+async def test_review_cannot_pass_with_undrawable_diagrams(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from law.handlers import tasks
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        return '{"type": "text", "part": {"type": "text", "text": "{\\"score\\": 5, \\"issues\\": [], \\"summary\\": \\"great\\"}"}}'
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    rt = _rt(tmp_path)
+    rt.roles = SimpleNamespace(get=lambda name: SimpleNamespace(model_role="judge"))
+    rt.model_id = lambda role: "m"
+    rt.reg.ports.llm_internal = 1
+    carry = {"answer": "done", "diagram_errors": ["Diagram \"Context\" does not draw: Parse error"]}
+    done = await tasks.make_handlers(rt)["task_review"](
+        _ctx({"prompt": "x", "dir": str(tmp_path), "role": "writer", "_carry": carry}))
+    assert done.result["review"]["score"] == 3 and "does not draw" in done.result["review"]["issues"][0]

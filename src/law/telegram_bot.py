@@ -504,8 +504,12 @@ class LawBot:
         """A Telegram job reopened elsewhere (Retry/Skip/Restart in the Console) is followed in its chat again."""
         runs = int((job.get("payload") or {}).get("_runs", 0))
         key = f"run{runs}:{job['id']}"
-        if (runs and job.get("source") == "telegram" and job.get("parent") is None and job["status"] in LIVE
-                and job.get("reply_to") and job["id"] not in self.following and not self.delivered.seen(key)):
+        # also jobs for a Telegram chat that were submitted elsewhere (API, Console), once old enough that this
+        # process would already be following them if it had submitted them itself
+        external = not runs and time.time() - float(job.get("created", 0)) > 10 and not self.delivered.seen(job["id"])
+        if ((runs or external) and job.get("source") == "telegram" and job.get("parent") is None
+                and job["status"] in LIVE and job.get("reply_to") and job["id"] not in self.following
+                and not self.delivered.seen(key)):
             self.delivered.add(key)
             chat = job["reply_to"]["chat_id"]
             status = await self.bot.send_message(chat, f"🔁 `{job['id']}` resumed; following it here")
