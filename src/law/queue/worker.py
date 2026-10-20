@@ -216,8 +216,7 @@ class Worker:
                     self.restart_flag.unlink(missing_ok=True)  # type: ignore[union-attr]
                     log.info("restarting on newly installed code (no step running)")
                     break
-                if not draining:
-                    await self.schedule_once()
+                await self.schedule_once(quick_only=draining)
                 self._wake.clear()
                 with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(self._wake.wait(), timeout=self.tick_s)
@@ -242,8 +241,12 @@ class Worker:
         self._stop.set()
         self._wake.set()
 
-    async def schedule_once(self) -> list[str]:
+    async def schedule_once(self, *, quick_only: bool = False) -> list[str]:
+        """Start what fits. `quick_only` (while waiting to restart on new code) starts only jobs that use no model,
+        such as emails, PDF rendering and decisions, so the owner is not kept waiting behind an agent step."""
         queued = await self.store.queued()
+        if quick_only:
+            queued = [j for j in queued if j.lane == "none"]
         resident = await self.store.resident()
         started: list[str] = []
         for job in pick(queued, self.running, resident, self.cap, time.time()):
