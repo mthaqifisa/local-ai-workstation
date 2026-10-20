@@ -269,11 +269,18 @@ async def test_undrawable_diagrams_reach_the_review_as_issues(tmp_path: Path, mo
                     "echo \"Expecting 'SEMI', got 'COMMA'\"; exit 1;; esac\nexit 0\n")
     tool.chmod(0o755)
     monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
+    tries: list[int] = []
+
+    async def no_fix(*a: Any, **k: Any) -> str:  # the model cannot repair it
+        tries.append(1)
+        return "```mermaid\nstill broken\n```"
+
+    monkeypatch.setattr(proposal, "answer", no_fix)
     done = await proposal.make_handlers(rt)["proposal_check"](
         _ctx({"dir": str(tmp_path / "p"), "out": "docs/proposal", "prompt": "x"}))
     errors = done.result["diagram_errors"]
     assert len(errors) == 1 and "Diagram 2" in errors[0] and "Parse error on line 3" in errors[0]
-    assert "got 'COMMA'" in errors[0]
+    assert "got 'COMMA'" in errors[0] and len(tries) == proposal.REPAIR_TRIES
 
 
 async def test_review_cannot_pass_with_undrawable_diagrams(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -291,3 +298,32 @@ async def test_review_cannot_pass_with_undrawable_diagrams(tmp_path: Path, monke
     done = await tasks.make_handlers(rt)["task_review"](
         _ctx({"prompt": "x", "dir": str(tmp_path), "role": "writer", "_carry": carry}))
     assert done.result["review"]["score"] == 3 and "does not draw" in done.result["review"]["issues"][0]
+
+
+async def test_broken_diagrams_are_repaired_and_verified_before_the_review(tmp_path: Path,
+                                                                           monkeypatch: pytest.MonkeyPatch):
+    rt = _rt(tmp_path)
+    docs = tmp_path / "p" / "docs" / "proposal"
+    (docs / "assets").mkdir(parents=True)
+    broken = DOC.replace("  A --> B", "  A, B\n  A --> B")
+    (docs / "proposal.md").write_text(broken)
+    tool = tmp_path / "bin" / "mmdc"  # fake mermaid-cli: fails when a diagram has comma-separated nodes
+    tool.parent.mkdir()
+    tool.write_text("#!/bin/sh\nfor a; do [ \"$prev\" = -i ] && src=$a; prev=$a; done\n"
+                    "if grep -q 'A, B' \"$src\"; then echo 'Error: Parse error on line 2:'; "
+                    "echo \"Expecting 'SEMI', got 'COMMA'\"; exit 1; fi\nexit 0\n")
+    tool.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tool.parent}:{os.environ['PATH']}")
+    asked: list[str] = []
+
+    async def fake_answer(rt_: Any, role: str, messages: list[dict[str, Any]], ctx: Any = None) -> str:
+        asked.append(messages[-1]["content"])
+        return "Here:\n```mermaid\nflowchart LR\n  A\n  B\n  A --> B\n```"
+
+    monkeypatch.setattr(proposal, "answer", fake_answer)
+    done = await proposal.make_handlers(rt)["proposal_check"](
+        _ctx({"dir": str(tmp_path / "p"), "out": "docs/proposal", "prompt": "x"}))
+    assert done.result == {"diagram_errors": [], "diagrams_repaired": 1}
+    assert "got 'COMMA'" in asked[0]  # the model got the exact error
+    text = (docs / "proposal.md").read_text()
+    assert "A, B" not in text and "  A\n  B\n  A --> B" in text

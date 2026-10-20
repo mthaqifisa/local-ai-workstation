@@ -20,6 +20,7 @@ from typing import Any
 
 from law import mailer, specs
 from law.handlers.base import Runtime, run_cmd
+from law.handlers.core import answer
 from law.queue.worker import Context, Done, Fatal, Outcome, Stages
 
 RESEARCH_SPEC = """Your task in this stage is RESEARCH ONLY; do not write the proposal.
@@ -119,6 +120,7 @@ match its code.
 Reply with JSON only:
 {{"score": <1-5>, "issues": ["<section or file: problem and fix>"], "summary": "<one sentence>"}}"""
 
+REPAIR_TRIES = 3  # diagram repairs before a broken diagram goes to the review
 MERMAID = re.compile(r"^```\s*(?:mermaid|\{\.mermaid([^}]*)\})\s*\n(.*?)^```\s*$", re.MULTILINE | re.DOTALL)
 CAPTION = re.compile(r'caption\s*=\s*"([^"]*)"')
 # Documents this module renders and emails: the file stem, its label, and the section quoted in the email.
@@ -343,13 +345,40 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         if not source.exists():
             raise Fatal(f"the agent did not produce {source}")
         _, diagrams = extract_diagrams(source.read_text())
-        errors = []
+        errors, repaired = [], 0
         for n, (caption, code) in enumerate(diagrams, start=1):
             await ctx.progress(f"🖼 checking diagram {n}/{len(diagrams)}: {caption}")
             error = await _draw(ctx, docs, n, caption, code)
+            attempt = 0
+            while error and attempt < REPAIR_TRIES:  # repair it here: short, verified by drawing it again
+                attempt += 1
+                await ctx.progress(f"🛠 repairing diagram {n} (try {attempt}): {error[:80]}")
+                fixed = await _repair(ctx, code, error)
+                if not fixed:
+                    continue
+                error = await _draw(ctx, docs, n, caption, fixed)
+                if not error:
+                    text = source.read_text()
+                    if code in text:
+                        source.write_text(text.replace(code, fixed, 1))
+                        repaired += 1
+                    code = fixed
+                else:
+                    code = fixed
             if error:
                 errors.append(f"Diagram \"{caption}\" does not draw: {error}. Fix its Mermaid syntax.")
-        return Done({"diagram_errors": errors})
+        return Done({"diagram_errors": errors, "diagrams_repaired": repaired})
+
+    async def _repair(ctx: Context, code: str, error: str) -> str | None:
+        """Ask the writer's model for a corrected diagram (just the Mermaid, no prose)."""
+        prompt = (f"This Mermaid diagram does not render. Error from mermaid-cli:\n{error}\n\nDiagram:\n{code}\n"
+                  "Return the corrected diagram only, as Mermaid inside one ```mermaid block. Keep its meaning, nodes "
+                  "and labels; change only what is needed so it renders (one node per line, quote labels that "
+                  "contain punctuation, valid arrows).")
+        reply = await answer(rt, "writer", [{"role": "user", "content": prompt}], ctx)
+        m = re.search(r"```(?:mermaid)?\s*\n(.*?)```", reply, re.DOTALL)
+        fixed = (m.group(1) if m else reply).strip()
+        return fixed + "\n" if fixed and fixed != code.strip() else None
 
     async def proposal_render(ctx: Context) -> Outcome:
         """Diagrams to PNG with mermaid-cli, then pandoc + Typst in the house template."""
