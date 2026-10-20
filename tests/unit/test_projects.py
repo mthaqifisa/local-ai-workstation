@@ -242,3 +242,54 @@ def test_development_spec_asks_for_a_ticket_board(tmp_path: Path):
     out = _run(rt, "project_step", {"project": "office-chat", "action": "go"})
     spec = next(specs.resolve(s["payload"]) for s in out.specs if s["payload"].get("milestone"))
     assert "### M1" in spec and '"OC-<n>: <summary>"' in spec and "## Build version 1" in spec
+
+CODE_FILLED = FILLED.replace("/code new", "/code new").replace("thinking: high", "thinking: low")
+
+
+def test_code_projects_plan_in_the_chat_then_build_without_documents(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    rt = _rt(tmp_path)
+    out = _run(rt, "project_new", {"fields": projects.parse_template(CODE_FILLED), "chat": 7, "mode": "code"})
+    assert [s["kind"] for s in out.specs] == ["code_plan", "project_gate"]  # no research, proposal or email
+    store = projects.Projects(rt.paths)
+    assert store.get("office-chat").mode == "code"
+
+    async def fake_answer(*a: Any, **k: Any) -> str:
+        return "**What I'll build**: an office chat.\n**Stack**: Spring Boot 4.1 on JDK 21."
+
+    monkeypatch.setattr(project_handlers, "answer", fake_answer)
+    plan = _run(rt, "code_plan", {"project": "office-chat"})
+    assert "Spring Boot 4.1" in plan.result["plan"]
+    assert "Spring Boot 4.1" in (Path(store.get("office-chat").dir) / ".law" / "PROMPT.md").read_text()
+    gate = _run(rt, "project_gate", {"project": "office-chat", "gate": "plan", "_carry": plan.result})
+    assert gate.result["gate"]["actions"] == ["go", "nogo"] and "Plan v1: Office Chat" in gate.result["answer"]
+    dev = _run(rt, "project_step", {"project": "office-chat", "action": "go"})
+    kinds = [s["kind"] for s in dev.specs]
+    assert "proposal_render" not in kinds and kinds[-1] == "project_gate"  # no handover document
+    assert ".law/PROMPT.md" in specs.resolve(dev.specs[1]["payload"])  # builds from the agreed plan
+
+
+def test_a_no_go_on_a_code_plan_revises_the_plan(tmp_path: Path):
+    rt = _rt(tmp_path)
+    store = projects.Projects(rt.paths)
+    p = store.create(projects.parse_template(CODE_FILLED), chat=7, mode="code")
+    p.state = "awaiting_go"
+    store.save(p)
+    out = _run(rt, "project_step", {"project": "office-chat", "action": "nogo", "note": "use Postgres"})
+    assert [s["kind"] for s in out.specs] == ["code_plan", "project_gate"]
+    assert store.get("office-chat").version == 2 and "use Postgres" in store.get("office-chat").request()
+
+
+def test_email_resends_the_latest_document_and_unsent_gates_offer_it(tmp_path: Path):
+    rt = _rt(tmp_path)
+    store = projects.Projects(rt.paths)
+    p = store.create(projects.parse_template(FILLED), chat=7)
+    store.save(p)
+    assert "no document" in _run(rt, "project_step", {"project": "office-chat", "action": "email"}).result["answer"]
+    docs = Path(p.dir) / "docs" / "proposal"
+    docs.mkdir(parents=True)
+    (docs / "proposal-v2.pdf").write_bytes(b"%PDF")
+    out = _run(rt, "project_step", {"project": "office-chat", "action": "email"})
+    assert out.specs[0]["kind"] == "proposal_mail" and out.carry["pdf"].endswith("proposal-v2.pdf")
+    gate = _run(rt, "project_gate", {"project": "office-chat", "gate": "proposal",
+                                     "_carry": {"pdf": str(docs / "proposal-v2.pdf"), "emailed": None}})
+    assert gate.result["gate"]["actions"] == ["go", "nogo", "email"]

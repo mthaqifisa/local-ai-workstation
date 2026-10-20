@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -60,21 +61,17 @@ class LawBot:
             if not self._ok(message) or not command.args:
                 return
             args = command.args.strip()
-            if args.lower() == "init":
-                await self._send(message.chat.id, projects.TEMPLATE_INTRO)
-                await self.bot.send_message(message.chat.id, f"<pre>{projects.TEMPLATE}</pre>", parse_mode="HTML")
-                return
-            if args.lower().startswith("new"):
-                try:
-                    fields = projects.parse_template(args)
-                except projects.TemplateError as exc:
-                    await self._send(message.chat.id, f"Not started: {exc}. Send `/code init` for the template.")
-                    return
-                await self._submit(message.chat.id, "project_new", {"fields": fields, "chat": message.chat.id})
+            if args.lower() == "init" or re.match(r"(?i)new\s*\n", args):  # a template, not "/code newsletter ..."
+                await self._start_project(message, args, "code")
                 return
             await self._job(message, "task", {"role": "coder", **split_dir(args)})
 
-        for name in ("go", "nogo", "changes", "allgood", "resume", "push"):
+        @dp.message(Command("project"))
+        async def project(message: Message, command: CommandObject) -> None:
+            if self._ok(message):
+                await self._start_project(message, (command.args or "init").strip(), "project")
+
+        for name in ("go", "nogo", "changes", "allgood", "resume", "push", "email"):
             self._wire_decision(name)
 
         @dp.message(Command("projects"))
@@ -262,6 +259,19 @@ class LawBot:
         status = await self.bot.send_message(chat, f"{label} `{follow}`")
         reply = {"chat_id": chat, "status_id": status.message_id, "file_field": None, "then": None}
         await self._deliver(follow, reply, again=True)
+
+    async def _start_project(self, message: Message, args: str, mode: str) -> None:
+        """`init` sends the template for this mode; a filled template (`new ...`) starts the project."""
+        if args.lower() == "init":
+            await self._send(message.chat.id, projects.INTROS[mode])
+            await self.bot.send_message(message.chat.id, f"<pre>{projects.TEMPLATES[mode]}</pre>", parse_mode="HTML")
+            return
+        try:
+            fields = projects.parse_template(args)
+        except projects.TemplateError as exc:
+            await self._send(message.chat.id, f"Not started: {exc}. Send `/{mode} init` for the template.")
+            return
+        await self._submit(message.chat.id, "project_new", {"fields": fields, "chat": message.chat.id, "mode": mode})
 
     def _wire_decision(self, action: str) -> None:
         """/go <project>, /nogo <project> [what to change], /changes <project> <what>, /allgood, /resume, /push."""
@@ -582,7 +592,7 @@ class LawBot:
 
 TERMINAL = {"done", "failed", "cancelled", "dead"}
 BUTTONS = {"go": "✅ Go", "nogo": "❌ No go", "allgood": "👍 All good", "changes": "🛠 Needs changes",
-           "push": "⬆️ Push", "resume": "▶️ Resume"}
+           "push": "⬆️ Push", "resume": "▶️ Resume", "email": "📧 Email it"}
 NEEDS_NOTE = {"nogo", "changes", "resume"}
 JOB_BUTTONS = {"retry": "🔁 Retry", "skip": "⏭ Skip", "restart": "🔄 Restart step", "cancel": "🛑 Cancel"}
 HEALTH = {"working": "🟢 working", "thinking": "🔵 thinking", "queued": "🔵 queued", "stalled": "🟠 stalled",
@@ -637,9 +647,10 @@ COMMANDS: list[tuple[str, str, str]] = [
     ("help", "Everything Tony can do", "/help"),
     ("ask", "Ask anything (same as just typing)", "/ask Should we lease or buy our office laptops?"),
     ("search", "Web search with sources", "/search latest MAS guidelines on AI risk management"),
-    ("code", "Coding agent. `/code init` starts a full project: template → proposal → your go → build → your "
-     "verification → enhancements. Or `/code [folder] <task>` for a quick task",
-     "/code init"),
+    ("project", "Full project (SDLC): template → research and proposal PDF (emailed) → your go → build and test → "
+     "handover document → your verification → enhancements", "/project init"),
+    ("code", "Code only: template → a short plan in the chat → your go → build and test → your verification. "
+     "Or `/code [folder] <task>` for a quick task", "/code init"),
     ("projects", "Your projects and where each one is (go/no go, building, verification)", "/projects"),
     ("go", "Approve a proposal and start development", "/go office-chat"),
     ("nogo", "Reject a proposal: say what to change (revised proposal), or `stop` to park it",
@@ -647,6 +658,7 @@ COMMANDS: list[tuple[str, str, str]] = [
     ("changes", "After you try it: what to change or add (enhanced proposal, then build)",
      "/changes office-chat add file sharing"),
     ("allgood", "Accept the build: the project is done", "/allgood office-chat"),
+    ("email", "Email a project's latest document (proposal or handover) again", "/email office-chat"),
     ("proposal", "Consultant-grade proposal: research, full document (design, architecture, flows, "
      "wireframes, plan, cost), reviewed, PDF emailed to you; start with a project folder to use it as the prototype",
      "/proposal ~/SourceCode/my-app Propose this as a product for small offices"),
@@ -674,10 +686,11 @@ HELP_TEXT = (
     "**Voice note** → transcribed and answered. **Photo** → described or answered about "
     "(add a question as caption).\n\n"
     + "\n".join(f"/{c} — {d}\n  e.g. `{ex}`" for c, d, ex in COMMANDS if c != "help")
-    + "\n\n**Projects** (`/code init`): Tony sends a template; fill in name, repo, stack, summary, details and "
-    "thinking level, and send it back. Tony researches and emails a proposal, then asks **Go / No go**. On Go it "
-    "prepares the tools, builds in milestones, tests and fixes until an independent review passes, then asks you to "
-    "verify: **All good** finishes it, **Needs changes** brings an enhanced proposal and the loop repeats.\n"
+    + "\n\n**Projects**: `/project init` (full SDLC) or `/code init` (code only) sends a template; fill it in "
+    "and send it back. A project researches and emails a proposal; a code-only one posts a short plan here. Then "
+    "**Go / No go**: on Go, Tony prepares the tools, builds in milestones, tests and fixes until an independent "
+    "review passes (a project also writes a handover document with screenshots), then asks you to verify: "
+    "**All good** finishes it, **Needs changes** brings a revised proposal or plan and the loop repeats.\n"
     "\n**Music**: say the genre/vibe, duration (up to 4 min) and theme; add your own lyrics after a line "
     "`lyrics:` or Tony writes them.\n"
     "**Video**: say the duration (2-10 s), subject and style; or send a photo with /animate."

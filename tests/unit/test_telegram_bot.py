@@ -227,3 +227,15 @@ async def test_status_updates_edit_one_message_and_never_flood():
     await bot._edit(gone, "… x")
     await bot._edit(gone, "… y")
     assert sent[-1] == "… x" and gone["status_id"] == 102 and edits[-1] == (102, "… y")
+
+
+def test_project_templates_and_quick_tasks_are_told_apart():
+    import re as _re
+
+    from law import projects
+
+    assert projects.TEMPLATES["project"].startswith("/project new\n") and "proposal: brief" in projects.TEMPLATES["project"]
+    assert projects.TEMPLATES["code"].startswith("/code new\n") and "proposal" not in projects.TEMPLATES["code"]
+    template_like = lambda args: args.lower() == "init" or bool(_re.match(r"(?i)new\s*\n", args))  # noqa: E731
+    assert template_like("new\nname: X") and template_like("init")
+    assert not template_like("newsletter signup form") and not template_like("new feature: dark mode")
