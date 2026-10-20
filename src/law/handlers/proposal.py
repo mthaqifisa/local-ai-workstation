@@ -349,22 +349,22 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         for n, (caption, code) in enumerate(diagrams, start=1):
             await ctx.progress(f"🖼 checking diagram {n}/{len(diagrams)}: {caption}")
             error = await _draw(ctx, docs, n, caption, code)
-            attempt = 0
+            original, attempt = code, 0
             while error and attempt < REPAIR_TRIES:  # repair it here: short, verified by drawing it again
                 attempt += 1
                 await ctx.progress(f"🛠 repairing diagram {n} (try {attempt}): {error[:80]}")
                 fixed = await _repair(ctx, code, error)
                 if not fixed:
                     continue
+                code = fixed  # the next try improves on this attempt
                 error = await _draw(ctx, docs, n, caption, fixed)
-                if not error:
-                    text = source.read_text()
-                    if code in text:
-                        source.write_text(text.replace(code, fixed, 1))
-                        repaired += 1
-                    code = fixed
+            if code is not original and not error:
+                text = source.read_text()  # what is in the file is the original, whichever try worked
+                if original in text:
+                    source.write_text(text.replace(original, code, 1))
+                    repaired += 1
                 else:
-                    code = fixed
+                    error = "repaired, but the original diagram was not found in the document to replace"
             if error:
                 errors.append(f"Diagram \"{caption}\" does not draw: {error}. Fix its Mermaid syntax.")
         return Done({"diagram_errors": errors, "diagrams_repaired": repaired})

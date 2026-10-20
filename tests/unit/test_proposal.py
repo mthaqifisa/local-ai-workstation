@@ -327,3 +327,29 @@ async def test_broken_diagrams_are_repaired_and_verified_before_the_review(tmp_p
     assert "got 'COMMA'" in asked[0]  # the model got the exact error
     text = (docs / "proposal.md").read_text()
     assert "A, B" not in text and "  A\n  B\n  A --> B" in text
+
+
+async def test_a_repair_that_works_on_a_later_try_is_saved(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    rt = _rt(tmp_path)
+    docs = tmp_path / "p" / "docs" / "proposal"
+    (docs / "assets").mkdir(parents=True)
+    (docs / "proposal.md").write_text(DOC.replace("  A --> B", "  A, B\n  A --> B"))
+    tool = tmp_path / "bin" / "mmdc"  # fails on comma-separated nodes and on quoted labels
+    tool.parent.mkdir()
+    tool.write_text("#!/bin/sh\nfor a; do [ \"$prev\" = -i ] && src=$a; prev=$a; done\n"
+                    "if grep -q -e 'A, B' -e '\"' \"$src\"; then echo 'Error: Parse error on line 2:'; exit 1; fi\n"
+                    "exit 0\n")
+    tool.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tool.parent}:{os.environ['PATH']}")
+    replies = iter(['```mermaid\nflowchart LR\n  A["a"]\n  B\n  A --> B\n```',  # try 1: still fails
+                    "```mermaid\nflowchart LR\n  A\n  B\n  A --> B\n```"])  # try 2: draws
+
+    async def fake_answer(*a: Any, **k: Any) -> str:
+        return next(replies)
+
+    monkeypatch.setattr(proposal, "answer", fake_answer)
+    done = await proposal.make_handlers(rt)["proposal_check"](
+        _ctx({"dir": str(tmp_path / "p"), "out": "docs/proposal", "prompt": "x"}))
+    assert done.result == {"diagram_errors": [], "diagrams_repaired": 1}
+    text = (docs / "proposal.md").read_text()
+    assert "A, B" not in text and '"a"' not in text and "  A\n  B\n  A --> B" in text
