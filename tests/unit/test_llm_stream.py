@@ -60,3 +60,18 @@ async def test_stream_assembles_tool_calls_split_across_chunks(transport):
     assert call["id"] == "c1" and call["function"]["name"] == "run_python"
     assert json.loads(call["function"]["arguments"]) == {"code": "print(1)"}
     assert choice["finish_reason"] == "tool_calls"
+
+
+async def test_reasoning_off_sends_the_template_switch(monkeypatch):
+    from law.llm import LLM
+
+    sent: dict = {}
+    llm = LLM("http://x/v1")
+
+    async def fake_complete(body, on_thought=None):  # type: ignore[no-untyped-def]
+        sent.update(body)
+        return {"message": {"content": "ok"}, "finish_reason": "stop"}
+
+    monkeypatch.setattr(llm, "complete", fake_complete)
+    await llm.chat("m", [{"role": "user", "content": "hi"}], reasoning="off")
+    assert sent["chat_template_kwargs"] == {"enable_thinking": False} and "reasoning_effort" not in sent

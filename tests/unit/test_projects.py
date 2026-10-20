@@ -120,8 +120,11 @@ def test_new_project_makes_a_repo_and_runs_the_proposal_to_the_gate(tmp_path: Pa
     assert kinds[0] == "task_translate" and "task_work" in kinds and kinds[-2:] == ["proposal_mail", "project_gate"]
     folder = rt.paths.projects / "office-chat"
     assert (folder / ".git").is_dir() and (folder / "docs" / "proposal" / "assets").is_dir()
-    # documents use the roles' own (low) thinking; the project's level is for its code
-    assert all("effort" not in s["payload"] for s in out.specs if s["kind"] == "task_work")
+    # documents don't use the project's thinking level (that is for its code): sections are written with thinking
+    # off, research at the researcher's own level
+    work = [s["payload"] for s in out.specs if s["kind"] == "task_work"]
+    assert all(w.get("effort") == "off" for w in work if w.get("section"))
+    assert all("effort" not in w for w in work if not w.get("section"))
     assert all(s["payload"].get("spec_args", {}).get("depth") in (None, "brief") for s in out.specs)
 
 

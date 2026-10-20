@@ -59,7 +59,7 @@ def _images(payload: dict[str, Any]) -> list[str]:
     return list(imgs)
 
 
-LOWER = {"xhigh": "medium", "medium": "low", "low": "low"}
+LOWER = {"xhigh": "medium", "medium": "low", "low": "low", "off": "off"}
 
 
 async def answer(rt: Runtime, role: str, messages: list[dict[str, Any]], ctx: Context | None = None) -> str:

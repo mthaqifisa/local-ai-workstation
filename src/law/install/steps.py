@@ -616,6 +616,15 @@ class MediaModels:
         return self.plan()
 
 
+def model_options(effort: str) -> dict[str, Any]:
+    """What OpenCode sends the model for a thinking level. "off" turns the Qwen chat template's thinking off
+    (checked on the wire: OpenCode passes chat_template_kwargs through); reasoning_effort cannot (measured:
+    'none' still thinks)."""
+    if effort == "off":
+        return {"chat_template_kwargs": {"enable_thinking": False}}
+    return {"reasoningEffort": effort}
+
+
 class OpenCodeConfig:
     """OpenCode provider + role agents pointed at the local LLM endpoint (full permissions)."""
 
@@ -684,10 +693,10 @@ class OpenCodeConfig:
             # between tool calls with Qwen3.8 (2026-10-20). OpenCode sends it as `reasoning_effort`.
             # A project can ask for another level (its `thinking`), so each role also gets one file per level.
             model_id = agent["model"].removeprefix("law/")
-            for effort, suffix in ((roles.get(name).reasoning, ""), ("low", "-low"), ("medium", "-medium"),
-                                   ("xhigh", "-xhigh")):
+            for effort, suffix in ((roles.get(name).reasoning, ""), ("off", "-off"), ("low", "-low"),
+                                   ("medium", "-medium"), ("xhigh", "-xhigh")):
                 provider = json.loads(json.dumps(doc["provider"]))
-                provider["law"]["models"][model_id]["options"] = {"reasoningEffort": effort}
+                provider["law"]["models"][model_id]["options"] = model_options(effort)
                 body = {**role_doc, "provider": provider}
                 out[self.c.paths.config / f"opencode-{name}{suffix}.json"] = json.dumps(body, indent=2) + "\n"
         return out

@@ -296,7 +296,11 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         if _dir(p):  # a named or chosen folder: build there, not in a new one
             parts.append(f"Work in this directory and create the project files directly in it: {_workdir(p)}\n"
                          f"Do not create a different project folder.")
-        if memory is not None:
+        if memory is not None and p.get("section"):
+            # one section of a document LAW assembles: LAW tracks the sections and records progress
+            parts.append(f"LAW tracks this document's sections and records progress. Do not edit {FOLDER}/PLAN.md "
+                         f"or {FOLDER}/PROGRESS.md; just write the section.")
+        elif memory is not None:
             parts.append(memory.instructions())
         elif writes:
             parts.append(NEW_PROJECT_MEMORY)

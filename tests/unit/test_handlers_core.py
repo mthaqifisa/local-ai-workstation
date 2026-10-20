@@ -220,7 +220,7 @@ def test_every_role_has_a_reasoning_effort():
     from law import roles
 
     loaded = roles.load(REPO / "settings" / "roles.yaml")
-    assert {r.reasoning for r in loaded.roles.values()} <= {"low", "medium", "xhigh"}
+    assert {r.reasoning for r in loaded.roles.values()} <= {"off", "low", "medium", "xhigh"}
     assert loaded.get("operator").reasoning == "low"
 
 

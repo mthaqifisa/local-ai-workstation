@@ -373,7 +373,7 @@ def test_each_role_config_uses_one_model_only(ctx: Ctx):
     operator = json.loads(files[ctx.paths.config / "opencode-operator.json"])
     assert operator["model"] == operator["small_model"]
     roles = len(json.loads(files[ctx.paths.config / "opencode.json"])["agent"])
-    assert len(files) == 1 + roles * 4  # the role's default plus one file per thinking level
+    assert len(files) == 1 + roles * 5  # the role's default plus one file per thinking level (off..xhigh)
     high = json.loads(files[ctx.paths.config / "opencode-coder-xhigh.json"])
     assert high["provider"]["law"]["models"]["qwen3.8-27b-8bit"]["options"] == {"reasoningEffort": "xhigh"}
     assert high["model"] == high["small_model"] == coder["model"]
@@ -484,3 +484,15 @@ def test_formula_installed_without_its_brewfile_options_is_reinstalled(ctx: Ctx,
     assert ["brew", "reinstall", "jundot/omlx/omlx", "--with-custom-kernel"] in ctx.sys.calls
     receipt.write_text(json.dumps({"used_options": ["--with-custom-kernel"]}))
     assert not any(p.startswith("reinstall") for p in brew.plan())
+
+
+def test_thinking_off_turns_the_chat_template_switch(ctx: Ctx):
+    import json
+
+    from law.install.steps import OpenCodeConfig, model_options
+
+    assert model_options("off") == {"chat_template_kwargs": {"enable_thinking": False}}
+    assert model_options("low") == {"reasoningEffort": "low"}
+    off = json.loads(OpenCodeConfig(ctx).files()[ctx.paths.config / "opencode-writer-off.json"])
+    assert off["provider"]["law"]["models"]["qwen3.8-27b-8bit"]["options"] == {
+        "chat_template_kwargs": {"enable_thinking": False}}

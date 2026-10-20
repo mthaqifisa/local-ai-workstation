@@ -24,7 +24,7 @@ class RoleUpdate(BaseModel):
     summary: str = Field(min_length=3, max_length=200)
     prompt: str = Field(min_length=20, max_length=20000)
     temperature: float = Field(ge=0, le=1)
-    reasoning: Literal["low", "medium", "xhigh"]
+    reasoning: Literal["off", "low", "medium", "xhigh"]
     tools: list[str]
 
 
