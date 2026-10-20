@@ -122,8 +122,8 @@ runs the project's checks) → **fix** if the review scores below 4/5.
 
 | Role | Model | Loaded size |
 |---|---|---|
-| Reasoning, writing, vision (default) | Qwen3.8-27B, 8-bit | 28 GB |
-| Coding agent | Qwen3-Coder-Next 80B MoE, 4-bit | 41 GB |
+| Reasoning, writing, vision, coding agent (default) | Qwen3.8-27B, 8-bit | 28 GB |
+| Fast coder for short tasks (32k context) | Qwen3-Coder-Next 80B MoE, 4-bit | 41 GB |
 | Fast / operator | Qwen3.6-35B-A3B, 8-bit | 36 GB |
 | Independent judge | Gemma 4 31B, 8-bit (different family → no self-grading) | 34 GB |
 | Embeddings / rerank | Qwen3-Embedding-4B · Qwen3-Reranker-0.6B | 3 GB |
