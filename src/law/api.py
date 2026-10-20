@@ -184,6 +184,17 @@ def create_app(
         job = await store.request_cancel(job_id)
         return CancelResponse(id=job.id, status=job.status.value, cancel_requested=job.cancel_requested)
 
+    @app.post("/jobs/{job_id}/retry", response_model=Job)
+    async def retry_job(job_id: str, store: StoreDep, resolve: ResolveDep) -> Job:
+        """Run a failed or stuck pipeline again from its failed stage; earlier stages' results are kept."""
+        from law.queue.worker import retry_pipeline
+
+        await _require(store, job_id)
+        try:
+            return await retry_pipeline(store, resolve, job_id)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
     # ---- results & files --------------------------------------------------
     # Sync route: FastAPI runs it in a threadpool, so the blocking filesystem probes are fine.
     @app.get("/files")

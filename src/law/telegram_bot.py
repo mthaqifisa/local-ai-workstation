@@ -155,6 +155,23 @@ class LawBot:
             await self._send(message.chat.id, "**Recent jobs**\n" + ("\n".join(lines) or "none") +
                              "\n\nStop one with `/cancel <id>`.")
 
+        @dp.message(Command("retry"))
+        async def retry(message: Message, command: CommandObject) -> None:
+            if not self._ok(message):
+                return
+            job_id = (command.args or "").strip()
+            if not job_id:
+                await self._send(message.chat.id, "Usage: `/retry <job id>` (see /jobs)")
+                return
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.post(f"{self.api}/jobs/{job_id}/retry")
+            if r.status_code != 200:
+                await self._send(message.chat.id, f"Can't retry `{job_id}`: {r.json().get('detail', r.text)}")
+                return
+            status = await self.bot.send_message(message.chat.id, f"🔁 retrying from stage {r.json()['stage'] + 1}")
+            reply = {"chat_id": message.chat.id, "status_id": status.message_id, "file_field": None, "then": None}
+            await self._deliver(job_id, reply, again=True)
+
         @dp.message(Command("cancel"))
         async def cancel(message: Message, command: CommandObject) -> None:
             if not self._ok(message):
@@ -275,8 +292,9 @@ class LawBot:
             return 0
         return queued_ahead(jobs, job_id)
 
-    async def _deliver(self, job_id: str, reply: dict[str, Any]) -> None:
-        if self.delivered.seen(job_id):
+    async def _deliver(self, job_id: str, reply: dict[str, Any], *, again: bool = False) -> None:
+        """Stream progress, then send the result. `again` delivers a retried job whose first outcome was sent."""
+        if self.delivered.seen(job_id) and not again:
             return
         last = ""
         while True:  # stream progress; reconnect and poll if the API restarts
@@ -504,6 +522,7 @@ COMMANDS: list[tuple[str, str, str]] = [
     ("say", "Reply with a voice message", "/say Good morning, here is today's plan"),
     ("jobs", "Recent jobs and their status", "/jobs"),
     ("cancel", "Stop a job (newest if no id)", "/cancel"),
+    ("retry", "Run a failed job again from the step that failed (earlier work is kept)", "/retry 8f22ebbaef49"),
 ]
 
 HELP_TEXT = (

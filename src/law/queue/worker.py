@@ -85,6 +85,43 @@ Handler = Callable[[Context], Awaitable[Outcome]]
 Resolver = Callable[[Job], Job]  # fills resource / lane / mem_gb from the registry
 
 
+async def submit_stage(store: JobStore, resolve: Callable[[Job], Job], root: Job, index: int,
+                       carry: dict[str, Any]) -> Job:
+    spec = root.payload["_stages"][index]
+    stage = Job(kind=spec["kind"], payload={**spec.get("payload", {}), "_carry": carry},
+                priority=Priority(spec.get("priority", int(root.priority))), source=root.source,
+                parent=root.id, stage=index, reply_to=None)
+    stage.created = root.created
+    stage = resolve(stage)
+    await store.submit(stage)
+    total = len(root.payload["_stages"])
+    await store.event(root.id, "progress",
+                      {"message": f"stage {index + 1}/{total}: {stage.kind}", "stage_job": stage.id})
+    return stage
+
+
+async def retry_pipeline(store: JobStore, resolve: Callable[[Job], Job], root_id: str) -> Job:
+    """Run a failed (or stuck) pipeline again from the stage that failed, keeping everything earlier stages
+    produced. Raises ValueError if there is nothing to retry."""
+    root = await store.get(root_id)
+    if root is None or not root.payload.get("_stages"):
+        raise ValueError(f"{root_id} is not a pipeline")
+    if root.status in {Status.DONE, Status.CANCELLED} or root.status is Status.RUNNING:
+        raise ValueError(f"{root_id} is {root.status.value}; only a failed or stuck pipeline can be retried")
+    children = await store.children(root.id)
+    if any(c.status in {Status.QUEUED, Status.RUNNING} for c in children):
+        raise ValueError(f"{root_id} still has a stage in progress")
+    failed = [c for c in children if c.status in {Status.FAILED, Status.DEAD}]
+    if not failed:
+        raise ValueError(f"{root_id} has no failed stage")
+    index = max(c.stage or 0 for c in failed)
+    root.error = None
+    root.finished = None
+    await store.mark_waiting(root)
+    await store.event(root.id, "progress", {"message": f"retrying from stage {index + 1}"})
+    return await submit_stage(store, resolve, root, index, root.payload.get("_carry", {}))
+
+
 class Worker:
     def __init__(self, store: JobStore, handlers: dict[str, Handler], capacity: Capacity,
                  resolve: Resolver, models: ModelControl | None = None, tick_s: float = 0.5,
@@ -115,6 +152,7 @@ class Worker:
                 await self.store.finish(job, Status.CANCELLED, error="cancelled by user")
             elif job.attempts >= job.max_attempts:
                 await self.store.finish(job, Status.DEAD, error="worker died; retries exhausted")
+                await self._fail_parent(job, Status.FAILED, f"stage {job.stage} died: worker died; retries exhausted")
             else:
                 await self.store.requeue(job, "worker restart")
             n += 1
@@ -132,9 +170,20 @@ class Worker:
                     await asyncio.wait_for(self._wake.wait(), timeout=self.tick_s)
         finally:
             listener.cancel()
+            await self._requeue_on_shutdown()
             for task in list(self.tasks.values()):
                 task.cancel()
             await asyncio.gather(*self.tasks.values(), return_exceptions=True)
+
+    async def _requeue_on_shutdown(self) -> None:
+        """A planned stop (e.g. `law install` restarting the worker) is not a failure: give back the attempt and put
+        each running job straight back in the queue, so restarts never use up a job's retries."""
+        for job_id in list(self.tasks):
+            job = await self.store.get(job_id)
+            if job is None or job.status is not Status.RUNNING:
+                continue
+            job.attempts = max(0, job.attempts - 1)
+            await self.store.requeue(job, "worker restart (planned)")
 
     def stop(self) -> None:
         self._stop.set()
@@ -248,16 +297,7 @@ class Worker:
         await self._submit_stage(root, 0, stages.carry)
 
     async def _submit_stage(self, root: Job, index: int, carry: dict[str, Any]) -> None:
-        spec = root.payload["_stages"][index]
-        stage = Job(kind=spec["kind"], payload={**spec.get("payload", {}), "_carry": carry},
-                    priority=Priority(spec.get("priority", int(root.priority))), source=root.source,
-                    parent=root.id, stage=index, reply_to=None)
-        stage.created = root.created
-        stage = self.resolve(stage)
-        await self.store.submit(stage)
-        total = len(root.payload["_stages"])
-        await self.store.event(root.id, "progress",
-                               {"message": f"stage {index + 1}/{total}: {stage.kind}", "stage_job": stage.id})
+        await submit_stage(self.store, self.resolve, root, index, carry)
 
     async def _advance_parent(self, stage: Job, result: dict[str, Any]) -> None:
         if not stage.parent:
