@@ -153,7 +153,9 @@ def test_mail_sends_the_pdf_with_the_summary(tmp_path: Path, monkeypatch: pytest
         _ctx({"dir": str(docs), "out": ".", "prompt": "Propose it", "_carry": carry})))
     assert isinstance(done, Done) and done.result["emailed"] == "me@example.com"
     assert sent["subject"] == "Proposal: LAN Chat" and sent["files"] == [pdf]
-    assert "Recommendation:** proceed" in sent["body"] and "5/5" in sent["body"]
+    body = dict(sent["body"])
+    assert sent["body"][0] == ("title", "LAN Chat") and "Recommendation: proceed." in body["p"]
+    assert any("5/5" in text for _, text in sent["body"]) and "**" not in str(sent["body"])
 
 
 def test_mail_failure_does_not_stop_the_job(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

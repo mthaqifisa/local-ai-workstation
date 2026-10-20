@@ -33,7 +33,7 @@ def test_send_passes_body_and_attachments_to_mail(tmp_path: Path, monkeypatch: p
     monkeypatch.setattr(subprocess, "run", fake_run)
     mailer.send("me@example.com", "Proposal", "Summary", [pdf], tmp_path / "work")
     assert seen["cmd"][0] == "osascript" and seen["cmd"][2:4] == ["me@example.com", "Proposal"]
-    assert seen["cmd"][-1] == str(pdf) and seen["body"] == "Summary"
+    assert seen["cmd"][-1] == str(pdf) and seen["body"] == "p\tSummary\n"
 
 
 def test_send_reports_mail_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

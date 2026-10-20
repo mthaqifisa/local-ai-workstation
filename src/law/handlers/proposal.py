@@ -21,6 +21,7 @@ from typing import Any
 from law import mailer, specs
 from law.handlers.base import Runtime, run_cmd
 from law.handlers.core import answer
+from law.mail_format import markdown_blocks
 from law.queue.worker import Context, Done, Fatal, Outcome, Stages
 
 RESEARCH_SPEC = """Your task in this stage is RESEARCH ONLY; do not write the proposal.
@@ -419,15 +420,27 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         title_match = TITLE.search(markdown)
         title = title_match.group(1).strip().strip("'\"") if title_match else info["label"]
         review = carry.get("review") or {}
-        lines = [f"{title}: {info['label'].lower()} attached (PDF).", "", info["summary"].upper(), "",
-                 executive_summary(markdown, heading=info["summary"]), ""]
+        version_label = f"{info['label']} v{p.get('version', 1)}"
+        blocks: list[tuple[str, str]] = [
+            ("title", title),
+            ("subtitle", f"{version_label} · the full document is attached as a PDF"),
+            ("h2", info["summary"]),
+            *markdown_blocks(executive_summary(markdown, limit=4000, heading=info["summary"])),
+        ]
+        notes = []
         if review:
-            lines.append(f"Independent review: {review.get('score')}/5"
-                         + (" (revised after review)" if carry.get("fixed") else "") + f". {review.get('summary', '')}")
+            notes.append(f"Independent review: {review.get('score')}/5"
+                         + (" (revised after review)" if carry.get("fixed") else "")
+                         + (f". {review.get('summary')}" if review.get("summary") else ""))
+        if carry.get("diagrams_repaired"):
+            notes.append(f"{carry['diagrams_repaired']} diagram(s) were repaired automatically before the review.")
         if carry.get("diagrams_failed"):
-            undrawn = ", ".join(carry["diagrams_failed"])
-            lines.append(f"Diagrams shown as source because they could not be drawn: {undrawn}")
-        lines += ["", f"Files on the Mac: {docs}", "Request: " + str(p["prompt"])[:500], "", "Sent by LAW"]
+            notes.append("Shown as source because they could not be drawn: " + ", ".join(carry["diagrams_failed"]))
+        if notes:
+            blocks += [("h3", "Quality checks"), *[("li", f"•  {n}") for n in notes]]
+        blocks += [("h3", "Details"), ("meta", f"Files on the Mac: {docs}"),
+                   ("meta", "Request: " + str(p["prompt"]).strip().splitlines()[0][:300]),
+                   ("meta", "Sent by LAW, your local AI workstation")]
         version = int(p.get("version", 1))
         label = info["label"]
         subject = f"{label}: {title}" if version == 1 else f"{label} v{version}: {title}"
@@ -436,7 +449,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         try:
             to = mailer.recipient(rt.paths.env_file)
             await ctx.progress(f"📧 emailing the {label.lower()} to {to}")
-            mailer.send(to, subject, "\n".join(lines), [pdf], rt.paths.cache / "tmp")
+            mailer.send(to, subject, blocks, [pdf], rt.paths.cache / "tmp")
         except mailer.MailError as exc:
             await ctx.progress(f"⚠️ email not sent: {exc}")
             return Done({"pdf": str(pdf), "emailed": None, "mail_error": str(exc),

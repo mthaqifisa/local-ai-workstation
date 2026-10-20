@@ -32,14 +32,18 @@ def recipient(env_file: Path) -> str:
     return address
 
 
-def send(to: str, subject: str, body: str, attachments: list[Path], work: Path, timeout_s: float = 120) -> None:
-    """Send through Mail.app. The first send asks macOS for permission to control Mail (Automation)."""
+def send(to: str, subject: str, body: str | list[tuple[str, str]], attachments: list[Path], work: Path,
+         timeout_s: float = 120) -> None:
+    """Send through Mail.app. `body` is styled paragraphs (law.mail_format) or plain text. Mail sends the styled
+    body as HTML. The first send asks macOS for permission to control Mail (Automation)."""
+    from law.mail_format import to_lines
     for path in attachments:
         if not path.is_file():
             raise MailError(f"attachment missing: {path}")
     work.mkdir(parents=True, exist_ok=True)
     body_file = work / "mail-body.txt"
-    body_file.write_text(body)
+    blocks = body if isinstance(body, list) else [("p", line) for line in body.splitlines() if line.strip()]
+    body_file.write_text(to_lines(blocks))
     cmd = ["osascript", str(SCRIPT), to, subject, str(body_file), *(str(p) for p in attachments)]
     try:
         out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
