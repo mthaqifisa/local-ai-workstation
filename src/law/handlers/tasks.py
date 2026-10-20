@@ -412,7 +412,15 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         prompt = (f"{rubric}\n\nThe REQUEST was:\n{p['prompt']}{brief}\n\nThe author reported:\n{report[:4000]}\n\n"
                   "Inspect the files the author created or changed (the project may be in a new folder under "
                   "~/SourceCode named after it). Verify claims against the code; do not trust the report.")
-        verdict = parse_verdict(await _agent(ctx, "reviewer", prompt, _workdir(p), writes=False))
+        reply = await _agent(ctx, "reviewer", prompt, _workdir(p), writes=False)
+        verdict = parse_verdict(reply)
+        if verdict.get("unscored"):  # ask the same model to state its verdict in the required format
+            await ctx.progress("the reviewer gave no score: asking it to state its verdict")
+            again = await answer(rt, "reviewer", [{"role": "user", "content": (
+                f"Here is your review:\n\n{reply[-6000:]}\n\nState its verdict as JSON only: "
+                '{"score": <1-5>, "issues": ["<file or section: problem and fix>"], "summary": "<one sentence>"}')}],
+                ctx)
+            verdict = parse_verdict(again)
         return Done({"review": verdict})
 
     async def task_fix(ctx: Context) -> Outcome:
