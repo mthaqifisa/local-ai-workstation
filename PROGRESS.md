@@ -139,3 +139,20 @@ Storage at start: 685Gi used / 208Gi free; ~/LAW 320G.
 - 2026-10-20 19:33 auto-resume check: E2E proposal v1 still in research (researcher, after deploy resumes); Agents tab + /jobs + Retry/Skip/Restart shipped. Open question to user: job retention policy. Disk 222Gi free; ~/LAW 307G.
 - 2026-10-20 19:51 E2E: research done (research.md 2.6K words, 29 sources); stopped the re-verifying retry and pressed Skip in Telegram (Retry/Skip buttons verified); writer stage running. Committed but NOT deployed (needs worker restart after the proposal): LAW-recorded PROGRESS.md entries (dd2...).
 - 2026-10-20 20:36 auto-resume check: specs now resolved at run time (spec_ref); lan-chat pipeline migrated, writer retried on current rules (stage dc008c9f1132). Disk 222Gi free; ~/LAW 307G.
+
+### E2E plan (project lifecycle, functional run: thinking low, proposal brief) — 2026-10-20 evening
+Happy path and unhappy paths, all from Telegram, monitored every 5 min:
+- [ ] Incomplete template -> Tony names the missing fields
+- [ ] /code init -> template -> filled template -> project folder, git, .law/
+- [ ] Proposal v1 (brief) emailed + PDF in Telegram + Go / No go buttons
+- [ ] Wrong-time decision (e.g. /allgood while proposing) -> clear refusal
+- [ ] No go with a pivot (changed requirement) -> proposal v2 reflects it, emailed + posted
+- [ ] No go + "stop" -> parked; /resume <note> -> revived (v3)
+- [ ] Go -> environment stage (tools checked/installed, .law/env.sh, ENVIRONMENT.md)
+- [ ] Milestones on a ticket board (## Build version 1, KEY-n tickets), one session each
+- [ ] Deploy during a step -> worker restarts only between steps
+- [ ] Retry / Skip / Restart / Cancel exercised at least once on real steps
+- [ ] Review/fix rounds -> handover document with real screenshots, emailed + posted
+- [ ] Verify gate -> Needs changes (new requirement) -> enhanced proposal v(n+1) -> Go -> incremental build
+- [ ] All good -> done; /projects shows it
+- [ ] Independent verification by Claude (build, tests, run, screenshots) + email to owner
