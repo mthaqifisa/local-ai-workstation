@@ -381,6 +381,13 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         p = ctx.job.payload
         if p.get("milestone") and plan_complete(_workdir(p), int(p.get("version", 1))):
             return Done({"dir": str(_workdir(p))})  # every milestone of this version is ticked
+        section = p.get("section")
+        if section and section.get("skip_if_written"):
+            from law.handlers.proposal import section_written
+
+            doc = _workdir(p) / section["file"]
+            if doc.is_file() and section_written(doc.read_text(), section["heading"]):
+                return Done({"dir": str(_workdir(p))})  # this section is already in the document
         memory = _memory(ctx, p)
         text = await _agent(ctx, p["role"], _scoped(p, memory), _workdir(p), memory=memory)
         return Done({"answer": text, "dir": str(_workdir(p))})

@@ -75,12 +75,17 @@ def test_pipeline_for_a_prototype_project(tmp_path: Path):
     out = asyncio.run(proposal.make_handlers(rt)["proposal"](_ctx({"prompt": "Propose it", "dir": str(project)})))
     assert isinstance(out, Stages)
     kinds = [(s["kind"], s["payload"].get("role")) for s in out.specs]
-    assert kinds == [("task_translate", "writer"), ("task_work", "researcher"), ("task_work", "writer"),
-                     ("task_review", "writer"), ("task_fix", "writer"), ("proposal_render", None),
-                     ("proposal_mail", None)]
-    research, write = out.specs[1]["payload"], out.specs[2]["payload"]
+    sections = [s for s in out.specs if s["payload"].get("spec_ref") == "proposal.section"]
+    assert kinds == [("task_translate", "writer"), ("task_work", "researcher")] + [("task_work", "writer")] * 16 + [
+        ("task_review", "writer"), ("task_fix", "writer"), ("proposal_render", None), ("proposal_mail", None)]
+    assert len(sections) == 16  # /proposal is always the full document: one writer session per section
+    research = out.specs[1]["payload"]
     assert "http://127.0.0.1:8888/search" in specs.resolve(research) and "docs/proposal/research.md" in specs.resolve(research)
-    assert "Executive summary" in specs.resolve(write) and "partner" in specs.resolve(write, "rubric")
+    first, second = specs.resolve(sections[0]["payload"]), specs.resolve(sections[1]["payload"])
+    assert "section 1 of 16" in first and "YAML header" in first and '"Executive summary"' in first
+    assert "Append the section" in second and "Situation, complication, resolution" in second
+    review = out.specs[-4]["payload"]
+    assert "partner" in specs.resolve(review, "rubric") and "Fix only what the issues name" in specs.resolve(review)
     assert (project / "docs" / "proposal" / "assets").is_dir()
 
 
@@ -188,9 +193,9 @@ def test_steps_use_the_rules_current_when_they_run(tmp_path: Path, monkeypatch: 
     out = asyncio.run(proposal.make_handlers(rt)["proposal"](_ctx({"prompt": "Propose it"})))
     writer = next(s["payload"] for s in out.specs if s["payload"].get("role") == "writer"
                   and s["kind"] == "task_work")
-    assert "spec" not in writer and writer["spec_ref"] == "proposal.write"  # no frozen text in the pipeline
-    monkeypatch.setattr(proposal, "PROPOSAL_SPEC", "NEW RULES for {out}")  # rules change after creation
-    assert specs.resolve(writer) == "NEW RULES for ."
+    assert "spec" not in writer and writer["spec_ref"] == "proposal.section"  # no frozen text in the pipeline
+    monkeypatch.setattr(proposal, "SECTION_SPEC", "NEW RULES for {heading}")  # rules change after creation
+    assert specs.resolve(writer) == "NEW RULES for Executive summary"
     assert specs.resolve({"spec": "old text"}) == "old text"  # pipelines created before keep working
 
 
@@ -199,3 +204,39 @@ def test_brief_proposals_have_fewer_sections():
     brief = proposal.write_spec({"out": "docs/proposal", "version": 1, "depth": "brief"})
     assert "15. Next steps" in full and "15." not in brief and "concise proposal brief" in brief
     assert "eight searches" in proposal.research_spec({"out": ".", "searx": "x", "depth": "brief"})
+
+
+async def test_a_section_already_written_is_skipped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from law.handlers import tasks
+
+    rt = _rt(tmp_path)
+    project = tmp_path / "p"
+    (project / "docs" / "proposal").mkdir(parents=True)
+    (project / "docs" / "proposal" / "proposal.md").write_text("---\ntitle: X\n---\n\n# 1. Executive summary\nDone.\n")
+    out = await proposal.make_handlers(rt)["proposal"](_ctx({"prompt": "Propose it", "dir": str(project)}))
+    sections = [s["payload"] for s in out.specs if s["payload"].get("spec_ref") == "proposal.section"]
+    ran: list[str] = []
+
+    async def fake_agent_run(ctx, cmd, **kw):  # type: ignore[no-untyped-def]
+        ran.append(cmd[-1])
+        return ""
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_agent_run)
+    rt.roles = SimpleNamespace(get=lambda name: SimpleNamespace(model_role="writer"))
+    rt.model_id = lambda role: "m"
+    rt.reg.ports.llm_internal = 1
+    handlers = tasks.make_handlers(rt)
+    await handlers["task_work"](_ctx({**sections[0], "_carry": {}}))
+    assert ran == []  # the executive summary is already in the file
+    await handlers["task_work"](_ctx({**sections[1], "_carry": {}}))
+    assert len(ran) == 1 and "Situation, complication, resolution" in ran[0]
+
+
+def test_revisions_revise_each_section_and_add_what_changed():
+    stages = proposal.section_stages({"dir": "/p", "prompt": "x"}, {"out": "docs/proposal", "depth": "brief",
+                                                                     "version": 2, "feedback": "make it mobile-first"}, 2)
+    headings = [s["payload"]["spec_args"]["heading"] for s in stages]
+    assert headings[:2] == ["Executive summary", "What changed in version 2"] and len(headings) == 8
+    text = specs.resolve(stages[2]["payload"])
+    assert "Revise this section in place" in text and "make it mobile-first" in text
+    assert not stages[0]["payload"]["section"]["skip_if_written"]  # revisions always run
