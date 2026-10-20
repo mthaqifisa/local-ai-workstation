@@ -257,3 +257,63 @@ async def test_cancel_pipeline_cancels_its_running_stage(store):
     await store.request_cancel(root.id)
     assert (await store.require(root.id)).status == Status.CANCELLED
     assert (await store.require(stage.id)).cancel_requested
+
+
+async def test_planned_restart_requeues_without_using_a_retry():
+    from law.queue.worker import Worker
+
+    store = JobStore(fakeredis.FakeAsyncRedis(decode_responses=True))
+    started = asyncio.Event()
+
+    async def slow(ctx):  # type: ignore[no-untyped-def]
+        started.set()
+        await asyncio.sleep(60)
+
+    w = Worker(store, {"slow": slow}, Capacity(budget_gb=48), lambda j: j)
+    job = await store.submit(Job(kind="slow", payload={}, lane="none"))
+    runner = asyncio.create_task(w.run())
+    await asyncio.wait_for(started.wait(), 5)
+    w.stop()
+    await asyncio.wait_for(runner, 5)
+    again = await store.require(job.id)
+    assert again.status == Status.QUEUED and again.attempts == 0  # the attempt was given back
+
+
+async def test_dead_stage_found_on_startup_fails_its_pipeline_and_can_be_retried():
+    from law.queue.worker import Worker, retry_pipeline
+
+    store = JobStore(fakeredis.FakeAsyncRedis(decode_responses=True))
+    calls: list[str] = []
+
+    async def first(ctx):  # type: ignore[no-untyped-def]
+        return Done({"brief": "b"})
+
+    async def second(ctx):  # type: ignore[no-untyped-def]
+        calls.append(ctx.job.payload["_carry"]["brief"])
+        return Done({"ok": True})
+
+    async def root(ctx):  # type: ignore[no-untyped-def]
+        return Stages([{"kind": "first"}, {"kind": "second"}])
+
+    handlers = {"root": root, "first": first, "second": second}
+    w = Worker(store, handlers, Capacity(budget_gb=48), lambda j: j)
+    top = await store.submit(Job(kind="root", payload={}, lane="none"))
+    await w.schedule_once()  # root starts the pipeline
+    await asyncio.gather(*w.tasks.values())
+    await w.schedule_once()  # stage 0
+    await asyncio.gather(*w.tasks.values())
+    stage1 = next(c for c in await store.children(top.id) if c.stage == 1)
+    assert await store.claim(stage1)  # a worker took stage 1 ...
+    stage1 = await store.require(stage1.id)
+    stage1.attempts = stage1.max_attempts  # ... and died with it, for the last time
+    await store.save(stage1)
+    w2 = Worker(store, handlers, Capacity(budget_gb=48), lambda j: j)
+    await w2.recover()
+    assert (await store.require(top.id)).status == Status.FAILED  # not stuck in waiting
+    retried = await retry_pipeline(store, lambda j: j, top.id)
+    assert retried.stage == 1 and (await store.require(top.id)).status == Status.WAITING
+    await w2.drain()
+    assert calls == ["b"]  # the earlier stage's result was kept
+    assert (await store.require(top.id)).status == Status.DONE
+    with pytest.raises(ValueError, match="only a failed or stuck"):
+        await retry_pipeline(store, lambda j: j, top.id)

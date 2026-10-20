@@ -202,6 +202,16 @@ def cancel(job_id: str) -> None:
     con.print(r.json())
 
 
+@app.command()
+def retry(job_id: str) -> None:
+    """Run a failed or stuck pipeline again from the stage that failed (earlier results are kept)."""
+    r = httpx.post(f"{_server()}/jobs/{job_id}/retry", timeout=10)
+    if r.status_code != 200:
+        con.print(f"[red]{r.json().get('detail', r.text)}[/red]")
+        raise typer.Exit(1)
+    con.print(f"retrying {job_id} from stage {int(r.json()['stage']) + 1}: {r.json()['kind']}")
+
+
 # ---- platform -------------------------------------------------------------------------------
 @app.command()
 def version() -> None:
