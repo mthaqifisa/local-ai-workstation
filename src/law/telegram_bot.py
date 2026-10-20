@@ -445,19 +445,34 @@ class LawBot:
             await self.bot.send_message(chat, markdown)
 
     async def _edit(self, reply: dict[str, Any], text: str, *, rich: bool = False) -> None:
-        chat, msg = reply["chat_id"], reply["status_id"]
-        try:
-            if rich:
-                await self.bot.edit_message_text(to_telegram_html(text), chat_id=chat, message_id=msg,
-                                                 parse_mode="HTML", disable_web_page_preview=True)
-            else:
+        """Update the job's status message in place. Without one (a job submitted elsewhere or resumed after a
+        restart) or when it can no longer be edited, send a new one and keep editing that, so progress never
+        floods the chat with a message per step."""
+        chat, msg = reply["chat_id"], reply.get("status_id")
+        body = to_telegram_html(text) if rich else text
+        mode = "HTML" if rich else None
+        if msg:
+            try:
                 # progress lines name the pages agents read: never let Telegram turn them into link previews
-                await self.bot.edit_message_text(text, chat_id=chat, message_id=msg, disable_web_page_preview=True)
-        except Exception:  # identical text, bad markup, deleted or too-old message: send a new one
-            if rich:
-                await self._send(chat, text)
-            else:
-                await self.bot.send_message(chat, text, disable_web_page_preview=True)
+                await self.bot.edit_message_text(body, chat_id=chat, message_id=msg, parse_mode=mode,
+                                                 disable_web_page_preview=True)
+                return
+            except Exception as exc:
+                if "not modified" in str(exc).lower():  # the same text again: nothing to do
+                    return
+                if rich:  # maybe the markup: try plain text in the same message before giving up on it
+                    try:
+                        await self.bot.edit_message_text(text, chat_id=chat, message_id=msg,
+                                                         disable_web_page_preview=True)
+                        return
+                    except Exception as plain_exc:
+                        if "not modified" in str(plain_exc).lower():
+                            return
+        try:
+            sent = await self.bot.send_message(chat, body, parse_mode=mode, disable_web_page_preview=True)
+        except Exception:
+            sent = await self.bot.send_message(chat, text, disable_web_page_preview=True)
+        reply["status_id"] = sent.message_id  # later updates edit this message
 
     async def _get(self, job_id: str) -> dict[str, Any] | None:
         try:
