@@ -10,4 +10,5 @@ Parts of LAW v6 that were skipped during the build because an automated safety c
 | 2 | `law save` / `law restore-state` (Open WebUI presets, prompts, tools, functions, knowledge definitions; secret scan before anything is written; add-only restore, also run by `law install`) | 2026-10-20; live round trip and secret-guard test on this Mac | `src/law/state_sync.py` |
 | 3 | Song planner (theme, genre/vibe and duration in; lyrics written unless given; rendered with ACE-Step) | 2026-10-20; Whisper hears the planned chorus in the rendered song | `src/law/handlers/creative.py` |
 
-Not built: a film planner (script to multi-shot video). Video generation itself works (`/video`, `/animate`).
+Also built since: a film planner (`/film`, `law film`): a script or theme becomes 5-second shots rendered with fast
+4-step Wan 2.2, joined with an instrumental score (ADR-0012).
