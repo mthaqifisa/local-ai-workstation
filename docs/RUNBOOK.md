@@ -8,6 +8,7 @@
 | Live stats, jobs (cancel), personas, settings | LAW Console: `http://<mac-name>.local:8100` |
 | One-line status | `law status` |
 | Recent jobs | `law jobs` |
+| Disk filling up | Console → **Storage** (sizes per cache) | Clear a cache or all LAW caches there, or `law reclaim`; shorten retention in the same tab |
 | Is an agent working, thinking or stuck? | Console → **Agents**, or `/jobs <project>` in Telegram |
 | A job failed or got stuck | **Retry** (from the failed step, earlier work kept), **Skip** (carry on without that step) or **Restart step** (stuck); buttons in the Console and Telegram, or `law retry <id>` |
 | Cancel a job | `law cancel <id>` (cancelling a pipeline also stops its running stage and agent process) |
