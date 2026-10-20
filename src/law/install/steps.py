@@ -262,7 +262,8 @@ class MediaTools:
 
     def _ok(self, tool: Any) -> bool:
         st = self._stamp(tool)
-        binary = self.c.paths.runtime / "bin" / tool.check
+        binary = self.c.paths.runtime / "bin" / tool.check if tool.link else \
+            self.c.paths.runtime / tool.name / "bin" / tool.check
         return binary.exists() and st.exists() and st.read_text() == self._want(tool)
 
     def plan(self) -> list[str]:
@@ -293,6 +294,8 @@ class MediaTools:
             res = self.c.sys.run(cmd, env=env, timeout=3600)
             if not res.ok:
                 raise RuntimeError(f"{tool.name}: {res.out[-1500:]}")
+        if not tool.link:
+            return
         link = self.c.paths.runtime / "bin" / tool.check
         link.parent.mkdir(parents=True, exist_ok=True)
         if link.is_symlink() or link.exists():
@@ -477,6 +480,11 @@ class MediaModels:
         for m in self.c.reg.media.values():
             if m.prefetch and m.hf_revision:
                 seen[m.hf_repo or m.model] = m.hf_revision
+            if m.prefetch:
+                for extra in m.hf_extra:
+                    repo, _, rev = extra.partition("@")
+                    if rev:
+                        seen[repo] = rev
         return sorted(seen.items())
 
     def _marker(self, repo: str) -> Path:

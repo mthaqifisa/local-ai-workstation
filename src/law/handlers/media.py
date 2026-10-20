@@ -47,6 +47,9 @@ def split_lyrics(text: str) -> tuple[str, str | None]:
     return text.strip(), None
 
 
+ACE_MUSIC = Path(__file__).resolve().parents[1] / "tools" / "ace_music.py"  # runs in the acestep venv
+
+
 def _bin(rt: Runtime, tool: str) -> str:
     return str(rt.paths.runtime / "bin" / tool)
 
@@ -147,8 +150,10 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         seconds, caption = parse_duration(caption, float(p.get("duration", 60)), 15, 240)
         lyrics = p.get("lyrics") or lyrics or "[instrumental]"
         out = _out(rt, "music", "wav")
-        cmd = [_bin(rt, spec.tool), "--model", spec.model, "--caption", caption, "--lyrics", lyrics,
-               "--duration", str(int(seconds)), "--output", str(out)]
+        cmd = [str(rt.paths.runtime / spec.tool / "bin" / "python"), str(ACE_MUSIC), "--model", spec.model,
+               "--caption", caption, "--lyrics", lyrics, "--duration", str(int(seconds)), "--output", str(out)]
+        if p.get("seed") is not None:
+            cmd += ["--seed", str(p["seed"])]
         await ctx.progress("composing music")
         await run_cmd(ctx, cmd, env={"HF_HOME": str(rt.paths.models / "hf")}, timeout_s=3600)
         if not out.exists():

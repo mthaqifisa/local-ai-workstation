@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 
 import pytest
@@ -53,6 +54,19 @@ def test_music_has_requested_duration() -> None:
     path = str(_run("music", {"caption": "calm acoustic guitar, warm, slow tempo", "duration": 20})["audio"])
     seconds = float(_probe(path)["format"]["duration"])  # type: ignore[index]
     assert 16 <= seconds <= 24
+
+
+VERSE = "Dance with me tonight\nUnder the neon lights\nFeel the rhythm in your soul\nLet the music take control"
+
+
+def test_song_sings_the_given_lyrics() -> None:
+    """Vocals, not just instruments: Whisper must hear most of the verse in a seeded 60-second song."""
+    lyrics = f"[Verse 1]\n{VERSE}\n\n[Chorus]\nWe're alive, we're on fire\nDancing higher and higher"
+    path = str(_run("music", {"caption": "upbeat pop song with female vocals, catchy melody, bright synths",
+                              "lyrics": lyrics, "duration": 60, "seed": 42})["audio"])
+    heard = set(re.sub(r"[^a-z ]", " ", str(_run("stt", {"audio": path})["text"]).lower()).split())
+    words = re.sub(r"[^a-z ]", " ", VERSE.lower()).split()
+    assert sum(w in heard for w in words) / len(words) >= 0.6, heard
 
 
 def test_video_has_frames_duration_and_codec() -> None:

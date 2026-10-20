@@ -116,7 +116,9 @@ media:
   stt:     {tool: mlx_audio.stt.generate,       model: mlx-community/whisper-large-v3-turbo-asr-fp16, hf_revision: 624c19c9af5603fa73b83bce14d4aeea96156d18, mem_gb: 3,  lane: light, license: mit}
   video:   {tool: mlxgen, model: AbstractFramework/wan2.2-t2v-a14b-diffusers-8bit, hf_revision: 39ee5f1f630789956f29f40b5c2c6d48c6e9a798, steps: 40, mem_gb: 46, lane: heavy, license: apache-2.0}
   animate: {tool: mlxgen, model: AbstractFramework/wan2.2-i2v-a14b-diffusers-8bit, hf_revision: 1a17fbea2649c576de844e08e79fe56296751efa, steps: 40, mem_gb: 46, lane: heavy, license: apache-2.0}
-  music:   {tool: mlx_audio.music.generate,     model: mlx-community/ACE-Step1.5-MLX, hf_revision: bf26dd73880c74f0708847e94b865d450af307c9,          mem_gb: 20, lane: heavy, license: mit}
+  # ACE-Step 1.5 is only on an unreleased mlx-audio branch, so it runs in its own venv (tool `acestep`) via
+  # law's tools/ace_music.py. The 4B planner LM gives the best song structure and vocals.
+  music:   {tool: acestep, model: mlx-community/ACE-Step1.5-MLX, hf_revision: bf26dd73880c74f0708847e94b865d450af307c9, hf_extra: [ACE-Step/acestep-5Hz-lm-4B@0a3ec94b557aea7d508da38b31cfe7341f6ff737], mem_gb: 24, lane: heavy, license: mit}
 
 # Native media tools installed with `uv tool` into ~/LAW/runtime/tools (bins in ~/LAW/runtime/bin).
 # Pins are deliberate: mflux needs Pillow 12.x on Python 3.12; Kokoro needs misaki + the spaCy English model.
@@ -140,6 +142,14 @@ tools:
     python: "3.12"
     with: ["misaki[en]", "en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl"]
     check: mlx_audio.tts.generate
+  - name: acestep
+    # PR #499 branch head (ACE-Step 1.5 + vocal fixes from #653); no mlx-audio release ships it yet.
+    spec: "mlx-audio @ git+https://github.com/Blaizzy/mlx-audio@1e8264a487dd74d4ea327a8250c071558a7cd8f4"
+    python: "3.12"
+    with: ["soundfile==0.14.0"]
+    check: python
+    own_venv: true
+    link: false
   - name: mlxgen
     spec: "mlx-gen==0.38.0"
     python: "3.12"
