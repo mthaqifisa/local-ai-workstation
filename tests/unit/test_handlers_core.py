@@ -541,3 +541,42 @@ async def test_a_stalled_writer_is_told_to_save_sections_not_to_build(setup, san
     await w.drain()
     assert "one section" in cmds[1][-1] or "section by section" in cmds[1][-1]
     assert "build or tests" not in cmds[1][-1]
+
+
+@pytest.mark.parametrize("command,dig", [
+    ('▶ running JAR=~/LAW/cache/m2/repository/org/springframework/spring-websocket/7.0.9/spring-websocket-7.0.9.jar; javap -classpath "$JAR" org.springframe', True),
+    ('▶ running find ~/LAW/cache/m2/repository/org/springframework/spring-websocket -name "*.jar" 2>/dev/null', True),
+    ('▶ running M2=~/LAW/cache/m2/org/springframework; MSG=$(find $M2/spring-messaging -name "spring-messaging-7*.ja', True),
+    ("▶ running unzip -l target/app.jar | grep BOOT-INF", False),
+    ("▶ running source .law/env.sh && mvn -q -B test 2>&1 | grep -E 'Tests run|ERROR'", False),
+    ("▶ running source .law/env.sh && mvn -B dependency:tree", False),
+])
+def test_library_digging_is_recognised(command, dig):
+    from law.handlers.tasks import is_library_dig
+
+    assert is_library_dig(command) is dig
+
+
+async def test_a_coder_reading_library_internals_is_redirected(setup, sandbox, monkeypatch):
+    from law.handlers import tasks
+    from law.handlers.base import Steered
+
+    rt, store, w = setup
+    cmds: list[list[str]] = []
+
+    async def fake_run_cmd(ctx, cmd, **kw):  # type: ignore[no-untyped-def]
+        cmds.append(cmd)
+        if len(cmds) == 1:
+            steer = kw["steer"]
+            assert steer("▶ running mvn -q test") is None
+            for _ in range(2):
+                assert steer("▶ running javap -classpath x.jar Foo") is None
+            message = steer("▶ running javap -c x.jar Foo")
+            raise Steered(_tool_event("bash", "javap", "ses_dig"), message)
+        return _opencode_json("LC-2 committed")
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    await store.submit(resolver(rt)(Job(kind="task", payload={"prompt": "build", "role": "coder", "dir": str(sandbox),
+                                                              "review": False, "translate": False})))
+    await w.drain()
+    assert cmds[1][cmds[1].index("--session") + 1] == "ses_dig" and "Stop reading library internals" in cmds[1][-1]

@@ -42,6 +42,16 @@ class Stalled(Exception):
 
 STALL_GRACE = 1.8  # a long generation may run to 1.8 x the stall time (25 -> 45 min)
 
+class Steered(Exception):
+    """`steer` asked to stop the command and redirect it (e.g. an agent reading library internals). Carries the
+    output so far and the message to resume with."""
+
+    def __init__(self, output: str, message: str) -> None:
+        super().__init__(message)
+        self.output = output
+        self.message = message
+
+
 # Agents emit JSON events that embed whole files; asyncio's 64 KiB default line limit is too small.
 MAX_LINE_BYTES = 64 * 1024 * 1024
 
@@ -50,12 +60,14 @@ async def run_cmd(ctx: Context, cmd: list[str], *, cwd: Path | None = None, env:
                   timeout_s: float = 3600, progress_every: int = 20,
                   describe: Callable[[str], str | None] | None = None,
                   stall_s: float | None = None, is_work: Callable[[str], bool] | None = None,
-                  alive: Callable[[], Awaitable[bool]] | None = None) -> str:
+                  alive: Callable[[], Awaitable[bool]] | None = None,
+                  steer: Callable[[str], str | None] | None = None) -> str:
     """Run a subprocess and kill it if the job is cancelled. Progress is either every Nth output line or, with
     `describe`, a readable summary of each line it recognises (e.g. an agent's tool calls). With `stall_s`, a
     command that emits no line accepted by `is_work` for that long is stopped and `Stalled` is raised, unless
     `alive()` says the model is still generating and the command has been silent (one long step, not a loop of
-    reads): then it gets up to STALL_GRACE times as long."""
+    reads): then it gets up to STALL_GRACE times as long. `steer` sees each described action; a message from it
+    stops the command and raises `Steered` with that message."""
     import os
     import time
 
@@ -65,9 +77,10 @@ async def run_cmd(ctx: Context, cmd: list[str], *, cwd: Path | None = None, env:
     lines: list[str] = []
     last_work = last_any = time.monotonic()
     stalled = False
+    steered: str | None = None
 
     async def pump() -> None:
-        nonlocal last_work, last_any
+        nonlocal last_work, last_any, steered
         assert proc.stdout
         async for raw in proc.stdout:
             line = raw.decode(errors="replace").rstrip()
@@ -79,6 +92,10 @@ async def run_cmd(ctx: Context, cmd: list[str], *, cwd: Path | None = None, env:
                 if summary:
                     last_any = time.monotonic()  # an action (read, command, edit); the model's prose is not
                     await ctx.progress(summary)
+                    if steer is not None and steered is None and (message := steer(summary)):
+                        steered = message
+                        with contextlib.suppress(ProcessLookupError):
+                            proc.kill()
             else:
                 last_any = time.monotonic()
                 if len(lines) % progress_every == 0:
@@ -120,6 +137,8 @@ async def run_cmd(ctx: Context, cmd: list[str], *, cwd: Path | None = None, env:
     if ctx.cancel_event.is_set():
         raise Cancelled()
     out = "\n".join(lines)
+    if steered is not None:
+        raise Steered(out, steered)
     if stalled:
         raise Stalled(out, time.monotonic() - last_work)
     if proc.returncode != 0:
