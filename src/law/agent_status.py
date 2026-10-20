@@ -20,6 +20,7 @@ from typing import Any
 
 import httpx
 
+from law.handlers.base import STALL_GRACE
 from law.queue.jobs import Job, Status
 from law.queue.store import JobStore
 
@@ -113,7 +114,9 @@ def health(job: Job, stage: Job | None, last_action: float | None, last_write: f
     started = target.started or now
     if last_action and now - last_action < ACTIVE_S:
         return "working"
-    if now - max(last_write or 0, started) >= STALL_S:
+    quiet = now - max(last_write or 0, started)
+    # The same rule as the worker's stall guard: a model still generating gets STALL_GRACE times as long.
+    if quiet >= STALL_S * (STALL_GRACE if model_active else 1):
         return "stalled"
     return "thinking" if model_active is not False else "stalled"
 
