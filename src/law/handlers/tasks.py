@@ -27,7 +27,15 @@ Files there now:
 {listing}
 
 Plan and progress recorded so far:
-{memory}{choose}"""
+{memory}{fixed}{choose}"""
+
+# A pipeline (e.g. /proposal) that fixes the deliverables and structure: the brief must work within them.
+FIXED = """
+
+The agent will ALSO receive these fixed instructions from the pipeline, word for word. Your brief must not
+contradict them or name other deliverables, files or structure; concentrate on the request's content (scope,
+users, requirements, constraints, acceptance criteria) and leave format and file names to these instructions:
+{spec}"""
 
 # A coder request without a folder: the translator names the project folder; LAW validates and creates it, so
 # every project gets its own folder (never ~/SourceCode itself, never an unrelated project).
@@ -310,6 +318,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             folder=workdir if named else "a new folder (see below)",
             listing=project_listing(workdir) if named else "(new project)",
             memory=(ProjectMemory(workdir).context() if named else "") or "(none)",
+            fixed=FIXED.format(spec=p["spec"]) if p.get("spec") else "",
             choose=CHOOSE_FOLDER.format(root=root, projects=", ".join(projects) or "(none)") if choose else "")
         await ctx.progress("📝 translating the request into a brief")
         brief = (await answer(rt, "translator", [{"role": "user", "content": prompt}], ctx)).strip()

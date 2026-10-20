@@ -157,3 +157,27 @@ def test_mail_failure_says_where_the_pdf_is(tmp_path: Path, monkeypatch: pytest.
     with pytest.raises(Fatal, match=f"the PDF is at {pdf}"):
         asyncio.run(proposal.make_handlers(rt)["proposal_mail"](
             _ctx({"dir": str(tmp_path), "out": ".", "prompt": "x", "_carry": {"pdf": str(pdf)}})))
+
+
+def test_translator_sees_the_fixed_proposal_structure(tmp_path: Path):
+    rt = _rt(tmp_path)
+    out = asyncio.run(proposal.make_handlers(rt)["proposal"](_ctx({"prompt": "Propose it"})))
+    translate = out.specs[0]["payload"]
+    assert out.specs[0]["kind"] == "task_translate" and "proposal.md" in translate["spec"]
+
+
+async def test_translator_prompt_includes_fixed_instructions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from law.handlers import tasks
+
+    seen: list[str] = []
+
+    async def fake_answer(rt_: Any, role: str, messages: list[dict[str, Any]], ctx: Any = None) -> str:
+        seen.append(messages[-1]["content"])
+        return "## Goal\nx"
+
+    monkeypatch.setattr(tasks, "answer", fake_answer)
+    rt = _rt(tmp_path)
+    rt.roles = SimpleNamespace(get=lambda name: None)
+    handler = tasks.make_handlers(rt)["task_translate"]
+    await handler(_ctx({"prompt": "Propose it", "role": "writer", "dir": str(tmp_path), "spec": "WRITE proposal.md"}))
+    assert "must not\ncontradict them" in seen[0] and "WRITE proposal.md" in seen[0]
