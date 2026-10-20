@@ -1,0 +1,2 @@
+# v4-era QA log: a deliberate 'Bearer wrong-token' rejection test, not a secret
+6d161972fc2a23e3072b4c190724b9a0a2ed7714:enhancement/results/qa_phase5_v1.txt:curl-auth-header:71
