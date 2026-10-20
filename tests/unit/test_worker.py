@@ -373,3 +373,39 @@ async def test_worker_restarts_on_new_code_only_between_steps(tmp_path):
     release.set()
     await asyncio.wait_for(runner, 5)  # finished the step, then exited for the restart
     assert (await store.require(job.id)).status == Status.DONE and not flag.exists()
+
+
+async def test_pending_restart_takes_no_new_step_even_when_the_next_one_could_start_at_once(tmp_path):
+    from law.queue.worker import Worker
+
+    store = JobStore(fakeredis.FakeAsyncRedis(decode_responses=True))
+    flag = tmp_path / "worker-restart.pending"
+    ran: list[str] = []
+    gate = asyncio.Event()
+
+    async def first(ctx):  # type: ignore[no-untyped-def]
+        ran.append("first")
+        await gate.wait()
+        return Done({"a": 1})
+
+    async def second(ctx):  # type: ignore[no-untyped-def]
+        ran.append("second")
+        return Done({})
+
+    async def root(ctx):  # type: ignore[no-untyped-def]
+        return Stages([{"kind": "first"}, {"kind": "second"}])
+
+    w = Worker(store, {"root": root, "first": first, "second": second}, Capacity(budget_gb=48), lambda j: j,
+               restart_flag=flag, tick_s=0.02)
+    top = await store.submit(Job(kind="root", payload={}, lane="none"))
+    runner = asyncio.create_task(w.run())
+    for _ in range(100):
+        if ran:
+            break
+        await asyncio.sleep(0.02)
+    flag.write_text("new")
+    gate.set()
+    await asyncio.wait_for(runner, 5)  # finished 'first', then restarted without starting 'second'
+    assert ran == ["first"] and not flag.exists()
+    second_stage = next(c for c in await store.children(top.id) if c.stage == 1)
+    assert second_stage.status == Status.QUEUED  # waiting for the restarted worker

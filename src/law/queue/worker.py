@@ -209,12 +209,15 @@ class Worker:
         listener = asyncio.create_task(self._listen())
         try:
             while not self._stop.is_set():
-                if self.restart_flag is not None and self.restart_flag.exists() and not self.tasks:
-                    # new code was installed while jobs ran: restart now, between steps (launchd brings us back)
-                    self.restart_flag.unlink(missing_ok=True)
+                # New code was installed while jobs ran: take no new steps (consecutive steps on the same model
+                # would otherwise follow each other with no gap), and restart once the running ones are done.
+                draining = self.restart_flag is not None and self.restart_flag.exists()
+                if draining and not self.tasks:
+                    self.restart_flag.unlink(missing_ok=True)  # type: ignore[union-attr]
                     log.info("restarting on newly installed code (no step running)")
                     break
-                await self.schedule_once()
+                if not draining:
+                    await self.schedule_once()
                 self._wake.clear()
                 with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(self._wake.wait(), timeout=self.tick_s)
