@@ -31,9 +31,9 @@ market and user context; current alternatives and competitors (a table);
 technology options with current versions; security, privacy and regulatory points; any sizing figures with how
 they were derived. Every fact carries its source URL and access date; mark anything you could not verify."""
 
-PROPOSAL_SPEC = """Write a consultant-grade proposal, to the standard of a top-tier strategy firm proposing a product
-development to a client, in {out}/proposal.md (pandoc Markdown). Base facts on {out}/research.md; if the folder
-holds a working prototype, present it as the prototype and describe only what its code really does.
+PROPOSAL_SPEC = """Write a {kind}, to the standard of a top-tier strategy firm proposing a product development to a
+client, in {out}/proposal.md (pandoc Markdown). Base facts on {out}/research.md; if the folder holds a working
+prototype, present it as the prototype and describe only what its code really does.
 Do not browse the web in this stage: the research is done and research.md is your source. A fact it lacks is
 written as an assumption or estimate, never looked up.
 
@@ -47,7 +47,24 @@ date: <today, e.g. 20 October 2026>
 ---
 
 Then these sections, as level-1 headings in this order:
-1. Executive summary: the recommendation first; the value, cost, timeline and the decision asked for (1 page).
+{sections}
+
+Rules:
+- Diagrams are Mermaid in fenced blocks written as ```{{.mermaid caption="<caption>"}}; keep them valid Mermaid.
+- Wireframes are simple lo-fi SVG files you write in {out}/assets/ (greyscale; only rect, line, circle and text
+  elements; viewBox 0 0 1200 800; no foreignObject), included as ![Wireframe: <screen>](assets/<file>.svg).
+- Tables are pipe tables with a caption line `: <caption>` under them.
+- Every claim is sourced or labelled as an assumption or estimate; numbers agree across sections.
+- No placeholders, no TODOs, no lorem ipsum. Write the whole document{length}.
+- First list the sections as a checklist in .law/PLAN.md under a heading "## Proposal v<version> sections".
+  Create proposal.md with the YAML header and section 1, then add one section per edit (at most about 1,500
+  words per write), ticking each in PLAN.md as you go."""
+
+# depth "full": the consultant-grade document; "brief": the same decisions in about a third of the length, for
+# small products (chosen in the /code init template; /proposal is always full).
+SECTIONS = {
+    "full": """1. Executive summary: the recommendation first; the value, cost, timeline and the decision asked for
+   (1 page).
 2. Situation, complication, resolution.
 3. Objectives and success measures (KPI table with targets).
 4. Users and needs (personas, jobs to be done, pain points).
@@ -62,18 +79,18 @@ Then these sections, as level-1 headings in this order:
 13. Investment (effort and cost estimate with every assumption stated).
 14. Risks and mitigations (table with likelihood, impact, owner).
 15. Next steps and the decision required.
-Appendix: sources (from research.md), assumptions, glossary.
-
-Rules:
-- Diagrams are Mermaid in fenced blocks written as ```{{.mermaid caption="<caption>"}}; keep them valid Mermaid.
-- Wireframes are simple lo-fi SVG files you write in {out}/assets/ (greyscale; only rect, line, circle and text
-  elements; viewBox 0 0 1200 800; no foreignObject), included as ![Wireframe: <screen>](assets/<file>.svg).
-- Tables are pipe tables with a caption line `: <caption>` under them.
-- Every claim is sourced or labelled as an assumption or estimate; numbers agree across sections.
-- No placeholders, no TODOs, no lorem ipsum. Write the whole document.
-- First list the sections as a checklist in .law/PLAN.md under a heading "## Proposal v<version> sections".
-  Create proposal.md with the YAML header and section 1, then add one section per edit (at most about 1,500
-  words per write), ticking each in PLAN.md as you go."""
+Appendix: sources (from research.md), assumptions, glossary.""",
+    "brief": """1. Executive summary: the recommendation, the value, the effort and the decision asked for.
+2. The problem, the users and the alternatives (a short competitor table, sourced).
+3. Proposed solution and scope (MVP features with MoSCoW priority) and the technical design (stack table with
+   rationale, data model, APIs, security).
+4. Architecture and flows: one container diagram, one user flow and one sequence diagram.
+5. Wireframes (the two or three key screens).
+6. Delivery plan, effort and risks (milestones, an effort estimate with assumptions, a risk table).
+Appendix: sources and assumptions.""",
+}
+LENGTH = {"full": "", "brief": " in about 2,500 to 3,500 words"}
+KINDS = {"full": "consultant-grade proposal", "brief": "concise proposal brief"}
 
 REVISE_SPEC = """This is version {version} of the proposal. The owner's feedback on the previous version:
 {feedback}
@@ -125,12 +142,17 @@ def executive_summary(markdown: str, limit: int = 2500) -> str:
 
 @specs.register("proposal.research")
 def research_spec(a: dict[str, Any]) -> str:
-    return RESEARCH_SPEC.format(out=a["out"], searx=a["searx"])
+    text = RESEARCH_SPEC.format(out=a["out"], searx=a["searx"])
+    if a.get("depth") == "brief":
+        text += ("\nThis is for a brief proposal: keep it focused, at most about eight searches and 1,500 words, "
+                 "covering the alternatives, the technology versions and the main risks.")
+    return text
 
 
 @specs.register("proposal.write")
 def write_spec(a: dict[str, Any]) -> str:
-    text = PROPOSAL_SPEC.format(out=a["out"])
+    depth = a.get("depth", "full")
+    text = PROPOSAL_SPEC.format(out=a["out"], kind=KINDS[depth], sections=SECTIONS[depth], length=LENGTH[depth])
     if int(a.get("version", 1)) > 1:
         text += "\n\n" + REVISE_SPEC.format(out=a["out"], version=a["version"],
                                              feedback=a.get("feedback") or "(none given)")
@@ -143,11 +165,12 @@ def doc_rubric(a: dict[str, Any]) -> str:
 
 
 def proposal_stages(rt: Runtime, request: str, workdir: Path, out: str, *, version: int = 1, feedback: str = "",
-                    effort: str | None = None, extra: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+                    depth: str = "full", effort: str | None = None,
+                    extra: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """The proposal pipeline. Version 1 researches first; later versions revise the existing document.
     Instructions are named (spec_ref) and built when each step runs, so they are always the current ones."""
     (workdir / out / "assets").mkdir(parents=True, exist_ok=True)
-    args = {"out": out, "version": version, "feedback": feedback,
+    args = {"out": out, "version": version, "feedback": feedback, "depth": depth,
             "searx": f"http://127.0.0.1:{rt.reg.ports.searxng}"}
     base: dict[str, Any] = {"prompt": request, "dir": str(workdir), "out": out, "version": version,
                             **({"effort": effort} if effort else {}), **(extra or {})}

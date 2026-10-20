@@ -33,17 +33,20 @@ URL_RE = re.compile(r"^(https://[^\s@/:]+(?::\d+)?/[^\s@]+|git@[^\s:]+:[^\s]+)$"
 TEMPLATE_INTRO = ("Copy the next message, fill it in and send it back. Required: **name**, **summary**, **details**. "
                   "Optional: **repo** (folder under ~/SourceCode; from the name if empty), **repo_url** (an existing "
                   "git repo to clone, or the remote for a new one), **stack** (empty: LAW recommends one), "
-                  "**thinking** (low, medium or high; default medium: how hard the coder thinks per step).")
+                  "**thinking** (low, medium or high; default medium: how hard the coder thinks per step), "
+                  "**proposal** (brief: about 6 sections, quicker; full: the 15-section consultant document).")
 TEMPLATE = """/code new
 name:
 repo:
 repo_url:
 stack:
 thinking: medium
+proposal: brief
 summary:
 details:
 """
-FIELDS = ("name", "repo", "repo_url", "stack", "thinking", "summary", "details")
+FIELDS = ("name", "repo", "repo_url", "stack", "thinking", "proposal", "summary", "details")
+DEPTHS = ("brief", "full")
 
 
 class TemplateError(ValueError):
@@ -63,6 +66,7 @@ class Project(BaseModel):
     repo_url: str = ""
     stack: str = ""
     thinking: str = "medium"
+    proposal: str = "brief"  # proposal depth: brief or full
     summary: str
     details: str
     state: State = "proposing"
@@ -109,6 +113,10 @@ def parse_template(text: str) -> dict[str, str]:
     if thinking not in EFFORTS:
         raise TemplateError("thinking must be low, medium or high")
     fields["thinking"] = thinking
+    depth = (fields.get("proposal") or "brief").lower()
+    if depth not in DEPTHS:
+        raise TemplateError("proposal must be brief or full")
+    fields["proposal"] = depth
     repo = (fields.get("repo") or slugify(fields["name"])).lower()
     if not NAME_RE.match(repo):
         raise TemplateError("repo must be a folder name: letters, numbers, - . _ (e.g. office-chat)")
@@ -173,7 +181,8 @@ class Projects:
             raise TemplateError(f"a project named {fields['repo']} already exists; pick another repo name")
         project = Project(id=fields["repo"], name=fields["name"], dir=str(folder),
                           repo_url=fields.get("repo_url", ""), stack=fields.get("stack", ""),
-                          thinking=fields["thinking"], summary=fields["summary"], details=fields["details"], chat=chat)
+                          thinking=fields["thinking"], proposal=fields.get("proposal", "brief"),
+                          summary=fields["summary"], details=fields["details"], chat=chat)
         project.log("created")
         return project
 

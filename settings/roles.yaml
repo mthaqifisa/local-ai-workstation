@@ -102,7 +102,7 @@ roles:
   writer:
     model_role: writer
     temperature: 0.5
-    reasoning: medium
+    reasoning: low   # documents: measured half the thinking; the independent review keeps quality
     tools: [files, search, docs, python]
     summary: Technical and business writer. Reports, proposals, memos, slides.
     prompt: |
@@ -136,7 +136,7 @@ roles:
   researcher:
     model_role: default
     temperature: 0.4
-    reasoning: medium
+    reasoning: low   # documents: measured half the thinking; the independent review keeps quality
     tools: [search, files, python]
     summary: Research analyst. Hypothesis-driven, sourced findings.
     prompt: |

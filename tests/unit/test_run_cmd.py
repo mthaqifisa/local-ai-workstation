@@ -51,3 +51,42 @@ def test_steady_work_is_not_a_stall() -> None:
     script = "import time\nfor i in range(6):\n    print('write', i, flush=True); time.sleep(0.15)"
     out = asyncio.run(run_cmd(_ctx(), [sys.executable, "-c", script], stall_s=0.5, is_work=lambda ln: "write" in ln))
     assert out.splitlines()[-1] == "write 5"
+
+
+def test_a_long_silent_generation_gets_grace_but_not_forever() -> None:
+    from law.handlers.base import Stalled
+
+    script = "import time\nprint('reading', flush=True)\ntime.sleep(30)"  # one action, then silence
+
+    async def generating() -> bool:
+        return True
+
+    async def go() -> float:
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        with pytest.raises(Stalled):
+            await run_cmd(_ctx(), [sys.executable, "-c", script], stall_s=0.4, is_work=lambda ln: "write" in ln,
+                          alive=generating)
+        return loop.time() - start
+
+    took = asyncio.run(asyncio.wait_for(go(), 10))
+    assert 0.6 < took < 1.5  # past the 0.4 s stall time, stopped at the 1.8x grace limit
+
+
+def test_a_read_loop_is_not_given_grace() -> None:
+    from law.handlers.base import Stalled
+
+    script = "import time\nfor i in range(100):\n    print('reading', i, flush=True); time.sleep(0.05)"
+
+    async def generating() -> bool:
+        return True
+
+    async def go() -> float:
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        with pytest.raises(Stalled):
+            await run_cmd(_ctx(), [sys.executable, "-c", script], stall_s=0.4, is_work=lambda ln: "write" in ln,
+                          alive=generating)
+        return loop.time() - start
+
+    assert asyncio.run(asyncio.wait_for(go(), 10)) < 0.7  # active but not saving: nudged on time

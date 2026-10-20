@@ -23,7 +23,10 @@ def build_worker(paths: LawPaths) -> tuple[Worker, JobStore]:
     light = {m.id for m in rt.reg.llm_models if m.lane == "light"}
     internal = f"http://{rt.reg.network.loopback}:{rt.reg.ports.llm_internal}"
     models = OmlxModelControl(internal, light)
-    worker = Worker(store, handlers(rt), capacity(rt), resolver(rt), models=models)
+    from law.install.steps import WORKER_RESTART_FLAG
+
+    worker = Worker(store, handlers(rt), capacity(rt), resolver(rt), models=models,
+                    restart_flag=paths.state / WORKER_RESTART_FLAG)
     return worker, store
 
 

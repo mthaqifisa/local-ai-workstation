@@ -96,8 +96,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         return {"kind": "project_gate", "payload": {"project": project.id, "gate": gate}}
 
     def _proposal(project: Project) -> list[dict[str, Any]]:
+        # documents use the writer's and researcher's own thinking level; the project's applies to its code
         stages = proposal_stages(rt, project.request(), Path(project.dir), OUT, version=project.version,
-                                 feedback=project.feedback, effort=project.effort, extra={"project": project.id})
+                                 feedback=project.feedback, depth=project.proposal, extra={"project": project.id})
         return [*stages, _gate(project, "proposal")]
 
     def _develop(project: Project) -> list[dict[str, Any]]:

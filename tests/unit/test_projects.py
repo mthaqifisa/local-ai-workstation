@@ -31,6 +31,9 @@ Modern UI.
 
 def test_template_round_trip():
     fields = projects.parse_template(FILLED)
+    assert fields["proposal"] == "brief"  # the default depth
+    assert projects.parse_template(FILLED.replace("thinking: high", "thinking: high\nproposal: full"))[
+        "proposal"] == "full"
     assert fields["repo"] == "office-chat" and fields["thinking"] == "high"
     assert fields["details"] == "One username per device.\nModern UI."
     assert projects.parse_template(projects.TEMPLATE.replace("name:", "name: X").replace(
@@ -117,7 +120,9 @@ def test_new_project_makes_a_repo_and_runs_the_proposal_to_the_gate(tmp_path: Pa
     assert kinds[0] == "task_translate" and "task_work" in kinds and kinds[-2:] == ["proposal_mail", "project_gate"]
     folder = rt.paths.projects / "office-chat"
     assert (folder / ".git").is_dir() and (folder / "docs" / "proposal" / "assets").is_dir()
-    assert all(s["payload"].get("effort") == "xhigh" for s in out.specs if s["kind"] == "task_work")
+    # documents use the roles' own (low) thinking; the project's level is for its code
+    assert all("effort" not in s["payload"] for s in out.specs if s["kind"] == "task_work")
+    assert all(s["payload"].get("spec_args", {}).get("depth") in (None, "brief") for s in out.specs)
 
 
 def test_go_runs_environment_milestones_reviews_then_the_verify_gate(tmp_path: Path):
@@ -129,6 +134,7 @@ def test_go_runs_environment_milestones_reviews_then_the_verify_gate(tmp_path: P
     out = _run(rt, "project_step", {"project": "office", "action": "go", "chat": 7})
     stages = out.specs
     assert "prepares the Mac" in specs.resolve(stages[0]["payload"]) and stages[0]["payload"]["stall_min"] == 45
+    assert stages[0]["payload"]["effort"] == "xhigh"  # the project's thinking level drives development
     milestones = [s for s in stages if s["payload"].get("milestone")]
     assert len(milestones) == project_handlers.MILESTONE_STAGES
     assert [s["kind"] for s in stages[-7:]] == ["task_review", "task_fix"] * 3 + ["project_gate"]

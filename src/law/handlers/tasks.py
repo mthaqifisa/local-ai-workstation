@@ -229,6 +229,15 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         hits = await searx(rt, ctx.job.payload["query"], int(ctx.job.payload.get("limit", 8)))
         return Done({"results": hits})
 
+    async def model_generating() -> bool:
+        """The model server is producing tokens right now (oMLX's active requests)."""
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                r = await client.get(f"http://127.0.0.1:{rt.reg.ports.llm_internal}/api/status")
+                return int(r.json().get("active_requests", 0)) > 0
+        except (httpx.HTTPError, ValueError):
+            return False
+
     async def _agent(ctx: Context, role: str, prompt: str, workdir: Path, *, writes: bool = True,
                      memory: ProjectMemory | None = None) -> str:
         """Run one OpenCode agent. A writing agent that stalls (no file change for STALL_MINUTES) is stopped and
@@ -265,7 +274,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 out = await run_cmd(ctx, cmd, cwd=workdir, env=env, describe=describe,
                                     timeout_s=float(ctx.job.payload.get("timeout_s", 4 * 3600)),
                                     stall_s=stall_min * 60 if writes and stall_min > 0 else None,
-                                    is_work=is_file_change)
+                                    is_work=is_file_change, alive=model_generating)
                 answer_text = parse_opencode_events(out)
                 if memory is not None and writes and memory.ensure_progress(started, role, answer_text, edits):
                     await ctx.progress("📝 recorded this step in .law/PROGRESS.md (the agent had not)")

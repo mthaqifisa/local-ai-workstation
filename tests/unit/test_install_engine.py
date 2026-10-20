@@ -435,3 +435,23 @@ def test_openwebui_state_restores_only_when_saved_files_change(ctx: Ctx):
     assert step.plan() == []
     (step.folder / "prompts.json").write_text("[]\n")
     assert step.plan() != []
+
+
+def test_worker_restart_waits_while_jobs_run(ctx: Ctx, monkeypatch: pytest.MonkeyPatch):
+    from law.install import launchd, steps
+
+    services = steps.Services(ctx)
+    worker = next(a for a in services.agents() if a.label.endswith("worker"))
+    plist = launchd.plist_path(ctx.paths, worker.label)
+    plist.parent.mkdir(parents=True, exist_ok=True)
+    plist.write_bytes(worker.render(ctx.paths, "old-stamp"))  # installed before a code change
+    monkeypatch.setattr(steps, "jobs_running", lambda reg: 2)
+    assert services._defer_worker(worker) is True  # code-only change: written, restart deferred
+    assert launchd.stamp_of(plist.read_bytes()) == ctx.stamp
+    assert (ctx.paths.state / steps.WORKER_RESTART_FLAG).exists()
+    monkeypatch.setattr(steps, "jobs_running", lambda reg: 0)
+    plist.write_bytes(worker.render(ctx.paths, "old-stamp"))
+    assert services._defer_worker(worker) is False  # idle: restart normally
+    monkeypatch.setenv("LAW_FORCE_RESTART", "1")
+    monkeypatch.setattr(steps, "jobs_running", lambda reg: 2)
+    assert services._defer_worker(worker) is False

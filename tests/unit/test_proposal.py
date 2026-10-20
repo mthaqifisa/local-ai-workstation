@@ -192,3 +192,10 @@ def test_steps_use_the_rules_current_when_they_run(tmp_path: Path, monkeypatch: 
     monkeypatch.setattr(proposal, "PROPOSAL_SPEC", "NEW RULES for {out}")  # rules change after creation
     assert specs.resolve(writer) == "NEW RULES for ."
     assert specs.resolve({"spec": "old text"}) == "old text"  # pipelines created before keep working
+
+
+def test_brief_proposals_have_fewer_sections():
+    full = proposal.write_spec({"out": "docs/proposal", "version": 1})
+    brief = proposal.write_spec({"out": "docs/proposal", "version": 1, "depth": "brief"})
+    assert "15. Next steps" in full and "15." not in brief and "concise proposal brief" in brief
+    assert "eight searches" in proposal.research_spec({"out": ".", "searx": "x", "depth": "brief"})
