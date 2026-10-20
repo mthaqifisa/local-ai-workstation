@@ -51,10 +51,13 @@ llm_models:
     revision: 241ebb5f1d60b122fd653da658836a55feb9e2b0
     license: apache-2.0
     disk_gb: 29.5
-    mem_gb: 34
+    mem_gb: 40
     lane: heavy
     vision: true
-    context: 65536
+    # Hybrid attention (16 of 64 layers keep a KV cache: ~64 KB/token), so 128K costs ~8 GB on top of the
+    # 29 GB weights, under oMLX's 45.6 GB guard. At 64K, agents that read web pages or many files hit
+    # compaction and lost their findings (2026-10-20).
+    context: 131072
     roles: [reasoner, writer, analyst, architect, designer, coder, default]
   - id: qwen3-coder-next-4bit
     repo: lmstudio-community/Qwen3-Coder-Next-MLX-4bit

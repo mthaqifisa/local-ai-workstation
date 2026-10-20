@@ -25,7 +25,9 @@ RESEARCH_SPEC = """Your task in this stage is RESEARCH ONLY; do not write the pr
 Search the web through this Mac's search engine: fetch {searx}/search?q=<query>&format=json and open the most
 relevant results. Run several focused searches. If the folder holds a working prototype, read its README and
 top-level structure (not the whole codebase) to understand what it already does.
-Write {out}/research.md with: the market and user context; current alternatives and competitors (a table);
+Write {out}/research.md AS YOU GO: create it after your first search and append each topic's findings with their
+sources as soon as you have them, so nothing is lost if your session is interrupted. It must end up with: the
+market and user context; current alternatives and competitors (a table);
 technology options with current versions; security, privacy and regulatory points; any sizing figures with how
 they were derived. Every fact carries its source URL and access date; mark anything you could not verify."""
 
