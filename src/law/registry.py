@@ -76,6 +76,20 @@ class LlmModel(_Strict):
     roles: list[str]
 
 
+class FastVideo(_Strict):
+    """A distilled few-step profile (e.g. Wan 2.2 Lightning): minutes per clip instead of most of an hour."""
+    steps: int
+    guidance: float
+    guidance_2: float
+    flow_shift: float
+    loras: list[str]  # "repo@revision:path/in/repo.safetensors", pre-downloaded by `law install`
+    lora_roles: list[str]
+
+    def lora_args(self) -> list[str]:
+        """The tool's `repo:path` form (it reads the files from the shared HF cache)."""
+        return [f"{lora.split('@')[0]}:{lora.split(':', 1)[1]}" for lora in self.loras]
+
+
 class Media(_Strict):
     tool: str
     model: str
@@ -91,6 +105,7 @@ class Media(_Strict):
     quantize: int | None = None
     steps: int | None = None
     voice: str | None = None
+    fast: FastVideo | None = None
 
 
 class Tool(_Strict):
@@ -139,6 +154,7 @@ class Registry(_Strict):
         """HF cache repos that `law reclaim` must keep."""
         repos = {m.hf_repo or m.model for m in self.media.values()}
         repos |= {r.split("@")[0] for m in self.media.values() for r in m.hf_extra}
+        repos |= {r.split("@")[0] for m in self.media.values() if m.fast for r in m.fast.loras}
         return {r for r in repos if "/" in r}
 
     def model(self, model_id: str) -> LlmModel:

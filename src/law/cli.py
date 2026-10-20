@@ -141,6 +141,12 @@ def song(prompt: Annotated[list[str], typer.Argument()], duration: int = 60, qui
 
 
 @app.command()
+def film(prompt: Annotated[list[str], typer.Argument()], duration: int = 20, quiet: bool = False) -> None:
+    """Make a short film: shots planned from the request (or a 'script:' section), rendered, scored and cut."""
+    _run_job("film", {"prompt": " ".join(prompt), "duration": duration}, quiet=quiet, field="video")
+
+
+@app.command()
 def music(prompt: Annotated[list[str], typer.Argument()], duration: int = 30, quiet: bool = False) -> None:
     """Render music exactly as described (no lyric writing); see `law song` for full songs."""
     _run_job("music", {"caption": " ".join(prompt), "duration": duration}, quiet=quiet, field="audio")

@@ -39,6 +39,11 @@ def parse_duration(text: str, default: float, low: float, high: float) -> tuple[
     return max(low, min(high, value)), rest
 
 
+def wan_frames(seconds: float, fps: int = 16) -> int:
+    """Wan renders 4k+1 frames; the nearest such count for `seconds` (at least 17, about 1 s)."""
+    return max(17, 4 * round(seconds * fps / 4) + 1)
+
+
 def split_lyrics(text: str) -> tuple[str, str | None]:
     """'style... lyrics: <lines>' -> (style, lyrics). Lyrics are kept exactly as written."""
     parts = re.split(r"(?im)^\s*lyrics\s*:\s*", text, maxsplit=1)
@@ -162,15 +167,23 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
 
     async def _video(ctx: Context, kind: str) -> Outcome:
         spec = rt.reg.media[kind]
-        p = ctx.job.payload
+        p = dict(ctx.job.payload)
+        if "shot" in p:  # one shot of a film: prompt and length come from the plan in the pipeline carry
+            shot = p["_carry"]["shots"][int(p["shot"])]
+            p.update(prompt=shot["prompt"], frames=wan_frames(float(shot["seconds"])), fast=True)
         out = _out(rt, kind, "mp4")
         seconds, prompt = parse_duration(str(p["prompt"]), (int(p.get("frames", 81)) - 1) / 16, 1, 10)
-        explicit = "frames" in p and not DURATION_RE.search(str(p["prompt"]))
+        explicit = "frames" in p and ("shot" in p or not DURATION_RE.search(str(p["prompt"])))
         frames = int(p["frames"]) if explicit else int(seconds * 16) + 1
+        fast = spec.fast if p.get("fast") else None
         cmd = [_bin(rt, spec.tool), "generate", "--model", spec.model, "--prompt", prompt,
-               "--steps", str(p.get("steps", spec.steps)), "--frames", str(frames),
+               "--steps", str(fast.steps if fast else p.get("steps", spec.steps)), "--frames", str(frames),
                "--fps", str(p.get("fps", 16)), "--width", str(p.get("width", 832)),
                "--height", str(p.get("height", 480)), "--output", str(out)]
+        if fast:
+            cmd += ["--guidance", str(fast.guidance), "--guidance-2", str(fast.guidance_2),
+                    "--flow-shift", str(fast.flow_shift), "--lora-paths", *fast.lora_args(),
+                    "--lora-target-roles", *fast.lora_roles]
         if p.get("seed") is not None:
             cmd += ["--seed", str(p["seed"])]
         if kind == "animate":
@@ -178,11 +191,12 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             if not src or not Path(src).is_file():
                 raise Fatal("animate needs an input image")
             cmd += ["--image-path", src]
-        await ctx.progress(f"rendering video with {spec.model.split('/')[-1]} (this takes a while)")
+        label = f"shot {int(p['shot']) + 1}" if "shot" in p else "video"
+        await ctx.progress(f"rendering {label} with {spec.model.split('/')[-1]}{' (fast)' if fast else ''}")
         await run_cmd(ctx, cmd, env={"HF_HOME": str(rt.paths.models / "hf")}, timeout_s=4 * 3600)
         if not out.exists():
             raise Fatal("video tool produced no file")
-        return Done({"video": str(out)})
+        return Done({f"shot_{p['shot']}" if "shot" in p else "video": str(out)})
 
     async def video(ctx: Context) -> Outcome:
         return await _video(ctx, "video")

@@ -487,23 +487,43 @@ class MediaModels:
                         seen[repo] = rev
         return sorted(seen.items())
 
-    def _marker(self, repo: str) -> Path:
-        return self.c.paths.state / "prefetch" / f"{repo.replace('/', '--')}.rev"
+    def _wanted_files(self) -> list[tuple[str, str, str]]:
+        """Single files from big repos (LoRA adapters): (repo, revision, path)."""
+        if self.c.profile != "full":
+            return []
+        out: set[tuple[str, str, str]] = set()
+        for m in self.c.reg.media.values():
+            for lora in (m.fast.loras if m.fast and m.prefetch else []):
+                ref, path = lora.split(":", 1)
+                repo, rev = ref.split("@", 1)
+                out.add((repo, rev, path))
+        return sorted(out)
+
+    def _marker(self, repo: str, path: str = "") -> Path:
+        name = repo.replace("/", "--") + (("--" + path.replace("/", "--")) if path else "")
+        return self.c.paths.state / "prefetch" / f"{name}.rev"
+
+    def _done(self, mk: Path, rev: str) -> bool:
+        return mk.exists() and mk.read_text().strip() == rev
 
     def plan(self) -> list[str]:
-        return [f"download {repo}@{rev[:8]}" for repo, rev in self._wanted()
-                if not self._marker(repo).exists() or self._marker(repo).read_text().strip() != rev]
+        repos = [f"download {repo}@{rev[:8]}" for repo, rev in self._wanted()
+                 if not self._done(self._marker(repo), rev)]
+        files = [f"download {repo}@{rev[:8]}:{path}" for repo, rev, path in self._wanted_files()
+                 if not self._done(self._marker(repo, path), rev)]
+        return repos + files
 
     def apply(self) -> None:
         hf = str(self.c.paths.runtime / "bin" / "hf")
-        for repo, rev in self._wanted():
-            mk = self._marker(repo)
-            if mk.exists() and mk.read_text().strip() == rev:
+        jobs = [(repo, rev, None) for repo, rev in self._wanted()] + list(self._wanted_files())
+        for repo, rev, path in jobs:
+            mk = self._marker(repo, path or "")
+            if self._done(mk, rev):
                 continue
-            res = self.c.sys.run([hf, "download", repo, "--revision", rev],
-                                 env={"HF_HOME": str(self.c.paths.models / "hf")}, timeout=6 * 3600)
+            cmd = [hf, "download", repo, *([path] if path else []), "--revision", rev]
+            res = self.c.sys.run(cmd, env={"HF_HOME": str(self.c.paths.models / "hf")}, timeout=6 * 3600)
             if not res.ok:
-                raise RuntimeError(f"download {repo} failed: {res.out[-1000:]}")
+                raise RuntimeError(f"download {repo} {path or ''} failed: {res.out[-1000:]}")
             mk.parent.mkdir(parents=True, exist_ok=True)
             mk.write_text(rev + "\n")
 

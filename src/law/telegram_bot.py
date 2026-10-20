@@ -78,6 +78,11 @@ class LawBot:
             if self._ok(message) and command.args:
                 await self._job(message, "video", {"prompt": command.args}, file_field="video")
 
+        @dp.message(Command("film"))
+        async def film(message: Message, command: CommandObject) -> None:
+            if self._ok(message) and command.args:
+                await self._job(message, "film", {"prompt": command.args}, file_field="video")
+
         @dp.message(Command("music"))
         async def music(message: Message, command: CommandObject) -> None:
             if self._ok(message) and command.args:
@@ -381,6 +386,8 @@ COMMANDS: list[tuple[str, str, str]] = [
     ("image", "Generate an image", "/image A minimalist poster of a lighthouse at dawn"),
     ("edit", "Edit a photo: send a photo with this caption", "(photo) /edit make the sky stormy"),
     ("video", "Make a video: duration, theme, style", "/video 8s, cinematic drone shot over Kuala Lumpur at sunset"),
+    ("film", "A short film from a theme or 'script:' (several shots + score)",
+     "/film 30s, a lone astronaut finds a garden on Mars, cinematic"),
     ("animate", "Animate a photo: send a photo with this caption", "(photo) /animate slow push-in, leaves moving"),
     ("music", "Make a song: theme, genre/vibe, duration; Tony writes lyrics unless you add a 'lyrics:' line",
      "/music 90s upbeat Malay pop about rainy KL nights, 2 min"),
