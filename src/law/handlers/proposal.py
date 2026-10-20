@@ -62,33 +62,41 @@ Rules:
 
 # depth "full": the consultant-grade document; "brief": the same decisions in about a third of the length, for
 # small products (chosen in the /code init template; /proposal is always full).
-SECTIONS = {
-    "full": """1. Executive summary: the recommendation first; the value, cost, timeline and the decision asked for
-   (1 page).
-2. Situation, complication, resolution.
-3. Objectives and success measures (KPI table with targets).
-4. Users and needs (personas, jobs to be done, pain points).
-5. Market and alternatives (competitor table, differentiation), sourced.
-6. Proposed solution (MVP scope vs later, feature table with MoSCoW priority).
-7. The working prototype (what exists, what it proves, how to run it), or the proof-of-concept plan if none.
-8. Technical design (stack table with rationale, data model, APIs, security, non-functional requirements).
-9. Architecture (C4 context and container diagrams; deployment view).
-10. User flows and system flows (flowchart and sequence diagrams for the key journeys).
-11. Wireframes (the key screens).
-12. Delivery plan (phases, a Gantt chart, team and governance).
-13. Investment (effort and cost estimate with every assumption stated).
-14. Risks and mitigations (table with likelihood, impact, owner).
-15. Next steps and the decision required.
-Appendix: sources (from research.md), assumptions, glossary.""",
-    "brief": """1. Executive summary: the recommendation, the value, the effort and the decision asked for.
-2. The problem, the users and the alternatives (a short competitor table, sourced).
-3. Proposed solution and scope (MVP features with MoSCoW priority) and the technical design (stack table with
-   rationale, data model, APIs, security).
-4. Architecture and flows: one container diagram, one user flow and one sequence diagram.
-5. Wireframes (the two or three key screens).
-6. Delivery plan, effort and risks (milestones, an effort estimate with assumptions, a risk table).
-Appendix: sources and assumptions.""",
+SECTION_LISTS: dict[str, list[tuple[str, str]]] = {
+    "full": [
+        ("Executive summary", "the recommendation first; the value, cost, timeline and the decision asked for "
+                              "(1 page)"),
+        ("Situation, complication, resolution", "the situation, what makes it a problem now, and the resolution"),
+        ("Objectives and success measures", "a KPI table with targets"),
+        ("Users and needs", "personas, jobs to be done, pain points"),
+        ("Market and alternatives", "a competitor table and the differentiation, sourced"),
+        ("Proposed solution", "MVP scope vs later, a feature table with MoSCoW priority"),
+        ("The working prototype", "what exists, what it proves, how to run it; or the proof-of-concept plan if none"),
+        ("Technical design", "a stack table with rationale, the data model, APIs, security, non-functional "
+                             "requirements"),
+        ("Architecture", "C4 context and container diagrams; the deployment view"),
+        ("User flows and system flows", "flowchart and sequence diagrams for the key journeys"),
+        ("Wireframes", "the key screens"),
+        ("Delivery plan", "phases, a Gantt chart, team and governance"),
+        ("Investment", "the effort and cost estimate with every assumption stated"),
+        ("Risks and mitigations", "a table with likelihood, impact, owner"),
+        ("Next steps", "the next steps and the decision required"),
+        ("Appendix", "sources (from research.md), assumptions, glossary"),
+    ],
+    "brief": [
+        ("Executive summary", "the recommendation, the value, the effort and the decision asked for"),
+        ("Problem, users and alternatives", "the problem, the users, and a short sourced competitor table"),
+        ("Solution and technical design", "MVP features with MoSCoW priority; a stack table with rationale, the "
+                                          "data model, APIs, security"),
+        ("Architecture and flows", "one container diagram, one user flow and one sequence diagram"),
+        ("Wireframes", "the two or three key screens"),
+        ("Delivery plan, effort and risks", "milestones, an effort estimate with assumptions, a risk table"),
+        ("Appendix", "sources and assumptions"),
+    ],
 }
+SECTIONS = {depth: "\n".join(f"{i}. {h}: {d}." if h != "Appendix" else f"Appendix: {d}."
+                             for i, (h, d) in enumerate(items, start=1))
+            for depth, items in SECTION_LISTS.items()}
 LENGTH = {"full": "", "brief": " in about 2,500 to 3,500 words"}
 KINDS = {"full": "consultant-grade proposal", "brief": "concise proposal brief"}
 
@@ -162,9 +170,82 @@ def write_spec(a: dict[str, Any]) -> str:
     return text
 
 
+SECTION_SPEC = """You are writing ONE section of a {kind} in {out}/proposal.md: section {k} of {n}, "{heading}".
+{action}
+This section covers: {description}
+Base every fact on {out}/research.md and stay consistent with the sections already in proposal.md. Do not browse
+the web; a fact research.md lacks is written as an assumption or estimate.
+Format rules:
+- Diagrams are Mermaid in fenced blocks written as ```{{.mermaid caption="<caption>"}}; keep them valid Mermaid.
+- Wireframes are simple lo-fi SVG files you write in {out}/assets/ (greyscale; only rect, line, circle and text
+  elements; viewBox 0 0 1200 800; no foreignObject), included as ![Wireframe: <screen>](assets/<file>.svg).
+- Tables are pipe tables with a caption line `: <caption>` under them.
+- Every claim is sourced or labelled as an assumption or estimate. No placeholders or TODOs.
+Write only this section (about {words} words at most), as the level-1 heading "# {heading}" and its content, then
+stop. Do not change other sections."""
+
+CREATE = """Create the file: start it with this YAML header (fill in the values), then the section:
+---
+title: <product name>
+subtitle: <one-line value proposition>
+prepared-for: <the client, from the request; otherwise "Client">
+author: LAW
+date: <today, e.g. 20 October 2026>
+---"""
+APPEND = "Append the section to the end of the existing file; do not rewrite what is there."
+REVISE_ONE = ("This is version {version}. The owner's feedback on the previous version:\n{feedback}\n"
+              "Revise this section in place so it reflects the feedback (keep what still holds); if the section is "
+              "missing, add it in its place in the order of sections. Do not touch other sections.")
+WHAT_CHANGED = ("What changed in version {version}: the owner's feedback, each change made in response and where, "
+                "and anything not changed with the reason. Place it right after the executive summary.")
+
+
+def section_list(depth: str) -> list[tuple[str, str]]:
+    """(heading, what it covers) for each section of a depth."""
+    return list(SECTION_LISTS[depth])
+
+
+@specs.register("proposal.section")
+def section_spec(a: dict[str, Any]) -> str:
+    depth = a.get("depth", "full")
+    version, k = int(a.get("version", 1)), int(a["k"])
+    if version > 1:
+        action = REVISE_ONE.format(version=version, feedback=a.get("feedback") or "(none given)")
+    else:
+        action = CREATE if k == 1 else APPEND
+    return SECTION_SPEC.format(kind=KINDS[depth], out=a["out"], k=k, n=a["n"], heading=a["heading"], action=action,
+                               description=a["description"], words=900 if depth == "full" else 600)
+
+
+@specs.register("proposal.fixrules")
+def fix_rules(a: dict[str, Any]) -> str:
+    return ("Fix only what the issues name, editing those sections in place in {out}/proposal.md, one section per "
+            "edit. Keep the YAML header and the other sections. Diagrams stay valid Mermaid in "
+            "```{{.mermaid caption=...}} blocks; wireframes are SVG files in {out}/assets/; facts come from "
+            "research.md. Do not browse the web.").format(out=a["out"])
+
+
+def section_written(markdown: str, heading: str) -> bool:
+    return bool(re.search(rf"^#\s+(?:\d+\.?\s*)?{re.escape(heading)}\b", markdown, re.MULTILINE | re.IGNORECASE))
+
+
 @specs.register("proposal.rubric")
 def doc_rubric(a: dict[str, Any]) -> str:
     return DOC_RUBRIC.format(out=a["out"])
+
+
+def section_stages(base: dict[str, Any], args: dict[str, Any], version: int) -> list[dict[str, Any]]:
+    """One short writer session per section, so no single step can outgrow the output limit, and a crash costs one
+    section at most. A section already in proposal.md is skipped (version 1), so a retried pipeline resumes."""
+    sections = section_list(str(args.get("depth", "full")))
+    if version > 1:
+        sections.insert(1, (f"What changed in version {version}", WHAT_CHANGED.format(version=version)))
+    n = len(sections)
+    return [{"kind": "task_work", "payload": {
+        **base, "role": "writer", "spec_ref": "proposal.section",
+        "section": {"file": f"{args['out']}/proposal.md", "heading": heading, "skip_if_written": version == 1},
+        "spec_args": {**args, "k": k, "n": n, "heading": heading, "description": description}}}
+        for k, (heading, description) in enumerate(sections, start=1)]
 
 
 def proposal_stages(rt: Runtime, request: str, workdir: Path, out: str, *, version: int = 1, feedback: str = "",
@@ -177,17 +258,17 @@ def proposal_stages(rt: Runtime, request: str, workdir: Path, out: str, *, versi
             "searx": f"http://127.0.0.1:{rt.reg.ports.searxng}"}
     base: dict[str, Any] = {"prompt": request, "dir": str(workdir), "out": out, "version": version,
                             **({"effort": effort} if effort else {}), **(extra or {})}
-    writer = {**base, "role": "writer", "spec_ref": "proposal.write", "rubric_ref": "proposal.rubric",
-              "spec_args": args}
     research = [{"kind": "task_work", "payload": {**base, "role": "researcher", "spec_ref": "proposal.research",
                                                   "spec_args": args}}]
     return [
         {"kind": "task_translate", "payload": {**base, "role": "writer", "spec_ref": "proposal.write",
                                                "spec_args": args}},
         *(research if version == 1 else []),
-        {"kind": "task_work", "payload": writer},
-        {"kind": "task_review", "payload": writer},
-        {"kind": "task_fix", "payload": writer},
+        *section_stages(base, args, version),
+        {"kind": "task_review", "payload": {**base, "role": "writer", "spec_ref": "proposal.fixrules",
+                                            "rubric_ref": "proposal.rubric", "spec_args": args}},
+        {"kind": "task_fix", "payload": {**base, "role": "writer", "spec_ref": "proposal.fixrules",
+                                         "rubric_ref": "proposal.rubric", "spec_args": args}},
         {"kind": "proposal_render", "payload": base},
         {"kind": "proposal_mail", "payload": base},
     ]
