@@ -8,6 +8,7 @@
 | Live stats, jobs (cancel), personas, settings | LAW Console: `http://<mac-name>.local:8100` |
 | One-line status | `law status` |
 | Recent jobs | `law jobs` |
+| Deploying while agents work | `law install` prints "restarts on the new code between steps" | Nothing to do; `LAW_FORCE_RESTART=1 law install` restarts at once (interrupts the step) |
 | Disk filling up | Console → **Storage** (sizes per cache) | Clear a cache or all LAW caches there, or `law reclaim`; shorten retention in the same tab |
 | Is an agent working, thinking or stuck? | Console → **Agents**, or `/jobs <project>` in Telegram |
 | A job failed or got stuck | **Retry** (from the failed step, earlier work kept), **Skip** (carry on without that step) or **Restart step** (stuck); buttons in the Console and Telegram, or `law retry <id>` |
