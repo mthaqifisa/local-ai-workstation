@@ -302,6 +302,8 @@ def test_media_models_prefetch_pinned_once(ctx: Ctx):
     assert len([x for x in planned if "Qwen-Image-2.1" in x]) == 1  # image + edit share one repo
     assert any("ACE-Step/acestep-5Hz-lm-4B@0a3ec94b" in x for x in planned)  # pinned companion repo
     assert not any("prince-canuma" in x for x in planned)  # unpinned companions are left to the tool
+    lightning = [x for x in planned if "Wan2.2-Lightning" in x]
+    assert len(lightning) == 4 and all("high_noise" in x or "low_noise" in x for x in lightning)  # files, not repo
     step.apply()
     downloads = [c for c in ctx.sys.calls if len(c) > 1 and c[1] == "download"]  # type: ignore[attr-defined]
     assert all("--revision" in c for c in downloads)

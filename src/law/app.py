@@ -11,11 +11,11 @@ from law.queue.scheduler import Capacity
 from law.queue.worker import Handler
 
 # Job kinds that need no model at all.
-NO_MODEL = {"search", "song"}
+NO_MODEL = {"search", "song", "film", "film_join"}
 # Job kinds whose model comes from the role in the payload (default role in brackets).
 ROLE_KINDS = {"ask": "assistant", "draft": "assistant", "revise": "assistant", "judge": "reviewer",
               "task": "coder", "task_work": "coder", "task_review": "reviewer", "task_fix": "coder",
-              "song_plan": "writer"}
+              "song_plan": "writer", "film_plan": "writer"}
 
 
 def handlers(rt: Runtime) -> dict[str, Handler]:

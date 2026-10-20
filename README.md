@@ -200,6 +200,7 @@ law install
 | `/code <folder> <task>` | Works in an existing project, e.g. `/code ~/SourceCode/my-app add a login page` |
 | `/image <prompt>` | Generates an image and sends it back |
 | `/music <request>` | A full song: theme, genre/vibe and length (e.g. `2 min`). Tony writes the lyrics, or add a `lyrics:` line with your own; say `instrumental` for no vocals |
+| `/film <request>` | A short film (up to 2 min): shots planned from your theme or a `script:` section, rendered with fast Wan 2.2, scored and cut together. Say `no music` to skip the score |
 | `/agent <role> <task>` | Runs a role, e.g. `/agent architect design a payments API` or `/agent operator play jazz on Spotify` |
 | `/jobs` | Recent jobs and their status |
 
