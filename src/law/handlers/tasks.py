@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 
-from law.handlers.base import Runtime, run_cmd
+from law.handlers.base import Runtime, Stalled, run_cmd
 from law.handlers.core import PASS_SCORE, parse_verdict
 from law.queue.worker import Context, Done, Fatal, Outcome, Stages
 
@@ -63,6 +63,33 @@ def describe_opencode_line(line: str) -> str | None:
     return f"{label} {text[:140]}"
 
 
+# An agent that changes no file for this long is stuck (seen: a 2h20m re-read loop across context compactions).
+# It is stopped and its session resumed with a nudge to build and fix, at most STALL_NUDGES times.
+STALL_MINUTES = 25
+STALL_NUDGES = 3
+NUDGE = ("You have not changed any file for {minutes} minutes. Stop reading and exploring. Run the project's "
+         "build or tests now, fix the first error they report (open only the file it names), and repeat. "
+         "Commit when a gate passes.")
+
+
+def is_file_change(line: str) -> bool:
+    summary = describe_opencode_line(line)
+    return summary is not None and summary.startswith("✏️")
+
+
+def session_id(output: str) -> str | None:
+    """The OpenCode session id from `--format json` output (the last one seen)."""
+    found = None
+    for line in output.splitlines():
+        if line.startswith("{"):
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            found = ev.get("sessionID") or (ev.get("part") or {}).get("sessionID") or found
+    return found
+
+
 def parse_opencode_events(output: str) -> str:
     """Extract the final assistant text from `opencode run --format json` output."""
     texts: list[str] = []
@@ -98,15 +125,29 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         hits = await searx(rt, ctx.job.payload["query"], int(ctx.job.payload.get("limit", 8)))
         return Done({"results": hits})
 
-    async def _agent(ctx: Context, role: str, prompt: str, workdir: Path) -> str:
+    async def _agent(ctx: Context, role: str, prompt: str, workdir: Path, *, writes: bool = True) -> str:
+        """Run one OpenCode agent. A writing agent that stalls (no file change for STALL_MINUTES) is stopped and
+        its session resumed with a nudge to build and fix."""
         rt.roles.get(role)  # validate
         model = f"law/{rt.model_id(role)}"
+        stall_min = float(ctx.job.payload.get("stall_min", STALL_MINUTES))
         await ctx.progress(f"{role} agent working in {workdir}")
-        out = await run_cmd(ctx, ["opencode", "run", "--agent", role, "-m", model, "--format", "json",
-                                  "--dir", str(workdir), prompt],
-                            cwd=workdir, env=agent_env(rt, role), describe=describe_opencode_line,
-                            timeout_s=float(ctx.job.payload.get("timeout_s", 4 * 3600)))
-        return parse_opencode_events(out)
+        base = ["opencode", "run", "--agent", role, "-m", model, "--format", "json", "--dir", str(workdir)]
+        cmd = [*base, prompt]
+        for attempt in range(STALL_NUDGES + 1):
+            try:
+                out = await run_cmd(ctx, cmd, cwd=workdir, env=agent_env(rt, role), describe=describe_opencode_line,
+                                    timeout_s=float(ctx.job.payload.get("timeout_s", 4 * 3600)),
+                                    stall_s=stall_min * 60 if writes and stall_min > 0 else None,
+                                    is_work=is_file_change)
+                return parse_opencode_events(out)
+            except Stalled as exc:
+                sid = session_id(exc.output)
+                if sid is None or attempt == STALL_NUDGES:
+                    raise Fatal(f"{role} agent stalled: {exc}") from exc
+                await ctx.progress(f"⚠️ no file changed for {stall_min:.0f} min: nudging the agent to build and fix")
+                cmd = [*base, "--session", sid, NUDGE.format(minutes=f"{stall_min:.0f}")]
+        raise AssertionError("unreachable")
 
     def _scoped(p: dict[str, Any]) -> str:
         """When the user named a directory, the agent must build there, not in a new folder."""
@@ -130,7 +171,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             base = {"prompt": p["prompt"], "dir": str(workdir), "role": role}
             return Stages([{"kind": "task_work", "payload": base}, {"kind": "task_review", "payload": base},
                            {"kind": "task_fix", "payload": base}])
-        return Done({"answer": await _agent(ctx, role, _scoped(p), workdir), "dir": str(workdir)})
+        answer = await _agent(ctx, role, _scoped(p), workdir, writes=role in REVIEWED_ROLES)
+        return Done({"answer": answer, "dir": str(workdir)})
 
     async def task_work(ctx: Context) -> Outcome:
         p = ctx.job.payload
@@ -142,7 +184,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         prompt = (f"{CODE_RUBRIC}\n\nThe REQUEST was:\n{p['prompt']}\n\nThe author reported:\n{report[:4000]}\n\n"
                   "Inspect the files the author created or changed (the project may be in a new folder under "
                   "~/SourceCode named after it). Verify claims against the code; do not trust the report.")
-        verdict = parse_verdict(await _agent(ctx, "reviewer", prompt, _workdir(p)))
+        verdict = parse_verdict(await _agent(ctx, "reviewer", prompt, _workdir(p), writes=False))
         return Done({"review": verdict})
 
     async def task_fix(ctx: Context) -> Outcome:

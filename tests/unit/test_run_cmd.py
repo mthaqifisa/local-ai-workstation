@@ -32,3 +32,22 @@ def test_timeout_kills_the_child() -> None:
             await run_cmd(_ctx(), [sys.executable, "-c", "import time; time.sleep(30)"], timeout_s=0.5)
 
     asyncio.run(asyncio.wait_for(go(), 10))
+
+
+def test_a_command_without_work_is_stopped_as_stalled() -> None:
+    from law.handlers.base import Stalled
+
+    script = "import time\nprint('reading', flush=True)\ntime.sleep(30)"
+
+    async def go() -> None:
+        with pytest.raises(Stalled) as info:
+            await run_cmd(_ctx(), [sys.executable, "-c", script], stall_s=0.4, is_work=lambda ln: "write" in ln)
+        assert info.value.output == "reading"
+
+    asyncio.run(asyncio.wait_for(go(), 10))
+
+
+def test_steady_work_is_not_a_stall() -> None:
+    script = "import time\nfor i in range(6):\n    print('write', i, flush=True); time.sleep(0.15)"
+    out = asyncio.run(run_cmd(_ctx(), [sys.executable, "-c", script], stall_s=0.5, is_work=lambda ln: "write" in ln))
+    assert out.splitlines()[-1] == "write 5"
