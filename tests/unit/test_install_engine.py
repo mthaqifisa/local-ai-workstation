@@ -148,7 +148,7 @@ def test_role_configs_carry_the_roles_reasoning_effort(ctx: Ctx):
     engine.run(ctx.paths, file_steps(ctx), dry_run=False)
     coder = json.loads((ctx.paths.config / "opencode-coder.json").read_text())
     model = coder["model"].removeprefix("law/")
-    assert coder["provider"]["law"]["models"][model]["options"] == {"reasoningEffort": "medium"}
+    assert coder["provider"]["law"]["models"][model]["options"] == {"reasoningEffort": "low"}
     architect = json.loads((ctx.paths.config / "opencode-architect.json").read_text())
     effort = roles.load(REPO / "settings" / "roles.yaml").get("architect").reasoning
     assert architect["provider"]["law"]["models"][architect["model"].removeprefix("law/")]["options"] == {

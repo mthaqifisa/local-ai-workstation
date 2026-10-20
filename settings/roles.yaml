@@ -44,7 +44,9 @@ roles:
   coder:
     model_role: coder
     temperature: 0.3
-    reasoning: medium
+    # low: measured 2026-10-20, half the thinking of medium with the same answer on a build-failure diagnosis;
+    # agent steps were 5-15 min at medium. The translator's brief and the independent review keep the quality bar.
+    reasoning: low
     tools: [files, shell, search]
     summary: Senior software engineer. Production code with tests.
     prompt: |
