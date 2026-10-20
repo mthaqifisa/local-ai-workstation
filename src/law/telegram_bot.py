@@ -495,7 +495,8 @@ class LawBot:
         for job in jobs:
             if (job.get("source") == "telegram" and job.get("reply_to") and job.get("parent") is None
                     and job["created"] > cutoff and not self.delivered.seen(job["id"])):
-                task = asyncio.create_task(self._deliver(job["id"], job["reply_to"]))
+                # resumed after a restart: show progress from now on, not the job's whole history again
+                task = asyncio.create_task(self._deliver(job["id"], dict(job["reply_to"]), again=True))
                 self._tasks.add(task)  # keep a reference so the task isn't garbage-collected
                 task.add_done_callback(self._tasks.discard)
 
