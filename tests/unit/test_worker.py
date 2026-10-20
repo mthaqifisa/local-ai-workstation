@@ -315,5 +315,38 @@ async def test_dead_stage_found_on_startup_fails_its_pipeline_and_can_be_retried
     await w2.drain()
     assert calls == ["b"]  # the earlier stage's result was kept
     assert (await store.require(top.id)).status == Status.DONE
-    with pytest.raises(ValueError, match="only a failed or stuck"):
+    with pytest.raises(ValueError, match="only a failed, cancelled or stuck"):
         await retry_pipeline(store, lambda j: j, top.id)
+
+
+async def test_skip_continues_after_the_failed_stage_and_single_jobs_retry_as_new_jobs():
+    from law.queue.worker import Worker, retry_job, skip_stage
+
+    store = JobStore(fakeredis.FakeAsyncRedis(decode_responses=True))
+    ran: list[str] = []
+
+    async def boom(ctx):  # type: ignore[no-untyped-def]
+        raise Fatal("render failed")
+
+    async def last(ctx):  # type: ignore[no-untyped-def]
+        ran.append("last")
+        return Done({"mailed": True})
+
+    async def root(ctx):  # type: ignore[no-untyped-def]
+        return Stages([{"kind": "boom"}, {"kind": "last"}])
+
+    w = Worker(store, {"root": root, "boom": boom, "last": last}, Capacity(budget_gb=48), lambda j: j)
+    top = await store.submit(Job(kind="root", payload={}, lane="none"))
+    await w.drain()
+    assert (await store.require(top.id)).status == Status.FAILED
+    await skip_stage(store, lambda j: j, top.id)
+    await w.drain()
+    done = await store.require(top.id)
+    assert ran == ["last"] and done.status == Status.DONE and done.payload["_runs"] == 1
+
+    single = await store.submit(Job(kind="boom", payload={"prompt": "x"}, lane="none"))
+    await w.drain()
+    again = await retry_job(store, lambda j: j, single.id)
+    assert again.id != single.id and again.payload == {"prompt": "x"} and again.status == Status.QUEUED
+    with pytest.raises(ValueError, match="nothing to skip"):
+        await skip_stage(store, lambda j: j, single.id)

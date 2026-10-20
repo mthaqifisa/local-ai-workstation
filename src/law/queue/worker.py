@@ -100,26 +100,69 @@ async def submit_stage(store: JobStore, resolve: Callable[[Job], Job], root: Job
     return stage
 
 
-async def retry_pipeline(store: JobStore, resolve: Callable[[Job], Job], root_id: str) -> Job:
-    """Run a failed (or stuck) pipeline again from the stage that failed, keeping everything earlier stages
-    produced. Raises ValueError if there is nothing to retry."""
-    root = await store.get(root_id)
-    if root is None or not root.payload.get("_stages"):
-        raise ValueError(f"{root_id} is not a pipeline")
-    if root.status in {Status.DONE, Status.CANCELLED} or root.status is Status.RUNNING:
-        raise ValueError(f"{root_id} is {root.status.value}; only a failed or stuck pipeline can be retried")
+STOPPED = {Status.FAILED, Status.DEAD, Status.CANCELLED}
+
+
+async def _stopped_stage(store: JobStore, root: Job) -> int:
+    """The stage a stopped (or stuck) pipeline should continue from. Raises ValueError if none."""
+    if root.status in {Status.DONE, Status.RUNNING, Status.QUEUED}:
+        raise ValueError(f"{root.id} is {root.status.value}; only a failed, cancelled or stuck pipeline can be "
+                         "retried or skipped")
     children = await store.children(root.id)
     if any(c.status in {Status.QUEUED, Status.RUNNING} for c in children):
-        raise ValueError(f"{root_id} still has a stage in progress")
-    failed = [c for c in children if c.status in {Status.FAILED, Status.DEAD}]
-    if not failed:
-        raise ValueError(f"{root_id} has no failed stage")
-    index = max(c.stage or 0 for c in failed)
+        raise ValueError(f"{root.id} still has a stage in progress")
+    stopped = [c for c in children if c.status in STOPPED]
+    if not stopped:
+        raise ValueError(f"{root.id} has no failed stage")
+    return max(c.stage or 0 for c in stopped)
+
+
+async def _reopen(store: JobStore, root: Job, message: str) -> None:
+    root.payload = {**root.payload, "_runs": int(root.payload.get("_runs", 0)) + 1}  # chat apps re-attach to it
     root.error = None
     root.finished = None
+    root.cancel_requested = False
     await store.mark_waiting(root)
-    await store.event(root.id, "progress", {"message": f"retrying from stage {index + 1}"})
-    return await submit_stage(store, resolve, root, index, root.payload.get("_carry", {}))
+    await store.event(root.id, "progress", {"message": message})
+
+
+async def retry_job(store: JobStore, resolve: Callable[[Job], Job], job_id: str) -> Job:
+    """Run a failed, cancelled or stuck job again. A pipeline continues from the stage that stopped, keeping what
+    earlier stages produced; a single job is resubmitted as a new job. Returns the job that now runs."""
+    job = await store.get(job_id)
+    if job is None:
+        raise ValueError(f"no job {job_id}")
+    if not job.payload.get("_stages"):
+        if job.status not in STOPPED:
+            raise ValueError(f"{job_id} is {job.status.value}; only a failed or cancelled job can be retried")
+        payload = {k: v for k, v in job.payload.items() if not k.startswith("_")}
+        again = resolve(Job(kind=job.kind, payload=payload, priority=job.priority, source=job.source,
+                            reply_to=job.reply_to))
+        await store.submit(again)
+        return again
+    index = await _stopped_stage(store, job)
+    await _reopen(store, job, f"retrying from stage {index + 1}")
+    return await submit_stage(store, resolve, job, index, job.payload.get("_carry", {}))
+
+
+async def skip_stage(store: JobStore, resolve: Callable[[Job], Job], root_id: str) -> Job:
+    """Continue a stopped pipeline after its failed stage (the owner chose to skip it). Returns the root."""
+    root = await store.get(root_id)
+    if root is None or not root.payload.get("_stages"):
+        raise ValueError(f"{root_id} is not a multi-step job, so there is nothing to skip")
+    index = await _stopped_stage(store, root)
+    carry = root.payload.get("_carry", {})
+    if index + 1 >= len(root.payload["_stages"]):
+        final = {k: v for k, v in carry.items() if not k.startswith("_")}
+        await store.finish(root, Status.DONE, result={**final, "skipped_stage": index + 1})
+        return root
+    await _reopen(store, root, f"skipped stage {index + 1}")
+    await submit_stage(store, resolve, root, index + 1, carry)
+    return root
+
+
+# kept for callers of the first version
+retry_pipeline = retry_job
 
 
 class Worker:

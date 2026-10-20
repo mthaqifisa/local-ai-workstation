@@ -66,6 +66,15 @@ def system_stats(llm_internal: str) -> dict[str, Any]:
 def mount(app: Any, llm_internal: str, paths: LawPaths) -> None:
     router = APIRouter()
 
+    @router.get("/agents")
+    async def agents(request: Request, q: str = "") -> dict[str, Any]:
+        """Every live job (and those that stopped in the last day) with its health, stage, plan and last actions."""
+        from law import agent_status
+
+        model = agent_status.model_activity(llm_internal, paths.logs / "omlx.log")
+        jobs = await agent_status.statuses(request.app.state.store, model, q)
+        return {"model": model, "jobs": jobs}
+
     @router.get("/system")
     def system() -> dict[str, Any]:
         return system_stats(llm_internal)

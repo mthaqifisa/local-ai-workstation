@@ -19,6 +19,7 @@ need no other channel than Valkey.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from collections.abc import AsyncIterator
@@ -34,7 +35,7 @@ from sse_starlette.sse import EventSourceResponse
 from law import registry
 from law.handlers.base import Runtime
 from law.paths import LawPaths
-from law.queue.jobs import Job, Priority
+from law.queue.jobs import Job, Priority, Status
 from law.queue.store import JobStore
 from law.queue.worker import Resolver
 
@@ -185,13 +186,45 @@ def create_app(
         return CancelResponse(id=job.id, status=job.status.value, cancel_requested=job.cancel_requested)
 
     @app.post("/jobs/{job_id}/retry", response_model=Job)
-    async def retry_job(job_id: str, store: StoreDep, resolve: ResolveDep) -> Job:
-        """Run a failed or stuck pipeline again from its failed stage; earlier stages' results are kept."""
-        from law.queue.worker import retry_pipeline
+    async def retry(job_id: str, store: StoreDep, resolve: ResolveDep) -> Job:
+        """Run a failed, cancelled or stuck job again: a pipeline from its stopped stage (earlier results kept),
+        a single job as a new job. Returns the job that now runs."""
+        from law.queue.worker import retry_job
 
         await _require(store, job_id)
         try:
-            return await retry_pipeline(store, resolve, job_id)
+            return await retry_job(store, resolve, job_id)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.post("/jobs/{job_id}/skip", response_model=Job)
+    async def skip(job_id: str, store: StoreDep, resolve: ResolveDep) -> Job:
+        """Continue a stopped pipeline after its failed stage."""
+        from law.queue.worker import skip_stage
+
+        await _require(store, job_id)
+        try:
+            return await skip_stage(store, resolve, job_id)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.post("/jobs/{job_id}/restart", response_model=Job)
+    async def restart(job_id: str, store: StoreDep, resolve: ResolveDep) -> Job:
+        """A stuck pipeline: stop the running stage, then run it again (its agent continues from .law/)."""
+        from law.queue.worker import retry_job
+
+        await _require(store, job_id)
+        children = await store.children(job_id)
+        live = [c for c in children if c.status in {Status.QUEUED, Status.RUNNING}]
+        for child in live:
+            await store.request_cancel(child.id)
+        for _ in range(100):  # the worker stops the agent within seconds
+            states = [(await store.require(c.id)).status for c in live]
+            if all(st.terminal for st in states):
+                break
+            await asyncio.sleep(0.2)
+        try:
+            return await retry_job(store, resolve, job_id)
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
 

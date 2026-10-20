@@ -70,7 +70,8 @@ Rules:
 - Every claim is sourced or labelled as an assumption or estimate; numbers agree across sections.
 - No placeholders, no TODOs, no lorem ipsum. Write the whole document.
 - First list the sections as a checklist in .law/PLAN.md under a heading "## Proposal v<version> sections".
-  Create proposal.md with the YAML header and section 1, then add one section per edit (at most about 1,500 words per write), ticking each in PLAN.md as you go."""
+  Create proposal.md with the YAML header and section 1, then add one section per edit (at most about 1,500
+  words per write), ticking each in PLAN.md as you go."""
 
 REVISE_SPEC = """This is version {version} of the proposal. The owner's feedback on the previous version:
 {feedback}
