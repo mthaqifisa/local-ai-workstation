@@ -5,6 +5,7 @@
 *.key
 *secret*
 !**/secret_patterns.toml
+!src/law/secrets.py
 # Python / tooling
 __pycache__/
 *.py[cod]
