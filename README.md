@@ -176,6 +176,8 @@ law doctor              # health check + the addresses to use from your other de
 ```
 
 The first run downloads about 200 GB of models. Later runs change only what differs from `settings/`.
+The repo can live anywhere under any folder name. If you move or rename it after installing, run `./install.sh`
+once from the new location: it points the `law` command, the services and your shell profile at the new place.
 
 ## Set up Telegram
 
