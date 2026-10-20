@@ -142,8 +142,8 @@ Storage at start: 685Gi used / 208Gi free; ~/LAW 320G.
 
 ### E2E plan (project lifecycle, functional run: thinking low, proposal brief) — 2026-10-20 evening
 Happy path and unhappy paths, all from Telegram, monitored every 5 min:
-- [ ] Incomplete template -> Tony names the missing fields
-- [ ] /code init -> template -> filled template -> project folder, git, .law/
+- [x] Incomplete template -> Tony names the missing fields (21:54)
+- [x] /code init -> template -> filled template -> project folder, git, .law/ (21:55, root 86d87bf7fed9, low/brief)
 - [ ] Proposal v1 (brief) emailed + PDF in Telegram + Go / No go buttons
 - [ ] Wrong-time decision (e.g. /allgood while proposing) -> clear refusal
 - [ ] No go with a pivot (changed requirement) -> proposal v2 reflects it, emailed + posted
