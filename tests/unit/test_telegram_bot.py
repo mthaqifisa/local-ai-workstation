@@ -161,3 +161,11 @@ def test_queued_ahead_counts_older_unfinished_top_level_jobs():
     ]
     assert queued_ahead(jobs, "new") == 2
     assert queued_ahead(jobs, "missing") == 0
+
+
+def test_cancelled_is_not_reported_as_failed():
+    from law.telegram_bot import notice_finished, outcome_line
+
+    assert outcome_line({"status": "cancelled", "error": "cancelled by user"}) == "🚫 cancelled"
+    assert outcome_line({"status": "failed", "error": "boom"}) == "❌ failed: boom"
+    assert notice_finished({"id": "j1", "kind": "task", "status": "cancelled"}).startswith("🚫 **Cancelled**")

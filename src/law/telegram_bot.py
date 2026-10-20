@@ -236,7 +236,7 @@ class LawBot:
         chat = reply["chat_id"]
         result = final.get("result") or {}
         if final.get("status") != "done":
-            await self._edit(reply, f"failed: {final.get('error', 'unknown')}")
+            await self._edit(reply, outcome_line(final))
             return
         if reply.get("then") == "ask" and result.get("text"):
             await self._edit(reply, f"heard: {result['text'][:300]}")
@@ -465,10 +465,19 @@ def notice_started(job: dict[str, Any]) -> str:
     return head + ("\n\n" + (what[:6000] + ("…" if len(what) > 6000 else "")) if what else "")
 
 
+def outcome_line(job: dict[str, Any]) -> str:
+    """The status line for a job that did not finish: cancelled is not a failure."""
+    if job.get("status") == "cancelled":
+        return "🚫 cancelled"
+    return f"❌ failed: {job.get('error') or 'unknown error'}"
+
+
 def notice_finished(job: dict[str, Any]) -> str:
     result = job.get("result") or {}
     if job["status"] != "done":
-        return f"❌ **{job['status'].capitalize()}** `{job['id']}` · {job['kind']}\n\n{job.get('error') or ''}"[:3500]
+        icon = "🚫" if job["status"] == "cancelled" else "❌"
+        head = f"{icon} **{job['status'].capitalize()}** `{job['id']}` · {job['kind']}"
+        return f"{head}\n\n{job.get('error') or ''}"[:3500]
     head = f"✅ **Done** `{job['id']}` · {job['kind']}"
     review = result.get("review") or result.get("verdict")
     if isinstance(review, dict) and review.get("score") is not None:
