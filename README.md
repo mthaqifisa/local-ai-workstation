@@ -147,8 +147,13 @@ Exact repos and pinned revisions: `settings/registry.yaml`. Decisions and trade-
 - **No mental arithmetic**: roles that handle numbers must use the `run_python` calculator; the judge recomputes figures.
 - **Bounded reasoning**: each role has a reasoning effort, so the model can't think itself out of an answer.
 - **Agent work is reviewed**: code and documents get a read-and-run review by the judge and a fix pass.
-- **Stuck agents are caught**: a writing agent that changes no file for 25 minutes is stopped and resumed in the same
-  session with a "build and fix the first error" nudge (up to 3 times, then the job fails).
+- **Stuck agents are caught**: a writing agent that saves nothing for 25 minutes is stopped and resumed in the same
+  session with a nudge (coders: build and fix the first error; writers: save the next section), up to 3 times. A
+  long single generation gets up to 45 minutes; an agent busy reading without saving does not.
+- **Nothing is lost when a step dies**: agents keep a to-do list and progress in `.law/`, write big files section by
+  section, and LAW records a step in `.law/PROGRESS.md` itself when the agent did not. Instructions are looked up
+  when each step runs, so retries and long projects always use the current rules.
+- **Safe updates**: `law install` never restarts the worker mid-step; it restarts between steps.
 - **House standard** in every role: answer first, sourced claims, no invented facts, units or currencies.
 - **Measured**: `law eval` runs a verified golden set through the real product; `scripts/test_report.py` writes `docs/TEST-REPORT.md`.
 
@@ -208,7 +213,7 @@ law install
 | Any text | Answered with the full quality loop (draft → independent review → revise) |
 | Voice note | Transcribed, then answered |
 | Photo (optionally with a caption) | Described or answered about, using the vision model |
-| `/code init` | Start a **full project**: Tony sends a template (name, repo, repo URL, stack, thinking level, summary, details). Send it back filled in, and Tony researches and emails a proposal, asks **Go / No go**, sets up the tools the stack needs, builds in milestones, tests and fixes until an independent review passes, then asks you to **verify**. **Needs changes** brings an enhanced proposal (v2, v3, …) and the loop repeats until **All good**. Decide with the buttons or `/go`, `/nogo`, `/changes`, `/allgood`; `/projects` shows where each one is |
+| `/code init` | Start a **full project**: Tony sends a template (name, repo, repo URL, stack, thinking level, proposal depth `brief`/`full`, summary, details). Send it back filled in, and Tony researches and emails a proposal (PDF, also posted in Telegram), asks **Go / No go**, sets up the tools the stack needs, builds in milestones (a ticket board in `.law/PLAN.md`), tests and fixes until an independent review passes, writes a **system handover document** with real screenshots (emailed), then asks you to **verify**. **Needs changes** brings an enhanced proposal (v2, v3, …) and the loop repeats until **All good**. Decide with the buttons or `/go`, `/nogo`, `/changes`, `/allgood`; `/projects` shows where each one is |
 | `/code <task>` | The coding agent builds a new project in its own folder under `~/SourceCode/` (named after the project you describe) |
 | `/code <folder> <task>` | Works in that project, e.g. `/code ~/SourceCode/my-app add a login page`; a new folder name (e.g. `~/SourceCode/new-app`) is created |
 | `/proposal [<folder>] <request>` | A consultant-grade proposal: web research with sources, then a full document (executive summary, market, solution, technical design, architecture, user and system flows, wireframes, delivery plan, cost, risks), independently reviewed, rendered to PDF and **emailed to you**. Give a project folder to present it as the working prototype |
