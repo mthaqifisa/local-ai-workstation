@@ -586,11 +586,21 @@ class OpenCodeConfig:
 
     def files(self) -> dict[Path, str]:
         """The shared config plus one per role. In a role's file the housekeeping `small_model` is the role's own
-        model: OpenCode calls it for titles/summaries, and a second large model would not fit beside the first."""
+        model (OpenCode calls it for titles/summaries, and a second large model would not fit beside the first),
+        and the model carries the role's reasoning effort."""
+        from law import roles as roles_mod
+
+        roles = roles_mod.load(self.c.paths.settings / "roles.yaml")
         out = {self.file: self.render()}
         doc = json.loads(self.render())
         for name, agent in doc["agent"].items():
             role_doc = {**doc, "model": agent["model"], "small_model": agent["model"]}
+            # The role's thinking budget. Without it the agent's model thinks unbounded: measured 20-45 minutes
+            # between tool calls with Qwen3.8 (2026-10-20). OpenCode sends it as `reasoning_effort`.
+            model_id = agent["model"].removeprefix("law/")
+            provider = json.loads(json.dumps(doc["provider"]))
+            provider["law"]["models"][model_id]["options"] = {"reasoningEffort": roles.get(name).reasoning}
+            role_doc["provider"] = provider
             out[self.c.paths.config / f"opencode-{name}.json"] = json.dumps(role_doc, indent=2) + "\n"
         return out
 

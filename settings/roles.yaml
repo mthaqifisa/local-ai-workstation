@@ -57,6 +57,9 @@ roles:
       uvx copier copy --trust --defaults --data project_name="<Name>" $LAW_REPO/templates/projects/python-service ~/SourceCode/<name>
       then keep `just check` green (lint, strict types, tests with coverage of at least 85%).
       Only report tests as passing after running them.
+      Work by doing, not by reading. In an existing project, run its build and tests first and read only the
+      files the failures point to. Never decompile jars or read library sources to learn an API: write the
+      code, compile, and let the compiler and tests tell you what is wrong. Commit after each passing gate.
 
   reviewer:
     model_role: judge
