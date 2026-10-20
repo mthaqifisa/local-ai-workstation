@@ -519,3 +519,25 @@ def test_fetch_progress_names_the_site_not_a_clickable_url():
     assert describe_opencode_line(fetch("https://bridgemessenger.app/")) == "🌐 reading bridgemessenger.app"
     assert describe_opencode_line(fetch("http://127.0.0.1:8888/search?q=x&format=json")) == "🌐 reading web search"
     assert is_file_change(fetch("https://example.com/a"))  # fetching still counts as research progress
+
+
+async def test_a_stalled_writer_is_told_to_save_sections_not_to_build(setup, sandbox, monkeypatch):
+    from law.handlers import tasks
+    from law.handlers.base import Stalled
+
+    rt, store, w = setup
+    cmds: list[list[str]] = []
+
+    async def fake_run_cmd(ctx, cmd, **kw):  # type: ignore[no-untyped-def]
+        cmds.append(cmd)
+        if len(cmds) == 1:
+            raise Stalled(_tool_event("read", "/a", "ses_w"), 1500)
+        return _opencode_json("saved")
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    await store.submit(resolver(rt)(Job(kind="task", payload={"prompt": "write a memo", "role": "writer",
+                                                              "dir": str(sandbox), "review": False,
+                                                              "translate": False})))
+    await w.drain()
+    assert "one section" in cmds[1][-1] or "section by section" in cmds[1][-1]
+    assert "build or tests" not in cmds[1][-1]
