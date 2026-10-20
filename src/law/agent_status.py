@@ -24,6 +24,7 @@ from law.queue.jobs import Job, Status
 from law.queue.store import JobStore
 
 ACTIVE_S = 300
+STOPPED = {"failed", "cancelled", "done"}
 STALL_S = 1200
 COMPLETION = re.compile(r"Chat completion: model=(\S+), (\d+) tokens in ([\d.]+)s \(([\d.]+) tok/s\), prompt: (\d+)")
 TICK = re.compile(r"^\s*(?:[-*]|\d+\.)\s*\[[xX]\]", re.MULTILINE)  # "- [x]", "* [x]" or "1. [x]"
@@ -54,6 +55,14 @@ def model_activity(llm_internal: str, log: Path) -> dict[str, Any]:
     if pressure:
         out["memory"] = {"level": pressure[-1][0], "gb": float(pressure[-1][1])}
     return out
+
+
+def last_line(error: str | None) -> str | None:
+    """The informative end of an error (tracebacks put the cause last)."""
+    if not error:
+        return None
+    parts = [p.strip() for p in re.split(r"\n|\^{3,}", error) if p.strip()]
+    return (parts[-1] if parts else error)[:240]
 
 
 def plan_summary(project: Path) -> dict[str, Any] | None:
@@ -131,14 +140,14 @@ async def job_status(store: JobStore, job: Job, model: dict[str, Any], now: floa
 
     return {
         "id": job.id, "kind": job.kind, "title": _title(job), "source": job.source, "status": job.status.value,
-        "health": state, "created": job.created, "error": job.error,
+        "health": state, "created": job.created, "error": job.error, "error_line": last_line(job.error),
         "stage": None if stage is None else {
             "index": stage.stage + 1, "total": total, "kind": stage.kind, "role": stage.payload.get("role"),
             "status": stage.status.value, "started": stage.started, "id": stage.id},
         "last_action": recent[-1] if recent else None, "last_write": last_write, "recent": recent,
         "last_10min": {"reads": count("📖"), "commands": count("▶"), "edits": count("✏️"), "web": count("🌐")},
         "project": str(project) if project else None,
-        "plan": plan_summary(project) if project and project.is_dir() else None,
+        "plan": plan_summary(project) if project and project.is_dir() and state not in STOPPED else None,
         "actions": actions_for(state, bool(total)),
     }
 
@@ -175,5 +184,7 @@ async def statuses(store: JobStore, model: dict[str, Any], query: str = "", rece
     stopped = [j for j in jobs if (j.status in {Status.FAILED, Status.DEAD} and age(j) < recent_s)
                or (j.status is Status.CANCELLED and age(j) < 3600)]
     finished = [j for j in jobs if j.status is Status.DONE and now - (j.finished or j.created) < 3600] if query else []
-    picked = (live + stopped + finished)[:limit]
-    return [await job_status(store, j, model, now) for j in picked]
+    picked = [await job_status(store, j, model, now) for j in (live + stopped + finished)[:limit]]
+    # a job that stopped is superseded once a newer one works in the same folder (e.g. a project restarted)
+    busy = {s["project"] for s in picked if s["health"] not in STOPPED and s["project"]}
+    return [s for s in picked if s["health"] not in STOPPED or not s["project"] or s["project"] not in busy]
