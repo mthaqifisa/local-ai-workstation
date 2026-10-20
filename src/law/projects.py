@@ -30,21 +30,24 @@ EFFORTS = {"low": "low", "medium": "medium", "high": "xhigh"}
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,39}$")
 URL_RE = re.compile(r"^(https://[^\s@/:]+(?::\d+)?/[^\s@]+|git@[^\s:]+:[^\s]+)$")
 
-TEMPLATE_INTRO = ("Copy the next message, fill it in and send it back. Required: **name**, **summary**, **details**. "
-                  "Optional: **repo** (folder under ~/SourceCode; from the name if empty), **repo_url** (an existing "
-                  "git repo to clone, or the remote for a new one), **stack** (empty: LAW recommends one), "
-                  "**thinking** (low, medium or high; default medium: how hard the coder thinks per step), "
-                  "**proposal** (brief: about 6 sections, quicker; full: the 15-section consultant document).")
-TEMPLATE = """/code new
-name:
-repo:
-repo_url:
-stack:
-thinking: medium
-proposal: brief
-summary:
-details:
-"""
+Mode = Literal["project", "code"]
+_FIELDS_HELP = ("Required: **name**, **summary**, **details**. Optional: **repo** (folder under ~/SourceCode; from "
+                "the name if empty), **repo_url** (an existing git repo to clone, or the remote for a new one), "
+                "**stack** (empty: LAW recommends one), **thinking** (low, medium or high; default medium: how hard "
+                "the coder thinks per step)")
+INTROS: dict[str, str] = {
+    "project": ("**Full project** (research, proposal PDF, your go, build, tests, handover document, your "
+                "verification). Copy the next message, fill it in and send it back. " + _FIELDS_HELP
+                + ", **proposal** (brief: about 6 sections; full: the 15-section consultant document)."),
+    "code": ("**Code only** (a short plan here in the chat, your go, then build and test; no documents). Copy the "
+             "next message, fill it in and send it back. " + _FIELDS_HELP + "."),
+}
+TEMPLATES: dict[str, str] = {
+    "project": "/project new\nname:\nrepo:\nrepo_url:\nstack:\nthinking: medium\nproposal: brief\nsummary:\n"
+               "details:\n",
+    "code": "/code new\nname:\nrepo:\nrepo_url:\nstack:\nthinking: medium\nsummary:\ndetails:\n",
+}
+TEMPLATE_INTRO, TEMPLATE = INTROS["project"], TEMPLATES["project"]  # the full project is the default
 FIELDS = ("name", "repo", "repo_url", "stack", "thinking", "proposal", "summary", "details")
 DEPTHS = ("brief", "full")
 
@@ -66,6 +69,7 @@ class Project(BaseModel):
     repo_url: str = ""
     stack: str = ""
     thinking: str = "medium"
+    mode: Mode = "project"  # project: proposal, handover and email; code: a short plan in the chat, no documents
     proposal: str = "brief"  # proposal depth: brief or full
     summary: str
     details: str
@@ -94,7 +98,7 @@ class Project(BaseModel):
 def parse_template(text: str) -> dict[str, str]:
     """Read `key: value` lines; `details:` takes everything after it. Raises TemplateError with what is wrong."""
     lines = text.strip().splitlines()
-    if lines and lines[0].strip().lower().startswith("/code"):
+    if lines and lines[0].strip().lower().startswith(("/code", "/project")):
         lines = lines[1:]
     fields: dict[str, str] = {}
     for i, line in enumerate(lines):
@@ -175,13 +179,13 @@ class Projects:
         self.index_file.parent.mkdir(parents=True, exist_ok=True)
         self.index_file.write_text(json.dumps(index, indent=2, sort_keys=True) + "\n")
 
-    def create(self, fields: dict[str, str], chat: int | None) -> Project:
+    def create(self, fields: dict[str, str], chat: int | None, mode: Mode = "project") -> Project:
         folder = self.paths.projects / fields["repo"]
         if fields["repo"] in self._index():
             raise TemplateError(f"a project named {fields['repo']} already exists; pick another repo name")
         project = Project(id=fields["repo"], name=fields["name"], dir=str(folder),
                           repo_url=fields.get("repo_url", ""), stack=fields.get("stack", ""),
-                          thinking=fields["thinking"], proposal=fields.get("proposal", "brief"),
+                          thinking=fields["thinking"], mode=mode, proposal=fields.get("proposal", "brief"),
                           summary=fields["summary"], details=fields["details"], chat=chat)
         project.log("created")
         return project

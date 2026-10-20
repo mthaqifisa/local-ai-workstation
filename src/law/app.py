@@ -16,7 +16,7 @@ NO_MODEL = {"search", "song", "film", "film_join", "proposal", "proposal_check",
 # Job kinds whose model comes from the role in the payload (default role in brackets).
 ROLE_KINDS = {"ask": "assistant", "draft": "assistant", "revise": "assistant", "judge": "reviewer",
               "task": "coder", "task_translate": "translator", "task_work": "coder", "task_review": "reviewer",
-              "task_fix": "coder",
+              "task_fix": "coder", "code_plan": "translator",
               "song_plan": "writer", "film_plan": "writer"}
 
 
