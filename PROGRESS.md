@@ -156,3 +156,4 @@ Happy path and unhappy paths, all from Telegram, monitored every 5 min:
 - [ ] Verify gate -> Needs changes (new requirement) -> enhanced proposal v(n+1) -> Go -> incremental build
 - [ ] All good -> done; /projects shows it
 - [ ] Independent verification by Claude (build, tests, run, screenshots) + email to owner
+- 2026-10-20 21:23 oMLX reinstalled --with-custom-kernel (all 5 kernels load). Verified: identical temperature-0 answers; fresh 17K-token prompt 41.4 s vs 39.7 s before (no measurable gain for Qwen3.8); repeated long prompt 2.4 s from the SSD prompt cache. Film rerun started (LoRA fix).
