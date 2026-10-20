@@ -34,6 +34,8 @@ they were derived. Every fact carries its source URL and access date; mark anyth
 PROPOSAL_SPEC = """Write a consultant-grade proposal, to the standard of a top-tier strategy firm proposing a product
 development to a client, in {out}/proposal.md (pandoc Markdown). Base facts on {out}/research.md; if the folder
 holds a working prototype, present it as the prototype and describe only what its code really does.
+Do not browse the web in this stage: the research is done and research.md is your source. A fact it lacks is
+written as an assumption or estimate, never looked up.
 
 Start the file with this YAML header (fill in the values):
 ---
