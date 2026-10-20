@@ -250,7 +250,12 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         resumed = memory.session_for(ctx.job.id) if memory else None
         if resumed:
             await ctx.progress(f"{role} agent resuming its interrupted session in {workdir}")
-            cmd = [*base, "--session", resumed, memory.resume_prompt() if memory else ""]
+            section = ctx.job.payload.get("section")
+            again = (f"Your previous session was interrupted. Finish section \"{section['heading']}\" in "
+                     f"{section['file']} (append it if it is missing; do not repeat it if it is there), then stop. "
+                     f"LAW tracks the sections: do not edit {FOLDER}/PLAN.md or {FOLDER}/PROGRESS.md.") if section \
+                else (memory.resume_prompt() if memory else "")
+            cmd = [*base, "--session", resumed, again]
         else:
             await ctx.progress(f"{role} agent working in {workdir}")
             cmd = [*base, prompt]
