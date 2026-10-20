@@ -90,3 +90,24 @@ def test_a_read_loop_is_not_given_grace() -> None:
         return loop.time() - start
 
     assert asyncio.run(asyncio.wait_for(go(), 10)) < 0.7  # active but not saving: nudged on time
+
+
+def test_model_prose_does_not_count_as_activity_for_the_grace() -> None:
+    from law.handlers.base import Stalled
+
+    # the agent talks (prose lines the describer ignores) but takes no action and saves nothing
+    script = "import time\nfor i in range(60):\n    print('thinking out loud', i, flush=True); time.sleep(0.05)"
+
+    async def generating() -> bool:
+        return True
+
+    async def go() -> float:
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        with pytest.raises(Stalled):
+            await run_cmd(_ctx(), [sys.executable, "-c", script], stall_s=0.4, is_work=lambda ln: False,
+                          describe=lambda ln: None, alive=generating)
+        return loop.time() - start
+
+    took = asyncio.run(asyncio.wait_for(go(), 10))
+    assert took > 0.6  # prose is part of a long generation: it got the grace, not the plain stall time
