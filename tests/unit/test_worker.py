@@ -395,7 +395,12 @@ async def test_pending_restart_takes_no_new_step_even_when_the_next_one_could_st
     async def root(ctx):  # type: ignore[no-untyped-def]
         return Stages([{"kind": "first"}, {"kind": "second"}])
 
-    w = Worker(store, {"root": root, "first": first, "second": second}, Capacity(budget_gb=48), lambda j: j,
+    def on_model(job: Job) -> Job:  # the steps are agent steps on a model, as in a real pipeline
+        if job.kind in {"first", "second"}:
+            job.lane, job.resource, job.mem_gb = "heavy", "llm:m", 30
+        return job
+
+    w = Worker(store, {"root": root, "first": first, "second": second}, Capacity(budget_gb=48), on_model,
                restart_flag=flag, tick_s=0.02)
     top = await store.submit(Job(kind="root", payload={}, lane="none"))
     runner = asyncio.create_task(w.run())
@@ -409,3 +414,27 @@ async def test_pending_restart_takes_no_new_step_even_when_the_next_one_could_st
     assert ran == ["first"] and not flag.exists()
     second_stage = next(c for c in await store.children(top.id) if c.stage == 1)
     assert second_stage.status == Status.QUEUED  # waiting for the restarted worker
+
+
+async def test_a_pending_restart_still_runs_quick_jobs_but_no_model_steps(tmp_path):
+    from law.queue.worker import Worker
+
+    store = JobStore(fakeredis.FakeAsyncRedis(decode_responses=True))
+    flag = tmp_path / "worker-restart.pending"
+    flag.write_text("new")
+    ran: list[str] = []
+
+    async def mail(ctx):  # type: ignore[no-untyped-def]
+        ran.append("mail")
+        return Done({})
+
+    async def agent(ctx):  # type: ignore[no-untyped-def]
+        ran.append("agent")
+        return Done({})
+
+    w = Worker(store, {"mail": mail, "agent": agent}, Capacity(budget_gb=48), lambda j: j, restart_flag=flag)
+    await store.submit(Job(kind="agent", payload={}, lane="heavy", resource="llm:m", mem_gb=30))
+    await store.submit(Job(kind="mail", payload={}, lane="none"))
+    await w.schedule_once(quick_only=True)
+    await asyncio.gather(*w.tasks.values())
+    assert ran == ["mail"]  # the email went out; the agent step waits for the restarted worker
