@@ -2,6 +2,6 @@
   "stage": "C-user-requests",
   "task": "C4 film render test, C7 lan-chat verification, C8 reclaim + email",
   "status": "in_progress",
-  "next_step": "E2E of the project lifecycle (lan-chat, root 8f22ebbaef49): wait for proposal v1 (email + Telegram), press No go with a minor tweak, confirm v2 reflects it and is emailed + posted, then press Go; monitor development every 5 min (env stage, milestones, review rounds) to the verify gate; then verify the app independently and email the result with screenshots. Then film timing, law reclaim, gitleaks, final handover email (draft ~/LAW/state/handover-draft.md).",
-  "timestamp": "2026-10-20T18:33:00"
+  "next_step": "Finish pre-E2E: oMLX rebuilt with kernels (compare kbench before/after: same answers, prompt time), rerun the 10 s film test (LoRA fix), law reclaim. Then run the E2E plan in PROGRESS.md from Telegram (/code init ... thinking low, proposal brief), monitoring every 5 min, fixing issues between steps.",
+  "timestamp": "2026-10-20T21:35:00"
 }
