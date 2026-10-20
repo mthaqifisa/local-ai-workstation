@@ -157,3 +157,5 @@ Happy path and unhappy paths, all from Telegram, monitored every 5 min:
 - [ ] All good -> done; /projects shows it
 - [ ] Independent verification by Claude (build, tests, run, screenshots) + email to owner
 - 2026-10-20 21:23 oMLX reinstalled --with-custom-kernel (all 5 kernels load). Verified: identical temperature-0 answers; fresh 17K-token prompt 41.4 s vs 39.7 s before (no measurable gain for Qwen3.8); repeated long prompt 2.4 s from the SSD prompt cache. Film rerun started (LoRA fix).
+- 2026-10-20 21:33 auto-resume check: film rerun in progress; then reclaim and E2E. Disk 218Gi free; ~/LAW 307G.
+- 2026-10-20 21:58 film test PASSED after the LoRA fix: 10.0 s, 2 shots + score, h264 832x480 + aac, 1,823 s end to end (~14 min per 5 s shot). law reclaim: nothing stale (~1 GB Homebrew/Docker); 218Gi free, ~/LAW 307G. Pre-E2E list complete; starting the E2E plan.
