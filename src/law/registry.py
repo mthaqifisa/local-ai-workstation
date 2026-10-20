@@ -85,9 +85,17 @@ class FastVideo(_Strict):
     loras: list[str]  # "repo@revision:path/in/repo.safetensors", pre-downloaded by `law install`
     lora_roles: list[str]
 
-    def lora_args(self) -> list[str]:
-        """The tool's `repo:path` form (it reads the files from the shared HF cache)."""
-        return [f"{lora.split('@')[0]}:{lora.split(':', 1)[1]}" for lora in self.loras]
+    def lora_args(self, hf_home: Path) -> list[str]:
+        """Absolute paths of the pinned LoRA files in the shared HF cache (pre-downloaded by `law install`).
+        mlx-gen does not resolve `repo:path` from the cache by itself ("will not download LoRA files during
+        generation"), so it gets the files. A file that is missing falls back to the `repo:path` form."""
+        out = []
+        for lora in self.loras:
+            ref, path = lora.split(":", 1)
+            repo, _, rev = ref.partition("@")
+            local = hf_home / "hub" / f"models--{repo.replace('/', '--')}" / "snapshots" / rev / path
+            out.append(str(local) if rev and local.is_file() else f"{repo}:{path}")
+        return out
 
 
 class Media(_Strict):
