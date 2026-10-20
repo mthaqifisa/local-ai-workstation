@@ -119,8 +119,9 @@ NUDGE = ("You have not changed any file for {minutes} minutes. Stop reading and 
 
 
 def is_file_change(line: str) -> bool:
+    """Progress for the stall guard: a file written, or a page fetched (research agents read before they write)."""
     summary = describe_opencode_line(line)
-    return summary is not None and summary.startswith("✏️")
+    return summary is not None and summary.startswith(("✏️", "🌐"))
 
 
 def session_id(output: str) -> str | None:
@@ -222,6 +223,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         elif writes:
             parts.append(NEW_PROJECT_MEMORY)
         parts.append(str(carry.get("brief") or p["prompt"]))
+        if p.get("spec"):  # fixed instructions from the pipeline (e.g. /proposal's structure), kept verbatim
+            parts.append(str(p["spec"]))
         return "\n\n".join(parts)
 
     def _memory(ctx: Context, p: dict[str, Any]) -> ProjectMemory | None:
@@ -305,8 +308,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         carry = ctx.job.payload["_carry"]
         report = carry.get("answer", "")
         brief = f"\n\nThe author worked from this brief:\n{carry['brief'][:6000]}" if carry.get("brief") else ""
-        prompt = (f"{CODE_RUBRIC}\n\nThe REQUEST was:\n{p['prompt']}{brief}\n\nThe author reported:\n"
-                  f"{report[:4000]}\n\n"
+        rubric = p.get("rubric") or CODE_RUBRIC
+        prompt = (f"{rubric}\n\nThe REQUEST was:\n{p['prompt']}{brief}\n\nThe author reported:\n{report[:4000]}\n\n"
                   "Inspect the files the author created or changed (the project may be in a new folder under "
                   "~/SourceCode named after it). Verify claims against the code; do not trust the report.")
         verdict = parse_verdict(await _agent(ctx, "reviewer", prompt, _workdir(p), writes=False))
@@ -322,6 +325,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         prompt = (f"An independent reviewer scored your work {verdict['score']}/5 for this request:\n{p['prompt']}\n\n"
                   f"Fix every issue below, then rerun the project's checks until they pass and report the output:\n"
                   f"{issues}")
+        if p.get("spec"):
+            prompt += f"\n\nThe work must still meet these instructions:\n{p['spec']}"
         memory = _memory(ctx, p)
         if memory is not None:
             prompt = f"{memory.instructions()}\n\n{prompt}"

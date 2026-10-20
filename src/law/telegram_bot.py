@@ -68,6 +68,11 @@ class LawBot:
                 return
             await self._job(message, "task", {"role": parts[0], **split_dir(parts[1])})
 
+        @dp.message(Command("proposal"))
+        async def proposal(message: Message, command: CommandObject) -> None:
+            if self._ok(message) and command.args:
+                await self._job(message, "proposal", split_dir(command.args), file_field="pdf")
+
         @dp.message(Command("image"))
         async def image(message: Message, command: CommandObject) -> None:
             if self._ok(message) and command.args:
@@ -258,6 +263,8 @@ class LawBot:
                 await self.bot.send_photo(chat, path)
             elif field == "video":
                 await self.bot.send_video(chat, path)
+            elif field == "pdf":
+                await self.bot.send_document(chat, path, caption=f"📧 also emailed to {result.get('emailed', 'you')}")
             elif field == "voice":
                 await self.bot.send_audio(chat, path, title="Tony")
             else:
@@ -356,6 +363,8 @@ class LawBot:
                 await self.bot.send_photo(chat, FSInputFile(path))
             elif suffix in {".mp4", ".mov"}:
                 await self.bot.send_video(chat, FSInputFile(path))
+            elif suffix == ".pdf":
+                await self.bot.send_document(chat, FSInputFile(path))
             else:
                 await self.bot.send_audio(chat, FSInputFile(path))
 
@@ -381,6 +390,9 @@ COMMANDS: list[tuple[str, str, str]] = [
     ("search", "Web search with sources", "/search latest MAS guidelines on AI risk management"),
     ("code", "Coding agent builds it in ~/SourceCode (start with a folder to work in it)",
      "/code ~/SourceCode/my-app Add a login page"),
+    ("proposal", "Consultant-grade proposal: research, full document (design, architecture, flows, "
+     "wireframes, plan, cost), reviewed, PDF emailed to you; start with a project folder to use it as the prototype",
+     "/proposal ~/SourceCode/lan-chat Propose a LAN chat product for offices"),
     ("agent", "Run a specific role", "/agent architect Design a payments API for a small bank"),
     ("roles", "List the roles for /agent", "/roles"),
     ("image", "Generate an image", "/image A minimalist poster of a lighthouse at dawn"),

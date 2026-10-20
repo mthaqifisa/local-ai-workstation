@@ -1,0 +1,159 @@
+"""/proposal pipeline: stage plan, diagram extraction, rendering and mailing (external tools faked)."""
+
+from __future__ import annotations
+
+import asyncio
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+import pytest
+
+from law import mailer, secrets
+from law.handlers import proposal
+from law.paths import LawPaths
+from law.queue.worker import Done, Fatal, Stages
+
+REPO = Path(__file__).resolve().parents[2]
+DOC = """---
+title: LAN Chat
+---
+
+# Executive summary
+
+Build it. **Recommendation:** proceed.
+
+# Architecture
+
+```{.mermaid caption="Context diagram"}
+flowchart LR
+  A --> B
+```
+
+```mermaid
+sequenceDiagram
+  A->>B: hi
+```
+
+# Risks
+
+None.
+"""
+
+
+def _rt(tmp_path: Path, email: str | None = "me@example.com") -> Any:
+    paths = LawPaths(repo=REPO, home=tmp_path / "LAW", user_home=tmp_path)
+    if email:
+        secrets.write(paths.env_file, {"LAW_REPORT_EMAIL": email})
+    return SimpleNamespace(paths=paths, reg=SimpleNamespace(ports=SimpleNamespace(searxng=8888)))
+
+
+def _ctx(payload: dict[str, Any]) -> Any:
+    async def progress(_: str) -> None:
+        return None
+
+    return SimpleNamespace(job=SimpleNamespace(payload=payload, id="j1", parent="root"), progress=progress,
+                           cancel_event=asyncio.Event())
+
+
+def test_diagrams_become_images_with_captions():
+    text, diagrams = proposal.extract_diagrams(DOC)
+    assert [c for c, _ in diagrams] == ["Context diagram", "Diagram 2"]
+    assert "flowchart LR" in diagrams[0][1] and "```" not in text
+    assert "![Context diagram](assets/diagram-1.png){width=100%}" in text
+
+
+def test_executive_summary_is_the_first_section():
+    assert proposal.executive_summary(DOC) == "Build it. **Recommendation:** proceed."
+    assert proposal.slug("Propose a LAN chat product for offices!") == "propose-a-lan-chat-product-for-offices"
+
+
+def test_pipeline_for_a_prototype_project(tmp_path: Path):
+    rt = _rt(tmp_path)
+    project = tmp_path / "lan-chat"
+    project.mkdir()
+    out = asyncio.run(proposal.make_handlers(rt)["proposal"](_ctx({"prompt": "Propose it", "dir": str(project)})))
+    assert isinstance(out, Stages)
+    kinds = [(s["kind"], s["payload"].get("role")) for s in out.specs]
+    assert kinds == [("task_translate", "writer"), ("task_work", "researcher"), ("task_work", "writer"),
+                     ("task_review", "writer"), ("task_fix", "writer"), ("proposal_render", None),
+                     ("proposal_mail", None)]
+    research, write = out.specs[1]["payload"], out.specs[2]["payload"]
+    assert "http://127.0.0.1:8888/search" in research["spec"] and "docs/proposal/research.md" in research["spec"]
+    assert "Executive summary" in write["spec"] and "partner" in write["rubric"]
+    assert (project / "docs" / "proposal" / "assets").is_dir()
+
+
+def test_pipeline_without_a_project_writes_to_outputs(tmp_path: Path):
+    rt = _rt(tmp_path)
+    out = asyncio.run(proposal.make_handlers(rt)["proposal"](_ctx({"prompt": "A budgeting app for students"})))
+    workdir = Path(out.specs[0]["payload"]["dir"])
+    assert workdir.parent == rt.paths.outputs / "docs" and workdir.name.endswith("a-budgeting-app-for-students")
+
+
+def test_missing_report_email_fails_before_any_work(tmp_path: Path):
+    rt = _rt(tmp_path, email=None)
+    with pytest.raises(mailer.MailError, match="no report email"):
+        asyncio.run(proposal.make_handlers(rt)["proposal"](_ctx({"prompt": "x"})))
+
+
+def test_render_draws_diagrams_and_builds_the_pdf(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    rt = _rt(tmp_path)
+    docs = tmp_path / "p" / "docs" / "proposal"
+    (docs / "assets").mkdir(parents=True)
+    (docs / "proposal.md").write_text(DOC)
+    calls: list[list[str]] = []
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        calls.append(cmd)
+        if cmd[0] == "mmdc" and "diagram-2" in " ".join(cmd):
+            raise Fatal("parse error")  # one diagram cannot be drawn: kept as source, reported
+        target = Path(cmd[cmd.index("-o") + 1])
+        target.write_bytes(b"x" * (20_000 if target.suffix == ".pdf" else 10))  # noqa: ASYNC240
+        if cmd[0] == "pandoc":
+            calls.append(["rendered", Path(cmd[1]).read_text()])  # noqa: ASYNC240
+        return ""
+
+    monkeypatch.setattr(proposal, "run_cmd", fake_run_cmd)
+    payload = {"dir": str(tmp_path / "p"), "out": "docs/proposal", "prompt": "x"}
+    done = asyncio.run(proposal.make_handlers(rt)["proposal_render"](_ctx(payload)))
+    assert isinstance(done, Done) and done.result["pdf"] == str(docs / "proposal.pdf")
+    assert done.result["diagrams_failed"] == ["Diagram 2"]
+    rendered = next(c[1] for c in calls if c[0] == "rendered")
+    assert "assets/diagram-1.png" in rendered and "sequenceDiagram" in rendered
+    pandoc = next(c for c in calls if c[0] == "pandoc")
+    assert "--pdf-engine=typst" in pandoc and any(a.endswith("templates/docs/proposal.typst") for a in pandoc)
+    assert not (docs / ".proposal.render.md").exists()
+
+
+def test_mail_sends_the_pdf_with_the_summary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    rt = _rt(tmp_path)
+    docs = tmp_path / "p"
+    docs.mkdir()
+    (docs / "proposal.md").write_text(DOC)
+    pdf = docs / "proposal.pdf"
+    pdf.write_bytes(b"%PDF")
+    sent: dict[str, Any] = {}
+    monkeypatch.setattr(mailer, "send", lambda to, subject, body, files, work: sent.update(
+        to=to, subject=subject, body=body, files=files))
+    carry = {"pdf": str(pdf), "review": {"score": 5, "summary": "board-ready"}, "fixed": False}
+    done = asyncio.run(proposal.make_handlers(rt)["proposal_mail"](
+        _ctx({"dir": str(docs), "out": ".", "prompt": "Propose it", "_carry": carry})))
+    assert isinstance(done, Done) and done.result["emailed"] == "me@example.com"
+    assert sent["subject"] == "Proposal: LAN Chat" and sent["files"] == [pdf]
+    assert "Recommendation:** proceed" in sent["body"] and "5/5" in sent["body"]
+
+
+def test_mail_failure_says_where_the_pdf_is(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    rt = _rt(tmp_path)
+    (tmp_path / "proposal.md").write_text(DOC)
+    pdf = tmp_path / "proposal.pdf"
+    pdf.write_bytes(b"%PDF")
+
+    def boom(*a: Any) -> None:
+        raise mailer.MailError("Mail did not respond")
+
+    monkeypatch.setattr(mailer, "send", boom)
+    with pytest.raises(Fatal, match=f"the PDF is at {pdf}"):
+        asyncio.run(proposal.make_handlers(rt)["proposal_mail"](
+            _ctx({"dir": str(tmp_path), "out": ".", "prompt": "x", "_carry": {"pdf": str(pdf)}})))

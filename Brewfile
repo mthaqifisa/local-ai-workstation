@@ -17,6 +17,7 @@ brew "maven"
 brew "pandoc"
 brew "typst"
 brew "graphviz"
+brew "mermaid-cli"   # diagrams in documents (/proposal); its headless browser is the doc-tools step
 brew "tesseract"
 brew "cliclick"
 brew "peekaboo"
