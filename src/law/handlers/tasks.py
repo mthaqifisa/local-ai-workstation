@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -239,12 +240,18 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             await ctx.progress(f"{role} agent working in {workdir}")
             cmd = [*base, prompt]
 
+        started = time.time()
+        edits: list[str] = []
+
         def describe(line: str) -> str | None:
             if memory is not None and line.startswith('{"'):
                 sid = session_id(line)
                 if sid:
                     memory.save_session(ctx.job.id, role, sid)
-            return describe_opencode_line(line)
+            summary = describe_opencode_line(line)
+            if summary and summary.startswith("✏️"):
+                edits.append(summary.split(" ", 2)[-1])
+            return summary
 
         for attempt in range(STALL_NUDGES + 1):
             try:
@@ -253,7 +260,10 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                                     timeout_s=float(ctx.job.payload.get("timeout_s", 4 * 3600)),
                                     stall_s=stall_min * 60 if writes and stall_min > 0 else None,
                                     is_work=is_file_change)
-                return parse_opencode_events(out)
+                answer_text = parse_opencode_events(out)
+                if memory is not None and writes and memory.ensure_progress(started, role, answer_text, edits):
+                    await ctx.progress("📝 recorded this step in .law/PROGRESS.md (the agent had not)")
+                return answer_text
             except Stalled as exc:
                 sid = session_id(exc.output)
                 if sid is None or attempt == STALL_NUDGES:

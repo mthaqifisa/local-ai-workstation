@@ -48,3 +48,18 @@ def test_listing_skips_hidden_and_build_folders(tmp_path: Path) -> None:
     assert "backend/pom.xml" in listing and "README.md" in listing and "backend/src/" in listing
     assert not any("target" in ln or "node_modules" in ln or ".git" in ln or "App.java" in ln for ln in listing)
     assert project_listing(tmp_path / "backend" / "src" / "main" / "App.java".replace("App.java", "")) != ""
+
+
+def test_law_records_a_step_the_agent_did_not(tmp_path: Path) -> None:
+    import os
+    import time
+
+    mem = ProjectMemory(tmp_path)
+    mem.prepare("j", "x", None)
+    started = time.time()
+    progress = tmp_path / FOLDER / "PROGRESS.md"
+    os.utime(progress, (started - 60, started - 60))  # untouched during the step
+    assert mem.ensure_progress(started, "writer", "Wrote sections 1-3.", ["docs/proposal/proposal.md"] * 2)
+    text = progress.read_text()
+    assert "writer step" in text and "Wrote sections 1-3." in text and text.count("proposal.md") == 1
+    assert not mem.ensure_progress(started, "writer", "again", [])  # the file is now newer than the step start
