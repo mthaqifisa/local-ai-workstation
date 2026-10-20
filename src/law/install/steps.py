@@ -199,15 +199,52 @@ class Brew:
         self.c = c
         self.brewfile = c.paths.repo / "Brewfile"
 
+    ARGS = re.compile(r'^\s*brew\s+"([^"]+)"\s*,\s*args:\s*\[([^\]]*)\]', re.MULTILINE)
+
+    def wanted_options(self) -> dict[str, list[str]]:
+        """Formulas the Brewfile installs with build options, e.g. {"jundot/omlx/omlx": ["--with-custom-kernel"]}."""
+        text = self.brewfile.read_text() if self.brewfile.exists() else ""
+        return {name: [f"--{o.strip().strip('\"').lstrip('-')}" for o in opts.split(",") if o.strip()]
+                for name, opts in self.ARGS.findall(text)}
+
+    def missing_options(self) -> dict[str, list[str]]:
+        """Installed formulas missing a Brewfile option: `brew bundle` never reinstalls an existing formula, so a
+        Mac that installed it before the option was added keeps the plain build (seen: oMLX without its kernels)."""
+        out: dict[str, list[str]] = {}
+        for name, wanted in self.wanted_options().items():
+            cellar = self.c.sys.run(["brew", "--cellar", name])
+            if not cellar.ok:
+                continue
+            receipts = sorted(Path(cellar.out.strip()).glob("*/INSTALL_RECEIPT.json"))
+            if not receipts:
+                continue  # not installed yet: `brew bundle install` builds it with the options
+            used = set(json.loads(receipts[-1].read_text()).get("used_options") or [])
+            if missing := [o for o in wanted if o not in used]:
+                out[name] = missing
+        return out
+
     def plan(self) -> list[str]:
         res = self.c.sys.run(["brew", "bundle", "check", "--no-upgrade", f"--file={self.brewfile}"])
-        return [] if res.ok else ["brew bundle install (missing packages)"]
+        out = [] if res.ok else ["brew bundle install (missing packages)"]
+        out += [f"reinstall {n} with {' '.join(o)}" for n, o in self.missing_options().items()]
+        return out
 
     def apply(self) -> None:
         res = self.c.sys.run(["brew", "bundle", "install", "--no-upgrade", f"--file={self.brewfile}"],
                              timeout=7200)
         if not res.ok:
             raise RuntimeError(res.out[-2000:])
+        for name in self.missing_options():
+            if jobs_running(self.c.reg):  # reinstalling oMLX restarts the model server under a running agent
+                print(f"  {name}: reinstall with its build options postponed while jobs run")
+                continue
+            opts = self.wanted_options()[name]
+            res = self.c.sys.run(["brew", "reinstall", name, *opts], timeout=7200)
+            if not res.ok:
+                raise RuntimeError(f"brew reinstall {name} {' '.join(opts)} failed: {res.out[-1500:]}")
+            label = self.c.reg.services.get(name.rsplit("/", 1)[-1])
+            if label is not None and label.label and self.c.sys.launchd_loaded(label.label):
+                self.c.sys.run(["launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{label.label}"], timeout=120)
 
     def verify(self) -> list[str]:
         return self.plan()

@@ -182,7 +182,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                "--height", str(p.get("height", 480)), "--output", str(out)]
         if fast:
             cmd += ["--guidance", str(fast.guidance), "--guidance-2", str(fast.guidance_2),
-                    "--flow-shift", str(fast.flow_shift), "--lora-paths", *fast.lora_args(),
+                    "--flow-shift", str(fast.flow_shift), "--lora-paths", *fast.lora_args(rt.paths.models / "hf"),
                     "--lora-target-roles", *fast.lora_roles]
         if p.get("seed") is not None:
             cmd += ["--seed", str(p["seed"])]

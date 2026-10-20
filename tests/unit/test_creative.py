@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -10,6 +11,8 @@ import pytest
 
 from law.handlers import creative
 from law.queue.worker import Fatal, Stages
+
+REPO = Path(__file__).resolve().parents[2]
 
 
 def _song(payload: dict[str, Any]) -> Stages:
@@ -156,4 +159,21 @@ def test_film_shot_renders_with_the_fast_lightning_profile(tmp_path, monkeypatch
     assert roles[:2] == ["high_noise_transformer", "low_noise_transformer"]
     loras = cmd[cmd.index("--lora-paths") + 1:cmd.index("--lora-target-roles")]
     assert len(loras) == 2 and all(x.startswith("lightx2v/Wan2.2-Lightning:Wan2.2-T2V") for x in loras)
-    assert "@" not in " ".join(loras)  # the tool's repo:path form, without the pin
+    assert "@" not in " ".join(loras)  # not downloaded in this sandbox: the repo:path fallback, without the pin
+
+
+def test_fast_video_passes_the_downloaded_lora_files(tmp_path):
+    from law import registry
+
+    reg = registry.load(REPO / "settings" / "registry.yaml")
+    fast = reg.media["video"].fast
+    assert fast is not None
+    hf = tmp_path / "hf"
+    for lora in fast.loras:
+        ref, path = lora.split(":", 1)
+        repo, _, rev = ref.partition("@")
+        f = hf / "hub" / f"models--{repo.replace('/', '--')}" / "snapshots" / rev / path
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_bytes(b"lora")
+    args = fast.lora_args(hf)
+    assert all(Path(a).is_file() and "18bccf88" in a and a.endswith(".safetensors") for a in args)

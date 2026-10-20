@@ -455,3 +455,32 @@ def test_worker_restart_waits_while_jobs_run(ctx: Ctx, monkeypatch: pytest.Monke
     monkeypatch.setenv("LAW_FORCE_RESTART", "1")
     monkeypatch.setattr(steps, "jobs_running", lambda reg: 2)
     assert services._defer_worker(worker) is False
+
+
+def test_formula_installed_without_its_brewfile_options_is_reinstalled(ctx: Ctx, tmp_path: Path,
+                                                                        monkeypatch: pytest.MonkeyPatch):
+    import json
+
+    from law.install import steps
+
+    cellar = tmp_path / "Cellar" / "omlx"
+    (cellar / "0.7.1").mkdir(parents=True)
+    receipt = cellar / "0.7.1" / "INSTALL_RECEIPT.json"
+    receipt.write_text(json.dumps({"used_options": []}))  # installed before the option was in the Brewfile
+
+    class BrewSys(FakeSys):
+        def run(self, cmd, *, env=None, timeout=1800, cwd=None):  # type: ignore[no-untyped-def,override]
+            self.calls.append(cmd)
+            if cmd[:2] == ["brew", "--cellar"]:
+                return Result(0, str(cellar) if cmd[2] == "jundot/omlx/omlx" else str(tmp_path / "none"))
+            return Result(0, "")
+
+    ctx.sys = BrewSys()
+    monkeypatch.setattr(steps, "jobs_running", lambda reg: 0)
+    brew = steps.Brew(ctx)
+    assert brew.wanted_options()["jundot/omlx/omlx"] == ["--with-custom-kernel"]
+    assert "reinstall jundot/omlx/omlx with --with-custom-kernel" in brew.plan()
+    brew.apply()
+    assert ["brew", "reinstall", "jundot/omlx/omlx", "--with-custom-kernel"] in ctx.sys.calls
+    receipt.write_text(json.dumps({"used_options": ["--with-custom-kernel"]}))
+    assert not any(p.startswith("reinstall") for p in brew.plan())
