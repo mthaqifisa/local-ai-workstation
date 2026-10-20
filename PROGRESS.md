@@ -163,3 +163,4 @@ Happy path and unhappy paths, all from Telegram, monitored every 5 min:
 - 2026-10-20 23:33 auto-resume check: proposal now written one session per section (fix deployed; run migrated, section 1 running). Disk 221Gi free; ~/LAW 307G.
 - 2026-10-21 00:33 auto-resume check: proposal sections 1-2 written, 3 running; fixes today: thinking 'off' for sections, drain-before-restart, section resume prompt. Disk 221Gi free; ~/LAW 307G.
 - 2026-10-21 01:45 E2E fixes: section-per-session writing with thinking off (sections 4-7 ~4-8 min each vs 10-45), drain-before-restart, prose verdicts read, diagrams drawn before review, email failure non-blocking, Tony follows externally submitted Telegram jobs, wrong-moment decisions answered as information.
+- 2026-10-21 01:40 auto-resume check: E2E proposal v2 (pivot) in progress. Disk 221Gi free; ~/LAW 307G.
