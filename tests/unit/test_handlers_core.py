@@ -283,3 +283,83 @@ def test_describe_opencode_line(event, expected):
     line = _json.dumps(event).replace("{HOME}", str(Path.home()))
     assert describe_opencode_line(line) == expected
     assert describe_opencode_line("not json") is None
+
+
+def _tool_event(tool: str, target: str, session: str = "ses_1") -> str:
+    import json as _json
+    return _json.dumps({"type": "tool_use", "sessionID": session,
+                        "part": {"type": "tool", "tool": tool,
+                                 "state": {"status": "completed", "input": {"filePath": target}}}})
+
+
+def test_only_file_changes_count_as_agent_progress():
+    from law.handlers.tasks import is_file_change, session_id
+
+    assert is_file_change(_tool_event("edit", "/x/User.java"))
+    assert not is_file_change(_tool_event("read", "/x/User.java"))
+    assert not is_file_change("plain log line")
+    assert session_id("noise\n" + _tool_event("read", "/a", "ses_9")) == "ses_9"
+    assert session_id("no json here") is None
+
+
+async def test_stalled_agent_is_resumed_with_a_nudge(setup, sandbox, monkeypatch):
+    from law.handlers import tasks
+    from law.handlers.base import Stalled
+
+    rt, store, w = setup
+    cmds: list[list[str]] = []
+
+    async def fake_run_cmd(ctx, cmd, **kw):  # type: ignore[no-untyped-def]
+        cmds.append(cmd)
+        assert kw["stall_s"] == 25 * 60
+        if len(cmds) == 1:
+            raise Stalled(_tool_event("read", "/a", "ses_42"), 1500)
+        return _opencode_json("fixed and committed")
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    job = await store.submit(resolver(rt)(Job(kind="task", payload={"prompt": "fix build", "role": "coder",
+                                                                        "dir": str(sandbox), "review": False})))
+    await w.drain()
+    done = await store.require(job.id)
+    assert done.status == Status.DONE and done.result["answer"] == "fixed and committed"
+    assert cmds[1][cmds[1].index("--session") + 1] == "ses_42"
+    assert "Stop reading" in cmds[1][-1]
+
+
+async def test_an_agent_that_keeps_stalling_fails(setup, sandbox, monkeypatch):
+    from law.handlers import tasks
+    from law.handlers.base import Stalled
+
+    rt, store, w = setup
+    calls = 0
+
+    async def fake_run_cmd(ctx, cmd, **kw):  # type: ignore[no-untyped-def]
+        nonlocal calls
+        calls += 1
+        raise Stalled(_tool_event("read", "/a"), 1500)
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    job = await store.submit(resolver(rt)(Job(kind="task", payload={"prompt": "fix build", "role": "coder",
+                                                                        "dir": str(sandbox), "review": False})))
+    await w.drain()
+    done = await store.require(job.id)
+    assert done.status == Status.FAILED and "stalled" in (done.error or "")
+    assert calls == tasks.STALL_NUDGES + 1
+
+
+async def test_reviewer_is_never_treated_as_stalled(setup, sandbox, monkeypatch):
+    from law.handlers import tasks
+
+    seen: dict[str, object] = {}
+
+    async def fake_run_cmd(ctx, cmd, **kw):  # type: ignore[no-untyped-def]
+        seen[cmd[cmd.index("--agent") + 1]] = kw["stall_s"]
+        if "reviewer" in cmd:
+            return _opencode_json('{"score": 5, "issues": [], "summary": "ok"}')
+        return _opencode_json("done")
+
+    rt, store, w = setup
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    await store.submit(resolver(rt)(Job(kind="task", payload={"prompt": "x", "role": "coder", "dir": str(sandbox)})))
+    await w.drain()
+    assert seen == {"coder": 25 * 60, "reviewer": None}
