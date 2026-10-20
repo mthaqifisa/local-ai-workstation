@@ -187,7 +187,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             project = store.get(str(p["project"]))
             phase = decide(project, str(p["action"]), str(p.get("note", "")))
         except (KeyError, ValueError) as exc:
-            raise Fatal(str(exc).strip("'\"")) from exc
+            # a refused decision (wrong moment, e.g. an old Go button; unknown project) is information, not a
+            # failure: no Retry / Skip
+            return Done({"answer": f"ℹ️ Not done: {str(exc).strip(chr(39) + chr(34))}", "refused": True})
         if p.get("chat"):
             project.chat = int(p["chat"])
         store.save(project)

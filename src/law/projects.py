@@ -199,7 +199,10 @@ def decide(project: Project, action: str, note: str = "") -> str:
     """Apply the owner's decision. Returns the next phase to run: 'proposal', 'develop', 'push' or '' (none).
     Raises ValueError when the action doesn't fit the project's state."""
     if action not in ALLOWED.get(project.state, set()):
-        allowed = ", ".join(sorted(ALLOWED.get(project.state, set()))) or "nothing (it is working)"
+        allowed = ", ".join(sorted(ALLOWED.get(project.state, set())))
+        if not allowed:
+            raise ValueError(f"{project.name} is {project.state.replace('_', ' ')} (version {project.version}); "
+                             "Tony will ask for your decision when it is ready")
         raise ValueError(f"{project.name} is {project.state.replace('_', ' ')}; you can: {allowed}")
     if action == "push" and not project.repo_url:
         raise ValueError(f"{project.name} has no repo_url to push to")
