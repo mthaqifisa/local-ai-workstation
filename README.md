@@ -97,8 +97,16 @@ sequenceDiagram
 
 *(Static image: [docs/images/request-flow.png](docs/images/request-flow.png))*
 
-Coding tasks follow the same idea at project scale: **work** (coder agent) → **review** (Gemma agent reads the code and
+Coding tasks follow the same idea at project scale: **translate** (the request becomes a precise brief: goal,
+requirements, acceptance criteria, assumptions) → **work** (coder agent) → **review** (Gemma agent reads the code and
 runs the project's checks) → **fix** if the review scores below 4/5.
+
+Every project keeps its working memory in **`<project>/.law/`** (like `.claude/` for Claude Code): `PROMPT.md` (the
+brief), `REQUESTS.md` (every request), `RESEARCH.md`, `PLAN.md` (steps with checkboxes and gates) and `PROGRESS.md`
+(done, gate output, next step). The agent keeps them current and continues from them, so a session that dies
+halfway picks up where it stopped; a restarted job resumes its own agent session (`.law/session.json`, git-ignored).
+With no folder given, the translator names the project folder (an existing one only when you name that project) and
+LAW creates it directly under `~/SourceCode/`.
 
 ## The stack
 
@@ -176,6 +184,8 @@ LAW answers through a Telegram bot that you own. It only replies to the Telegram
 3. Asks you to **send the bot any message** from your phone or Mac, then press Enter.
    It lists who just messaged the bot (e.g. `1. Alex (@alex) [id 512345678]`); pick yourself (and anyone else to allow).
 4. Saves both to `~/LAW/state/.env` (readable only by you, never in the repo) and starts the bot.
+5. Asks for your **report email**: where LAW sends finished documents such as `/proposal` PDFs, through this
+   Mac's Mail app (no mail password is stored). Change it any time in the **LAW Console → Settings**.
 
 Press Enter at the first prompt to skip; it will ask again on the next run.
 Before you start, make sure no other program is running the same bot (an old setup or another server):
@@ -198,8 +208,9 @@ law install
 | Any text | Answered with the full quality loop (draft → independent review → revise) |
 | Voice note | Transcribed, then answered |
 | Photo (optionally with a caption) | Described or answered about, using the vision model |
-| `/code <task>` | The coding agent builds a new project in `~/SourceCode/` |
-| `/code <folder> <task>` | Works in an existing project, e.g. `/code ~/SourceCode/my-app add a login page` |
+| `/code <task>` | The coding agent builds a new project in its own folder under `~/SourceCode/` (named after the project you describe) |
+| `/code <folder> <task>` | Works in that project, e.g. `/code ~/SourceCode/my-app add a login page`; a new folder name (e.g. `~/SourceCode/new-app`) is created |
+| `/proposal [<folder>] <request>` | A consultant-grade proposal: web research with sources, then a full document (executive summary, market, solution, technical design, architecture, user and system flows, wireframes, delivery plan, cost, risks), independently reviewed, rendered to PDF and **emailed to you**. Give a project folder to present it as the working prototype |
 | `/image <prompt>` | Generates an image and sends it back |
 | `/music <request>` | A full song: theme, genre/vibe and length (e.g. `2 min`). Tony writes the lyrics, or add a `lyrics:` line with your own; say `instrumental` for no vocals |
 | `/film <request>` | A short film (up to 2 min): shots planned from your theme or a `script:` section, rendered with fast Wan 2.2, scored and cut together. Say `no music` to skip the score |
@@ -307,6 +318,8 @@ OpenCode is the recommended client offline: it is open source and the setup abov
 |---|---|---|
 | `v6/` (git) | Code, `settings/` (models, ports, roles), `knowledge/`, `trained/`, docs | Yes, via git |
 | `~/LAW/` | Models, caches, containers, generated media, logs, secrets (`state/.env`) | No, and that's fine |
+| `<project>/.law/` | A project's brief, requests, research, plan and progress (commit it with the project) | With the project |
+| `<project>/docs/proposal/` or `~/LAW/outputs/docs/` | `/proposal` research, Markdown source, diagrams, wireframes, PDF | With the project |
 
 Disk use is bounded: the LLM's SSD prompt cache is capped by `machine.llm_ssd_cache_gb` in
 `settings/registry.yaml` (default 20 GB), agent build caches (Maven, npm, Gradle, pip, uv) go to `~/LAW/cache`,

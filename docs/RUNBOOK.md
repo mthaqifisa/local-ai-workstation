@@ -93,6 +93,9 @@ rm -rf ~/LAW             # remove all machine-local data (models, outputs, secre
 | Operator can't control an app | System Settings → Privacy & Security | Allow the terminal / `law` under Accessibility and Automation, then retry |
 | Open WebUI says it cannot load a model / 507 | A heavy job (agent, image, video) is using the memory | By design on 64 GB: only one large model fits. Pick the model already loaded, or retry when `law jobs` shows the job finished |
 | Agent progress says "no file changed for 25 min: nudging" | The agent was re-reading instead of building | Automatic: it resumes the same session told to build and fix. Per job, `stall_min` in the payload changes the limit (0 turns it off) |
+| `/proposal` fails with "Mail did not respond" or "not allowed" | macOS asks once whether LAW may control Mail | System Settings → Privacy & Security → Automation: allow it for Mail, then resend; the PDF path is in the error |
+| `/proposal` fails with "no report email set" | `LAW_REPORT_EMAIL` missing | Set it in the Console (Settings → Report email) or re-run `./install.sh` |
+| A diagram in a proposal shows as code | Mermaid could not draw it | The email names it; fix the block in `docs/proposal/proposal.md` and re-run `pandoc` or ask Tony to fix it |
 | Video job very slow | Expected: Wan 2.2 14B renders ~5 s of video in several minutes | Use shorter clips (`--seconds 3`) or lower resolution in the job payload |
 
 ## Developing LAW itself
