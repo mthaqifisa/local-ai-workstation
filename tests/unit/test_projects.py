@@ -137,8 +137,12 @@ def test_go_runs_environment_milestones_reviews_then_the_verify_gate(tmp_path: P
     assert stages[0]["payload"]["effort"] == "xhigh"  # the project's thinking level drives development
     milestones = [s for s in stages if s["payload"].get("milestone")]
     assert len(milestones) == project_handlers.MILESTONE_STAGES
-    assert [s["kind"] for s in stages[-7:]] == ["task_review", "task_fix"] * 3 + ["project_gate"]
-    assert "proposal.md (version 1)" in specs.resolve(stages[-2]["payload"], "rubric")
+    assert [s["kind"] for s in stages[-10:]] == ["task_review", "task_fix"] * 3 + [
+        "task_work", "proposal_render", "proposal_mail", "project_gate"]
+    assert "proposal.md (version 1)" in specs.resolve(stages[-5]["payload"], "rubric")
+    handover = specs.resolve(stages[-4]["payload"])
+    assert "SYSTEM HANDOVER" in handover and "screenshots" in handover and "docs/handover/handover.md" in handover
+    assert stages[-3]["payload"]["doc"] == "handover" and stages[-2]["payload"]["out"] == "docs/handover"
     assert store.get("office-chat").state == "developing"
 
 

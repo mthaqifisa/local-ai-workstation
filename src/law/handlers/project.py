@@ -25,6 +25,7 @@ from law.projects import Project, Projects, TemplateError, decide
 from law.queue.worker import Context, Done, Fatal, Outcome, Stages
 
 OUT = "docs/proposal"
+HANDOVER_OUT = "docs/handover"
 MILESTONE_STAGES = 12  # unused stages finish at once when every milestone is ticked
 REVIEW_ROUNDS = 3
 
@@ -57,6 +58,37 @@ Work like a team on a Jira board, in .law/PLAN.md:
 FIX_SPEC = """Fix in the codebase, run the full build and tests until they pass, commit, and record the fixes in
 .law/PROGRESS.md. The specification is {out}/proposal.md (version {version})."""
 
+HANDOVER_SPEC = """The build of {name} version {version} is finished, tested and reviewed. Write the SYSTEM HANDOVER
+DOCUMENT in {hout}/handover.md (pandoc Markdown) so someone new can run, use and maintain it. Change no
+application code in this stage.
+
+1. Take real screenshots first. Start the app the way its README says (in the background), wait until it
+   answers, and capture the key screens and steps of the main journeys (e.g. join, chat, error states) as PNG
+   files in {hout}/assets/ (1280x800). Use a headless browser: Chrome headless
+   (`"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --screenshot=<file>
+   --window-size=1280,800 <url>`) for single pages, or a short puppeteer-core script (install it in a temp folder
+   with npm; the browser is the chrome-headless-shell under ~/LAW/runtime/chrome) for steps that need typing or
+   clicking. Stop everything you started when done.
+2. Then write the document, starting with this YAML header:
+---
+title: <product name>
+subtitle: System handover (version {version})
+kind: HANDOVER
+prepared-for: <the client, from the request; otherwise "Owner">
+author: LAW
+date: <today>
+---
+   with these level-1 sections:
+   Overview (what it is, who it is for, what is in this version) · Architecture and modules (a Mermaid container
+   diagram in ```{{.mermaid caption="..."}}```, then every module and what it does) · Installation and running
+   (prerequisites with versions, configuration, start/stop, opening it from another device) · User guide (a
+   step-by-step tutorial of every feature, each step with its screenshot as ![<caption>](assets/<file>.png))
+   · Operations (logs, data, backup, troubleshooting table) · Testing (how to run the tests, what they cover,
+   the latest results) · Known limitations and next steps.
+3. Every command and path in the document must work as written: run them to check. Write the file section by
+   section (at most about 1,500 words per write) and tick each section in .law/PLAN.md under
+   "## Handover v{version} sections"."""
+
 REVIEW_CONTEXT = """
 
 The specification is {out}/proposal.md (version {version}); the milestones are in .law/PLAN.md. Check the delivered
@@ -77,6 +109,11 @@ def dev_spec(a: dict[str, Any]) -> str:
 @specs.register("project.fix")
 def fix_spec(a: dict[str, Any]) -> str:
     return FIX_SPEC.format(out=a["out"], version=a["version"])
+
+
+@specs.register("project.handover")
+def handover_spec(a: dict[str, Any]) -> str:
+    return HANDOVER_SPEC.format(name=a["name"], version=a["version"], hout=HANDOVER_OUT)
 
 
 @specs.register("project.review")
@@ -113,6 +150,11 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         stages += [{"kind": "task_work", "payload": {**base, "milestone": True, "spec_ref": "project.dev"}}] \
             * MILESTONE_STAGES
         stages += [{"kind": "task_review", "payload": review}, {"kind": "task_fix", "payload": review}] * REVIEW_ROUNDS
+        # the handover document (with real screenshots) is written, rendered and emailed before the owner verifies
+        (Path(project.dir) / HANDOVER_OUT / "assets").mkdir(parents=True, exist_ok=True)
+        doc = {"dir": project.dir, "out": HANDOVER_OUT, "doc": "handover", "version": v, "prompt": project.request()}
+        stages += [{"kind": "task_work", "payload": {**base, "spec_ref": "project.handover", "stall_min": 45}},
+                   {"kind": "proposal_render", "payload": doc}, {"kind": "proposal_mail", "payload": doc}]
         return [*stages, _gate(project, "verify")]
 
     async def _prepare_repo(ctx: Context, project: Project) -> None:
@@ -183,10 +225,11 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             project.log("built", f"v{project.version}, review {score}")
             left = LEFT.findall(build_section(Path(project.dir), project.version) or "")
             status = (f"⚠️ {len(left)} milestone(s) not finished: " + "; ".join(left[:5]) + "\n\n") if left else ""
+            handover = "the handover document (how to run and use it, with screenshots) is in your email and here"
             text = (f"✅ **{project.name} v{project.version}** is built. Independent review: {score}"
                     f"{' (' + review.get('summary', '') + ')' if review.get('summary') else ''}.\n\n{status}"
-                    f"Try it: see `README.md` in `{project.dir}`; progress is in `.law/PROGRESS.md`.\n\n"
-                    "Is it good, or what should change?")
+                    f"To try it, {handover if carry.get('pdf') else 'see README.md in `' + project.dir + '`'}; "
+                    "progress is in `.law/PROGRESS.md`.\n\nIs it good, or what should change?")
             actions = ["allgood", "changes"]
         store.save(project)
         return Done({"answer": text, "gate": {"project": project.id, "actions": actions}})

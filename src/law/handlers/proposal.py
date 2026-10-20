@@ -112,7 +112,9 @@ Reply with JSON only:
 
 MERMAID = re.compile(r"^```\s*(?:mermaid|\{\.mermaid([^}]*)\})\s*\n(.*?)^```\s*$", re.MULTILINE | re.DOTALL)
 CAPTION = re.compile(r'caption\s*=\s*"([^"]*)"')
-SUMMARY = re.compile(r"^#\s+Executive summary\s*$(.*?)(?=^#\s)", re.MULTILINE | re.DOTALL | re.IGNORECASE)
+# Documents this module renders and emails: the file stem, its label, and the section quoted in the email.
+DOCS = {"proposal": {"label": "Proposal", "summary": "Executive summary"},
+        "handover": {"label": "Handover", "summary": "Overview"}}
 TITLE = re.compile(r"^title:\s*(.+)$", re.MULTILINE)
 
 
@@ -134,8 +136,9 @@ def extract_diagrams(markdown: str) -> tuple[str, list[tuple[str, str]]]:
     return MERMAID.sub(swap, markdown), diagrams
 
 
-def executive_summary(markdown: str, limit: int = 2500) -> str:
-    match = SUMMARY.search(markdown)
+def executive_summary(markdown: str, limit: int = 2500, heading: str = "Executive summary") -> str:
+    pattern = rf"^#\s+(?:\d+\.?\s*)?{re.escape(heading)}\s*$(.*?)(?=^#\s)"
+    match = re.search(pattern, markdown, re.MULTILINE | re.DOTALL | re.IGNORECASE)
     text = (match.group(1) if match else markdown).strip()
     return text if len(text) <= limit else text[:limit].rsplit("\n", 1)[0] + "\n…"
 
@@ -213,9 +216,10 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
     async def proposal_render(ctx: Context) -> Outcome:
         """Diagrams to PNG with mermaid-cli, then pandoc + Typst in the house template."""
         _, docs = _folders(ctx.job.payload)
-        source = docs / "proposal.md"
+        doc = str(ctx.job.payload.get("doc", "proposal"))
+        source = docs / f"{doc}.md"
         if not source.exists():
-            raise Fatal(f"the writer did not produce {source}")
+            raise Fatal(f"the agent did not produce {source}")
         text, diagrams = extract_diagrams(source.read_text())
         failed: list[str] = []
         config = rt.paths.config / "puppeteer.json"
@@ -232,10 +236,10 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 failed.append(caption)
                 text = text.replace(f"![{caption}](assets/diagram-{n}.png){{width=100%}}\n",
                                     f"```\n{code}```\n\n: {caption} (diagram source; it could not be drawn)\n")
-        rendered = docs / ".proposal.render.md"
+        rendered = docs / f".{doc}.render.md"
         rendered.write_text(text)
         version = int(ctx.job.payload.get("version", 1))
-        pdf = docs / ("proposal.pdf" if version == 1 else f"proposal-v{version}.pdf")
+        pdf = docs / (f"{doc}.pdf" if version == 1 else f"{doc}-v{version}.pdf")
         template = rt.paths.repo / "templates" / "docs" / "proposal.typst"
         await ctx.progress("📄 building the PDF")
         await run_cmd(ctx, ["pandoc", str(rendered), "-o", str(pdf), "--pdf-engine=typst",
@@ -250,11 +254,14 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         carry = p.get("_carry") or {}
         _, docs = _folders(p)
         pdf = Path(carry["pdf"])
-        markdown = (docs / "proposal.md").read_text()
+        doc = str(p.get("doc", "proposal"))
+        info = DOCS[doc]
+        markdown = (docs / f"{doc}.md").read_text()
         title_match = TITLE.search(markdown)
-        title = title_match.group(1).strip().strip("'\"") if title_match else "Proposal"
+        title = title_match.group(1).strip().strip("'\"") if title_match else info["label"]
         review = carry.get("review") or {}
-        lines = [f"{title}: proposal attached (PDF).", "", "EXECUTIVE SUMMARY", "", executive_summary(markdown), ""]
+        lines = [f"{title}: {info['label'].lower()} attached (PDF).", "", info["summary"].upper(), "",
+                 executive_summary(markdown, heading=info["summary"]), ""]
         if review:
             lines.append(f"Independent review: {review.get('score')}/5"
                          + (" (revised after review)" if carry.get("fixed") else "") + f". {review.get('summary', '')}")
@@ -264,13 +271,14 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         lines += ["", f"Files on the Mac: {docs}", "Request: " + str(p["prompt"])[:500], "", "Sent by LAW"]
         to = mailer.recipient(rt.paths.env_file)
         version = int(p.get("version", 1))
-        subject = f"Proposal: {title}" if version == 1 else f"Proposal v{version}: {title}"
-        await ctx.progress(f"📧 emailing the proposal to {to}")
+        label = info["label"]
+        subject = f"{label}: {title}" if version == 1 else f"{label} v{version}: {title}"
+        await ctx.progress(f"📧 emailing the {label.lower()} to {to}")
         try:
             mailer.send(to, subject, "\n".join(lines), [pdf], rt.paths.cache / "tmp")
         except mailer.MailError as exc:
             raise Fatal(f"{exc} (the PDF is at {pdf})") from exc
         return Done({"pdf": str(pdf), "emailed": to,
-                     "answer": f"📧 **{title}**: proposal emailed to {to}.\n\nPDF: `{pdf}`"})
+                     "answer": f"📧 **{title}**: {label.lower()} emailed to {to}.\n\nPDF: `{pdf}`"})
 
     return {"proposal": proposal, "proposal_render": proposal_render, "proposal_mail": proposal_mail}
