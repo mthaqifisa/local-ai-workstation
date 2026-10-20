@@ -36,6 +36,7 @@ class LawBot:
         self._tasks: set[asyncio.Task[None]] = set()
         self.notify_sources = notify_sources or set()
         self.pending: dict[int, tuple[str, str]] = {}  # chat -> (project, action) waiting for the owner's note
+        self.following: set[str] = set()  # jobs whose progress this process is streaming to a chat
         self._wire()
 
     def _ok(self, message: Message) -> bool:
@@ -82,6 +83,15 @@ class LawBot:
                 rows = projects.Projects(LawPaths.from_env()).all()
                 lines = [f"`{p.id}` v{p.version}: {p.state.replace('_', ' ')}" for p in rows]
                 await self._send(message.chat.id, "**Projects**\n" + ("\n".join(lines) or "none yet: `/code init`"))
+
+        @dp.callback_query(F.data.startswith("j|"))
+        async def job_button(query: CallbackQuery) -> None:
+            if query.from_user.id not in self.allowed or not query.data or not isinstance(query.message, Message):
+                return
+            _, action, job_id = query.data.split("|", 2)
+            await query.answer()
+            await query.message.edit_reply_markup(reply_markup=None)
+            await self._job_action(query.message.chat.id, job_id, action)
 
         @dp.callback_query(F.data.startswith("p|"))
         async def decision_button(query: CallbackQuery) -> None:
@@ -145,15 +155,25 @@ class LawBot:
                 await self._send(message.chat.id, roles_text())
 
         @dp.message(Command("jobs"))
-        async def jobs(message: Message) -> None:
+        async def jobs(message: Message, command: CommandObject) -> None:
+            """`/jobs`: what is running (and what failed today) with health; `/jobs <keyword>`: details + buttons."""
             if not self._ok(message):
                 return
-            async with httpx.AsyncClient(timeout=10) as client:
-                data = (await client.get(f"{self.api}/jobs", params={"limit": 30})).json()
-            rows = [j for j in data if j.get("parent") is None][:10]
-            lines = [f"`{j['id']}` {j['kind']} — {j['status']}" for j in rows]
-            await self._send(message.chat.id, "**Recent jobs**\n" + ("\n".join(lines) or "none") +
-                             "\n\nStop one with `/cancel <id>`.")
+            query = (command.args or "").strip()
+            async with httpx.AsyncClient(timeout=20) as client:
+                data = (await client.get(f"{self.api}/agents", params={"q": query})).json()
+            found = data.get("jobs", [])
+            if not query:
+                lines = [job_line(j) for j in found] or ["Nothing running, and nothing failed today."]
+                await self._send(message.chat.id, "**Jobs**\n" + "\n".join(lines) +
+                                 "\n\nDetails and buttons: `/jobs <project or keyword>`")
+                return
+            if not found:
+                await self._send(message.chat.id, f"No running or recent job matches `{query}`.")
+                return
+            for j in found[:3]:
+                await self._ask(message.chat.id, job_card(j, data.get("model") or {}),
+                                {"job": j["id"], "actions": j.get("actions", [])})
 
         @dp.message(Command("retry"))
         async def retry(message: Message, command: CommandObject) -> None:
@@ -163,14 +183,7 @@ class LawBot:
             if not job_id:
                 await self._send(message.chat.id, "Usage: `/retry <job id>` (see /jobs)")
                 return
-            async with httpx.AsyncClient(timeout=10) as client:
-                r = await client.post(f"{self.api}/jobs/{job_id}/retry")
-            if r.status_code != 200:
-                await self._send(message.chat.id, f"Can't retry `{job_id}`: {r.json().get('detail', r.text)}")
-                return
-            status = await self.bot.send_message(message.chat.id, f"🔁 retrying from stage {r.json()['stage'] + 1}")
-            reply = {"chat_id": message.chat.id, "status_id": status.message_id, "file_field": None, "then": None}
-            await self._deliver(job_id, reply, again=True)
+            await self._job_action(message.chat.id, job_id, "retry")
 
         @dp.message(Command("cancel"))
         async def cancel(message: Message, command: CommandObject) -> None:
@@ -230,6 +243,25 @@ class LawBot:
                 await self._send(message.chat.id, "Unknown command. Send /help for the list.")
                 return
             await self._job(message, "ask", {"prompt": message.text, "role": "assistant"})
+
+    async def _job_action(self, chat: int, job_id: str, action: str) -> None:
+        """Retry, skip, restart or cancel a job from a button, then follow it again in this chat."""
+        async with httpx.AsyncClient(timeout=60) as client:
+            r = await client.post(f"{self.api}/jobs/{job_id}/{action}")
+        if r.status_code != 200:
+            is_json = r.headers.get("content-type", "").startswith("application/json")
+            detail = r.json().get("detail", r.text) if is_json else r.text
+            await self._send(chat, f"Couldn't {action} `{job_id}`: {detail}")
+            return
+        if action == "cancel":
+            await self._send(chat, f"Cancelling `{job_id}`.")
+            return
+        follow = r.json().get("parent") or r.json()["id"]  # a pipeline continues under its root
+        label = {"retry": "🔁 retrying", "skip": "⏭ skipped the failed step; continuing",
+                 "restart": "🔄 restarting the stuck step"}[action]
+        status = await self.bot.send_message(chat, f"{label} `{follow}`")
+        reply = {"chat_id": chat, "status_id": status.message_id, "file_field": None, "then": None}
+        await self._deliver(follow, reply, again=True)
 
     def _wire_decision(self, action: str) -> None:
         """/go <project>, /nogo <project> [what to change], /changes <project> <what>, /allgood, /resume, /push."""
@@ -294,8 +326,15 @@ class LawBot:
 
     async def _deliver(self, job_id: str, reply: dict[str, Any], *, again: bool = False) -> None:
         """Stream progress, then send the result. `again` delivers a retried job whose first outcome was sent."""
-        if self.delivered.seen(job_id) and not again:
+        if (self.delivered.seen(job_id) and not again) or job_id in self.following:
             return
+        self.following.add(job_id)
+        try:
+            await self._follow(job_id, reply)
+        finally:
+            self.following.discard(job_id)
+
+    async def _follow(self, job_id: str, reply: dict[str, Any]) -> None:
         last = ""
         while True:  # stream progress; reconnect and poll if the API restarts
             try:
@@ -327,6 +366,7 @@ class LawBot:
         result = final.get("result") or {}
         if final.get("status") != "done":
             await self._edit(reply, outcome_line(final))
+            await self._offer_recovery(chat, final)
             return
         if reply.get("then") == "ask" and result.get("text"):
             await self._edit(reply, f"heard: {result['text'][:300]}")
@@ -370,9 +410,23 @@ class LawBot:
         for part in parts[1:]:
             await self._send(chat, part)
 
+    async def _offer_recovery(self, chat: int, job: dict[str, Any]) -> None:
+        """Every failed or cancelled job asks the owner what to do: Retry (and Skip for multi-step jobs)."""
+        pipeline = bool((job.get("payload") or {}).get("_stages"))
+        actions = ["retry", "skip"] if pipeline else ["retry"]
+        text = (f"`{job['id']}` ({job.get('kind')}) stopped. " +
+                ("**Retry** runs the failed step again, keeping earlier work; **Skip** carries on without it."
+                 if pipeline else "**Retry** runs it again."))
+        await self._ask(chat, text, {"job": job["id"], "actions": actions})
+
     async def _ask(self, chat: int, markdown: str, gate: dict[str, Any]) -> None:
-        buttons = [InlineKeyboardButton(text=BUTTONS[a], callback_data=f"p|{a}|{gate['project']}")
-                   for a in gate.get("actions", []) if a in BUTTONS]
+        """A message with buttons: a project decision (`project`) or a job action (`job`: retry, skip, ...)."""
+        if "job" in gate:
+            buttons = [InlineKeyboardButton(text=JOB_BUTTONS[a], callback_data=f"j|{a}|{gate['job']}")
+                       for a in gate.get("actions", []) if a in JOB_BUTTONS]
+        else:
+            buttons = [InlineKeyboardButton(text=BUTTONS[a], callback_data=f"p|{a}|{gate['project']}")
+                       for a in gate.get("actions", []) if a in BUTTONS]
         markup = InlineKeyboardMarkup(inline_keyboard=[buttons]) if buttons else None
         try:
             await self.bot.send_message(chat, to_telegram_html(markdown), parse_mode="HTML",
@@ -435,12 +489,27 @@ class LawBot:
                 async with httpx.AsyncClient(timeout=15) as client:
                     jobs = (await client.get(f"{self.api}/jobs", params={"limit": 50})).json()
                 for job in reversed(jobs):
+                    await self._reattach(job)
                     if (job.get("parent") is None and job.get("source") in self.notify_sources
                             and (job["created"] >= started_at or job["status"] in LIVE)):
                         await self._notify(job)
             except (httpx.HTTPError, ValueError):
                 pass  # API restarting; try again next round
             await asyncio.sleep(poll_s)
+
+    async def _reattach(self, job: dict[str, Any]) -> None:
+        """A Telegram job reopened elsewhere (Retry/Skip/Restart in the Console) is followed in its chat again."""
+        runs = int((job.get("payload") or {}).get("_runs", 0))
+        key = f"run{runs}:{job['id']}"
+        if (runs and job.get("source") == "telegram" and job.get("parent") is None and job["status"] in LIVE
+                and job.get("reply_to") and job["id"] not in self.following and not self.delivered.seen(key)):
+            self.delivered.add(key)
+            chat = job["reply_to"]["chat_id"]
+            status = await self.bot.send_message(chat, f"🔁 `{job['id']}` resumed; following it here")
+            reply = {**job["reply_to"], "status_id": status.message_id}
+            task = asyncio.create_task(self._deliver(job["id"], reply, again=True))
+            self._tasks.add(task)
+            task.add_done_callback(self._tasks.discard)
 
     async def _notify(self, job: dict[str, Any]) -> None:
         jid = job["id"]
@@ -449,6 +518,9 @@ class LawBot:
             self.delivered.add(f"start:{jid}")
         if job["status"] in TERMINAL and not self.delivered.seen(f"end:{jid}"):
             await self._broadcast(notice_finished(job))
+            if job["status"] in {"failed", "dead", "cancelled"}:
+                for chat in self.allowed:
+                    await self._offer_recovery(chat, job)
             media = media_path(job)
             if media:
                 await self._broadcast_file(media)
@@ -489,6 +561,52 @@ TERMINAL = {"done", "failed", "cancelled", "dead"}
 BUTTONS = {"go": "✅ Go", "nogo": "❌ No go", "allgood": "👍 All good", "changes": "🛠 Needs changes",
            "push": "⬆️ Push", "resume": "▶️ Resume"}
 NEEDS_NOTE = {"nogo", "changes", "resume"}
+JOB_BUTTONS = {"retry": "🔁 Retry", "skip": "⏭ Skip", "restart": "🔄 Restart step", "cancel": "🛑 Cancel"}
+HEALTH = {"working": "🟢 working", "thinking": "🔵 thinking", "queued": "🔵 queued", "stalled": "🟠 stalled",
+          "stuck": "🟠 stuck", "failed": "🔴 failed", "cancelled": "🔴 cancelled", "done": "✅ done"}
+
+
+def _ago(t: float | None) -> str:
+    return "" if not t else f"{max(0, round((time.time() - t) / 60))} min ago"
+
+
+def job_line(j: dict[str, Any]) -> str:
+    s = j.get("stage")
+    where = f" · step {s['index']}/{s['total']} {s.get('role') or ''} {s['kind']}" if s else ""
+    last = j.get("last_action")
+    tail = f" · {last['message'][:60]} ({_ago(last['t'])})" if last and j["health"] in {"working", "thinking",
+                                                                                          "stalled"} else ""
+    return f"{HEALTH.get(j['health'], j['health'])} `{j['id']}` **{j['title'][:40]}**{where}{tail}"
+
+
+def job_card(j: dict[str, Any], model: dict[str, Any]) -> str:
+    """A job's full status for Telegram: health, step, last action, to-do list, model activity."""
+    lines = [f"{HEALTH.get(j['health'], j['health'])} **{j['title']}** `{j['id']}`"]
+    s = j.get("stage")
+    if s:
+        lines.append(f"Step {s['index']}/{s['total']}: {s.get('role') or ''} {s['kind']} ({s['status']}"
+                     + (f", {_ago(s['started']).replace(' ago', '')}" if s.get("started") else "") + ")")
+    last = j.get("last_action")
+    if last:
+        lines.append(f"Last action: {last['message'][:120]} ({_ago(last['t'])})")
+    c = j.get("last_10min") or {}
+    lines.append(f"Last 10 min: {c.get('reads', 0)} reads · {c.get('commands', 0)} commands · "
+                 f"{c.get('edits', 0)} edits · {c.get('web', 0)} web")
+    if j.get("last_write"):
+        lines.append(f"Last file change: {_ago(j['last_write'])}")
+    p = j.get("plan")
+    if p and p.get("total"):
+        lines.append(f"To-do: {p['done']}/{p['total']} done" + (f" · next: {p['next'][:80]}" if p.get("next") else ""))
+    if j["health"] in {"working", "thinking", "stalled"}:
+        last_step = model.get("last") or {}
+        lines.append("Model: " + ("generating now" if model.get("active") else "idle")
+                     + (f" · last step {last_step['tok_s']} tok/s, context {round(last_step['context'] / 1000)}K"
+                        if last_step else ""))
+    if j.get("error"):
+        lines.append(f"Error: {j['error'][:300]}")
+    if j.get("project"):
+        lines.append(f"Folder: `{j['project']}`")
+    return "\n".join(lines)
 LIVE = {"queued", "running", "waiting"}
 
 # (command, menu description, help example) — one table drives the "/" menu, /help and the handlers above.
@@ -520,7 +638,8 @@ COMMANDS: list[tuple[str, str, str]] = [
     ("music", "Make a song: theme, genre/vibe, duration; Tony writes lyrics unless you add a 'lyrics:' line",
      "/music 90s upbeat Malay pop about rainy KL nights, 2 min"),
     ("say", "Reply with a voice message", "/say Good morning, here is today's plan"),
-    ("jobs", "Recent jobs and their status", "/jobs"),
+    ("jobs", "What's running and its health (working / thinking / stalled / failed); add a project or keyword for "
+     "details with Retry / Skip / Restart buttons", "/jobs lan-chat"),
     ("cancel", "Stop a job (newest if no id)", "/cancel"),
     ("retry", "Run a failed job again from the step that failed (earlier work is kept)", "/retry 8f22ebbaef49"),
 ]

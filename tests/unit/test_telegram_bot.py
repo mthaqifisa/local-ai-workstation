@@ -175,3 +175,22 @@ def test_split_dir_accepts_a_new_folder_under_an_existing_parent(tmp_path):
 
     assert split_dir(f"{tmp_path}/new-app build it") == {"dir": f"{tmp_path}/new-app", "prompt": "build it"}
     assert split_dir(f"{tmp_path}/no/such build it") == {"prompt": f"{tmp_path}/no/such build it"}
+
+
+def test_job_status_texts_for_telegram():
+    import time
+
+    from law.telegram_bot import job_card, job_line
+
+    now = time.time()
+    j = {"id": "abc123", "title": "LAN Chat", "health": "thinking", "kind": "project_new",
+         "stage": {"index": 3, "total": 8, "role": "writer", "kind": "task_work", "status": "running",
+                   "started": now - 600},
+         "last_action": {"t": now - 420, "message": "✏️ writing docs/proposal/proposal.md"},
+         "last_10min": {"reads": 2, "commands": 0, "edits": 1, "web": 0}, "last_write": now - 420,
+         "plan": {"done": 4, "total": 15, "next": "Architecture", "progress": ""}, "error": None,
+         "project": "/Users/x/SourceCode/lan-chat", "actions": ["cancel"]}
+    line = job_line(j)
+    assert line.startswith("🔵 thinking `abc123` **LAN Chat** · step 3/8 writer task_work") and "7 min ago" in line
+    card = job_card(j, {"active": True, "last": {"tok_s": 7.6, "context": 98276}})
+    assert "To-do: 4/15 done · next: Architecture" in card and "generating now" in card and "context 98K" in card
