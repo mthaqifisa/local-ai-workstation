@@ -10,6 +10,7 @@ from typing import Any
 
 import httpx
 
+from law import specs
 from law.handlers.base import Runtime, Stalled, run_cmd
 from law.handlers.core import PASS_SCORE, answer, parse_verdict
 from law.project_memory import FOLDER, ProjectMemory, project_listing
@@ -290,8 +291,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         elif writes:
             parts.append(NEW_PROJECT_MEMORY)
         parts.append(str(carry.get("brief") or p["prompt"]))
-        if p.get("spec"):  # fixed instructions from the pipeline (e.g. /proposal's structure), kept verbatim
-            parts.append(str(p["spec"]))
+        spec = specs.resolve(p)  # fixed instructions from the pipeline (e.g. /proposal's structure), current version
+        if spec:
+            parts.append(spec)
         return "\n\n".join(parts)
 
     def _memory(ctx: Context, p: dict[str, Any]) -> ProjectMemory | None:
@@ -348,7 +350,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             folder=workdir if named else "a new folder (see below)",
             listing=project_listing(workdir) if named else "(new project)",
             memory=(ProjectMemory(workdir).context() if named else "") or "(none)",
-            fixed=FIXED.format(spec=p["spec"]) if p.get("spec") else "",
+            fixed=FIXED.format(spec=specs.resolve(p)) if specs.resolve(p) else "",
             choose=CHOOSE_FOLDER.format(root=root, projects=", ".join(projects) or "(none)") if choose else "")
         await ctx.progress("📝 translating the request into a brief")
         brief = (await answer(rt, "translator", [{"role": "user", "content": prompt}], ctx)).strip()
@@ -380,7 +382,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             return Done({})
         report = carry.get("answer", "")
         brief = f"\n\nThe author worked from this brief:\n{carry['brief'][:6000]}" if carry.get("brief") else ""
-        rubric = p.get("rubric") or CODE_RUBRIC
+        rubric = specs.resolve(p, "rubric") or CODE_RUBRIC
         prompt = (f"{rubric}\n\nThe REQUEST was:\n{p['prompt']}{brief}\n\nThe author reported:\n{report[:4000]}\n\n"
                   "Inspect the files the author created or changed (the project may be in a new folder under "
                   "~/SourceCode named after it). Verify claims against the code; do not trust the report.")
@@ -400,8 +402,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         prompt = (f"An independent reviewer scored your work {verdict['score']}/5 for this request:\n{p['prompt']}\n\n"
                   f"Fix every issue below, then rerun the project's checks until they pass and report the output:\n"
                   f"{issues}")
-        if p.get("spec"):
-            prompt += f"\n\nThe work must still meet these instructions:\n{p['spec']}"
+        spec = specs.resolve(p)
+        if spec:
+            prompt += f"\n\nThe work must still meet these instructions:\n{spec}"
         memory = _memory(ctx, p)
         if memory is not None:
             prompt = f"{memory.instructions()}\n\n{prompt}"

@@ -17,7 +17,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from law import mailer
+from law import mailer, specs
 from law.handlers.base import Runtime, run_cmd
 from law.handlers.proposal import proposal_stages
 from law.handlers.tasks import build_section
@@ -62,6 +62,30 @@ REVIEW_CONTEXT = """
 The specification is {out}/proposal.md (version {version}); the milestones are in .law/PLAN.md. Check the delivered
 scope against them, and run the build and tests yourself."""
 
+@specs.register("project.env")
+def env_spec(a: dict[str, Any]) -> str:
+    return ENV_SPEC.format(out=a["out"])
+
+
+@specs.register("project.dev")
+def dev_spec(a: dict[str, Any]) -> str:
+    v = int(a["version"])
+    scope = "" if v == 1 else f', including its section "What changed in version {v}"'
+    return DEV_SPEC.format(name=a["name"], version=v, out=a["out"], scope=scope, key=a["key"])
+
+
+@specs.register("project.fix")
+def fix_spec(a: dict[str, Any]) -> str:
+    return FIX_SPEC.format(out=a["out"], version=a["version"])
+
+
+@specs.register("project.review")
+def review_rubric(a: dict[str, Any]) -> str:
+    from law.handlers.tasks import CODE_RUBRIC
+
+    return CODE_RUBRIC + REVIEW_CONTEXT.format(out=a["out"], version=a["version"])
+
+
 LEFT = re.compile(r"^\s*- \[ \]\s*(.+)$", re.MULTILINE)  # unticked milestones in a build section
 
 
@@ -77,19 +101,16 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         return [*stages, _gate(project, "proposal")]
 
     def _develop(project: Project) -> list[dict[str, Any]]:
-        from law.handlers.tasks import CODE_RUBRIC
-
         v = project.version
-        scope = "" if v == 1 else f', including its section "What changed in version {v}"'
+        args = {"out": OUT, "version": v, "name": project.name,
+                "key": re.sub(r"[^A-Z]", "", project.name.title())[:4] or "PRJ"}  # ticket prefix: "Lan Chat" -> LC
         base: dict[str, Any] = {"prompt": project.request(), "dir": project.dir, "role": "coder", "version": v,
-                                "effort": project.effort, "project": project.id}
-        review = {**base, "spec": FIX_SPEC.format(out=OUT, version=v),
-                  "rubric": CODE_RUBRIC + REVIEW_CONTEXT.format(out=OUT, version=v)}
+                                "effort": project.effort, "project": project.id, "spec_args": args}
+        review = {**base, "spec_ref": "project.fix", "rubric_ref": "project.review"}
         stages: list[dict[str, Any]] = [
-            {"kind": "task_work", "payload": {**base, "spec": ENV_SPEC.format(out=OUT), "stall_min": 45}}]
-        key = re.sub(r"[^A-Z]", "", project.name.title())[:4] or "PRJ"  # ticket prefix, e.g. "Lan Chat" -> LC
-        stages += [{"kind": "task_work", "payload": {**base, "milestone": True, "spec": DEV_SPEC.format(
-            name=project.name, version=v, out=OUT, scope=scope, key=key)}}] * MILESTONE_STAGES
+            {"kind": "task_work", "payload": {**base, "spec_ref": "project.env", "stall_min": 45}}]
+        stages += [{"kind": "task_work", "payload": {**base, "milestone": True, "spec_ref": "project.dev"}}] \
+            * MILESTONE_STAGES
         stages += [{"kind": "task_review", "payload": review}, {"kind": "task_fix", "payload": review}] * REVIEW_ROUNDS
         return [*stages, _gate(project, "verify")]
 

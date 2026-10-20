@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from law import mailer, secrets
+from law import mailer, secrets, specs
 from law.handlers import proposal
 from law.paths import LawPaths
 from law.queue.worker import Done, Fatal, Stages
@@ -79,8 +79,8 @@ def test_pipeline_for_a_prototype_project(tmp_path: Path):
                      ("task_review", "writer"), ("task_fix", "writer"), ("proposal_render", None),
                      ("proposal_mail", None)]
     research, write = out.specs[1]["payload"], out.specs[2]["payload"]
-    assert "http://127.0.0.1:8888/search" in research["spec"] and "docs/proposal/research.md" in research["spec"]
-    assert "Executive summary" in write["spec"] and "partner" in write["rubric"]
+    assert "http://127.0.0.1:8888/search" in specs.resolve(research) and "docs/proposal/research.md" in specs.resolve(research)
+    assert "Executive summary" in specs.resolve(write) and "partner" in specs.resolve(write, "rubric")
     assert (project / "docs" / "proposal" / "assets").is_dir()
 
 
@@ -163,7 +163,7 @@ def test_translator_sees_the_fixed_proposal_structure(tmp_path: Path):
     rt = _rt(tmp_path)
     out = asyncio.run(proposal.make_handlers(rt)["proposal"](_ctx({"prompt": "Propose it"})))
     translate = out.specs[0]["payload"]
-    assert out.specs[0]["kind"] == "task_translate" and "proposal.md" in translate["spec"]
+    assert out.specs[0]["kind"] == "task_translate" and "proposal.md" in specs.resolve(translate)
 
 
 async def test_translator_prompt_includes_fixed_instructions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -181,3 +181,14 @@ async def test_translator_prompt_includes_fixed_instructions(tmp_path: Path, mon
     handler = tasks.make_handlers(rt)["task_translate"]
     await handler(_ctx({"prompt": "Propose it", "role": "writer", "dir": str(tmp_path), "spec": "WRITE proposal.md"}))
     assert "must not\ncontradict them" in seen[0] and "WRITE proposal.md" in seen[0]
+
+
+def test_steps_use_the_rules_current_when_they_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    rt = _rt(tmp_path)
+    out = asyncio.run(proposal.make_handlers(rt)["proposal"](_ctx({"prompt": "Propose it"})))
+    writer = next(s["payload"] for s in out.specs if s["payload"].get("role") == "writer"
+                  and s["kind"] == "task_work")
+    assert "spec" not in writer and writer["spec_ref"] == "proposal.write"  # no frozen text in the pipeline
+    monkeypatch.setattr(proposal, "PROPOSAL_SPEC", "NEW RULES for {out}")  # rules change after creation
+    assert specs.resolve(writer) == "NEW RULES for ."
+    assert specs.resolve({"spec": "old text"}) == "old text"  # pipelines created before keep working
