@@ -170,3 +170,4 @@ Happy path and unhappy paths, all from Telegram, monitored every 5 min:
 - 2026-10-21 04:33 auto-resume check: development v2 environment stage (JDK 21 installed + pinned via .law/env.sh). Disk 220Gi free; ~/LAW 307G.
 - 2026-10-21 05:33 auto-resume check: development v2 LC-2 in progress; LC-1 verified green on a clean clone. Disk 219Gi free; ~/LAW 307G.
 - 2026-10-21 06:34 auto-resume check: dev v2 LC-2 restarted with a lead note in .law/PROGRESS.md; library-dig guard + Telegram flood fix deployed. Disk 218Gi free; ~/LAW 308G.
+- 2026-10-21 07:34 auto-resume check: E2E dev (lan-chat LC-2) running; fixed dashboard false 'stalled' while the model generates; HTML-styled emails shipped and v2 proposal re-sent. Storage: / 221Gi free, ~/LAW 308G.
