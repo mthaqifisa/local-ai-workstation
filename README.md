@@ -208,6 +208,7 @@ law install
 | Any text | Answered with the full quality loop (draft → independent review → revise) |
 | Voice note | Transcribed, then answered |
 | Photo (optionally with a caption) | Described or answered about, using the vision model |
+| `/code init` | Start a **full project**: Tony sends a template (name, repo, repo URL, stack, thinking level, summary, details). Send it back filled in, and Tony researches and emails a proposal, asks **Go / No go**, sets up the tools the stack needs, builds in milestones, tests and fixes until an independent review passes, then asks you to **verify**. **Needs changes** brings an enhanced proposal (v2, v3, …) and the loop repeats until **All good**. Decide with the buttons or `/go`, `/nogo`, `/changes`, `/allgood`; `/projects` shows where each one is |
 | `/code <task>` | The coding agent builds a new project in its own folder under `~/SourceCode/` (named after the project you describe) |
 | `/code <folder> <task>` | Works in that project, e.g. `/code ~/SourceCode/my-app add a login page`; a new folder name (e.g. `~/SourceCode/new-app`) is created |
 | `/proposal [<folder>] <request>` | A consultant-grade proposal: web research with sources, then a full document (executive summary, market, solution, technical design, architecture, user and system flows, wireframes, delivery plan, cost, risks), independently reviewed, rendered to PDF and **emailed to you**. Give a project folder to present it as the working prototype |
