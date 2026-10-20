@@ -221,8 +221,14 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             project.log("proposal emailed", f"v{project.version}, review {score}")
             where = ("is in your email (PDF attached here too)" if carry.get("emailed")
                      else f"is attached here (⚠️ email not sent: {carry.get('mail_error') or 'unknown reason'})")
+            notes = []
+            if carry.get("diagrams_repaired"):
+                notes.append(f"{carry['diagrams_repaired']} repaired automatically")
+            if carry.get("diagrams_failed"):
+                notes.append(f"{len(carry['diagrams_failed'])} still shown as source in the PDF")
+            diagrams = f"\nDiagrams: {'; '.join(notes)}." if notes else ""
             text = (f"📄 **Proposal v{project.version}: {project.name}** {where}. "
-                    f"Independent review: {score}.\n\nShall I start development?")
+                    f"Independent review: {score}.{diagrams}\n\nShall I start development?")
             actions = ["go", "nogo"]
         else:
             project.state = "awaiting_verification"
