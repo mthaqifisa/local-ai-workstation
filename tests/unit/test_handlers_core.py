@@ -269,6 +269,8 @@ def test_latest_thought_picks_the_last_complete_sentence():
      "✏️ writing ~/SourceCode/lan-chat/backend/pom.xml"),
     ({"part": {"type": "tool", "tool": "bash", "state": {"status": "completed",
                "input": {"command": "./mvnw verify\nmore"}}}}, "▶ running ./mvnw verify"),
+    ({"part": {"type": "tool", "tool": "bash", "state": {"status": "completed",
+               "input": {"command": "\n  osascript <<'EOF'\ntell app \"TextEdit\""}}}}, "▶ running osascript <<'EOF'"),
     ({"part": {"type": "tool", "tool": "mac_set_volume", "state": {"status": "completed", "input": {}}}}, "🖥 set volume"),
     ({"part": {"type": "tool", "tool": "bash", "state": {"status": "running", "input": {"command": "x"}}}}, None),
     ({"part": {"type": "text", "text": "hi"}}, None),

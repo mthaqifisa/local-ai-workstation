@@ -58,7 +58,8 @@ def describe_opencode_line(line: str) -> str | None:
     label = TOOL_ICONS.get(tool, f"🔧 {tool}")
     if not target:
         return label
-    text = str(target).replace(str(Path.home()), "~").splitlines()[0]
+    lines = [ln.strip() for ln in str(target).replace(str(Path.home()), "~").splitlines() if ln.strip()]
+    text = lines[0] if lines else ""
     return f"{label} {text[:140]}"
 
 
