@@ -133,6 +133,9 @@ def describe_opencode_line(line: str) -> str | None:
     target = args.get("filePath") or args.get("command") or args.get("pattern") or args.get("path") or args.get("url")
     if tool.startswith("mac_"):
         return f"🖥 {tool[4:].replace('_', ' ')}"
+    if tool == "webfetch" and target:  # the site only, so chat apps don't render the URL as a link card
+        host = re.sub(r"^\w+://", "", str(target)).split("/", 1)[0]
+        return f"🌐 reading {'web search' if host.startswith(('127.0.0.1', 'localhost')) else host}"
     label = TOOL_ICONS.get(tool, f"🔧 {tool}")
     if not target:
         return label

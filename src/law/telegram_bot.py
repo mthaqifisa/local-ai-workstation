@@ -376,12 +376,13 @@ class LawBot:
                 await self.bot.edit_message_text(to_telegram_html(text), chat_id=chat, message_id=msg,
                                                  parse_mode="HTML", disable_web_page_preview=True)
             else:
-                await self.bot.edit_message_text(text, chat_id=chat, message_id=msg)
+                # progress lines name the pages agents read: never let Telegram turn them into link previews
+                await self.bot.edit_message_text(text, chat_id=chat, message_id=msg, disable_web_page_preview=True)
         except Exception:  # identical text, bad markup, deleted or too-old message: send a new one
             if rich:
                 await self._send(chat, text)
             else:
-                await self.bot.send_message(chat, text)
+                await self.bot.send_message(chat, text, disable_web_page_preview=True)
 
     async def _get(self, job_id: str) -> dict[str, Any] | None:
         try:

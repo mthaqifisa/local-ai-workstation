@@ -505,3 +505,17 @@ async def test_translator_without_a_valid_folder_fails_the_job(setup, monkeypatc
     await w.drain()
     done = await store.require(job.id)
     assert done.status == Status.FAILED and "valid project folder" in (done.error or "")
+
+
+def test_fetch_progress_names_the_site_not_a_clickable_url():
+    import json as _json
+
+    from law.handlers.tasks import describe_opencode_line, is_file_change
+
+    def fetch(url: str) -> str:
+        return _json.dumps({"type": "tool_use", "part": {"type": "tool", "tool": "webfetch",
+                                                         "state": {"status": "completed", "input": {"url": url}}}})
+
+    assert describe_opencode_line(fetch("https://bridgemessenger.app/")) == "🌐 reading bridgemessenger.app"
+    assert describe_opencode_line(fetch("http://127.0.0.1:8888/search?q=x&format=json")) == "🌐 reading web search"
+    assert is_file_change(fetch("https://example.com/a"))  # fetching still counts as research progress
