@@ -26,6 +26,7 @@ class Machine(_Strict):
     colima: Colima
     model_budget_gb: int
     llm_ssd_cache_gb: int = Field(default=20, ge=1)
+    llm_idle_unload_min: int = Field(default=5, ge=1)  # oMLX frees an idle model's memory after this
 
     @model_validator(mode="after")
     def _budget_fits(self) -> Machine:

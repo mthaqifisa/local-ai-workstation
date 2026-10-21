@@ -395,7 +395,7 @@ def test_code_change_changes_service_stamp(ctx: Ctx, tmp_path: Path):
     assert ctx.stamp != after_code
 
 
-def test_omlx_disk_cache_is_capped_and_idempotent(ctx: Ctx):
+def test_omlx_disk_cache_cap_and_idle_unload_are_set_idempotently(ctx: Ctx):
     import json
 
     from law.install.steps import OmlxSettings
@@ -414,10 +414,11 @@ def test_omlx_disk_cache_is_capped_and_idempotent(ctx: Ctx):
     assert step.plan() == []  # oMLX hasn't created its settings yet
     step.file.parent.mkdir(parents=True, exist_ok=True)
     step.file.write_text(json.dumps({"cache": {"enabled": True, "ssd_cache_max_size": "auto"}, "memory": {"x": 1}}))
-    assert step.plan() == ["cap oMLX disk cache at 20GB"]
+    assert step.plan() == ["set oMLX cache.ssd_cache_max_size = 20GB", "set oMLX idle_timeout.idle_timeout_seconds = 300"]
     step.apply()
     doc = json.loads(step.file.read_text())
     assert doc["cache"]["ssd_cache_max_size"] == "20GB" and doc["memory"] == {"x": 1}
+    assert doc["idle_timeout"] == {"idle_timeout_seconds": 300}
     assert ctx.sys.kicked == ["com.law6.omlx"] and step.plan() == []
 
 
