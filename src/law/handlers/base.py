@@ -65,9 +65,9 @@ async def run_cmd(ctx: Context, cmd: list[str], *, cwd: Path | None = None, env:
     """Run a subprocess and kill it if the job is cancelled. Progress is either every Nth output line or, with
     `describe`, a readable summary of each line it recognises (e.g. an agent's tool calls). With `stall_s`, a
     command that emits no line accepted by `is_work` for that long is stopped and `Stalled` is raised, unless
-    `alive()` says the model is still generating and the command has been silent (one long step, not a loop of
-    reads): then it gets up to STALL_GRACE times as long. `steer` sees each described action; a message from it
-    stops the command and raises `Steered` with that message."""
+    `alive()` says the model is generating: then the reply in progress may finish (it often is the file being
+    written), up to STALL_GRACE times the stall time; the stop comes after that reply if it saved nothing.
+    `steer` sees each described action; a message from it stops the command and raises `Steered` with it."""
     import os
     import time
 
@@ -109,14 +109,20 @@ async def run_cmd(ctx: Context, cmd: list[str], *, cwd: Path | None = None, env:
     async def watch_stall() -> None:
         nonlocal stalled
         assert stall_s is not None
+        reply_from: float | None = None  # the last action before the reply we let finish
         while True:
             await asyncio.sleep(min(stall_s / 4, 30.0))
             now = time.monotonic()
             if now - last_work < stall_s:
+                reply_from = None
                 continue
-            quiet = now - last_any >= stall_s / 2  # no actions at all: one long generation, not a read loop
-            if quiet and now - last_work < stall_s * STALL_GRACE and alive is not None and await alive():
-                continue
+            # Past the stall time while the model generates: let that one reply finish (a new action marks its
+            # end), within the grace limit. A read loop is stopped right after its current reply.
+            if now - last_work < stall_s * STALL_GRACE and alive is not None and await alive():
+                if reply_from is None:
+                    reply_from = last_any
+                if last_any == reply_from:
+                    continue
             stalled = True
             with contextlib.suppress(ProcessLookupError):
                 proc.kill()

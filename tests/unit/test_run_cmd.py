@@ -111,3 +111,19 @@ def test_model_prose_does_not_count_as_activity_for_the_grace() -> None:
 
     took = asyncio.run(asyncio.wait_for(go(), 10))
     assert took > 0.6  # prose is part of a long generation: it got the grace, not the plain stall time
+
+
+def test_the_reply_in_progress_at_the_stall_time_may_finish() -> None:
+    """Seen 2026-10-21: lookups until shortly before the stall time, then one long reply that writes the test
+    file. The nudge cut that reply off; now it finishes and its write counts."""
+    script = ("import time\nfor i in range(6):\n    print('reading', i, flush=True); time.sleep(0.05)\n"
+              "time.sleep(0.4)\nprint('write Test.java', flush=True)")
+
+    async def generating() -> bool:
+        return True
+
+    async def go() -> str:
+        return await run_cmd(_ctx(), [sys.executable, "-c", script], stall_s=0.4, is_work=lambda ln: "write" in ln,
+                             alive=generating)
+
+    assert "write Test.java" in asyncio.run(asyncio.wait_for(go(), 10))
