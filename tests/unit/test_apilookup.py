@@ -82,7 +82,7 @@ def test_classpath_failure_shows_maven_output(tmp_path: Path):
 
 
 def test_binary_name_and_member_filter():
-    assert apilookup.binary_name("a.b.Outer.Inner", None) == "a.b.Outer$Inner"
+    assert apilookup.binary_name("a.b.Outer.Inner") == "a.b.Outer$Inner"
     text = ("public interface a.B {\n  public abstract void subscribe(java.lang.String);\n"
             "  public abstract void send(java.lang.String);\n}")
     filtered = apilookup.filter_members(text, "SUBSCRIBE")
@@ -94,3 +94,16 @@ def test_binary_name_and_member_filter():
 def test_jdk_class_by_fully_qualified_name():
     out = apilookup.lookup("java.util.concurrent.CountDownLatch", "await", start=Path())
     assert "await(long, java.util.concurrent.TimeUnit)" in out and "countDown" not in out
+
+
+def test_javap_falls_back_to_path_when_java_home_has_none(tmp_path: Path, monkeypatch):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    fake = bin_dir / "javap"
+    fake.write_text("#!/bin/sh\n")
+    fake.chmod(0o755)
+    monkeypatch.setenv("PATH", str(bin_dir))
+    assert apilookup.javap_tool(str(tmp_path / "jdk-without-javap")) == str(fake)
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    with pytest.raises(apilookup.ApiLookupError, match="javap not found"):
+        apilookup.javap_tool(None)
