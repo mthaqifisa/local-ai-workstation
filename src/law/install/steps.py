@@ -637,7 +637,7 @@ class OpenCodeConfig:
     def render(self) -> str:
         reg = self.c.reg
         base = f"http://127.0.0.1:{reg.ports.llm_public}/v1"
-        models = {m.id: {"name": m.id, "limit": {"context": m.context or 32768, "output": 16384}}
+        models = {m.id: {"name": m.id, "limit": {"context": m.context or 32768, "output": output_limit(m.context)}}
                   for m in reg.llm_models if m.lane == "heavy"}
         doc = {
             "$schema": "https://opencode.ai/config.json",
@@ -710,6 +710,12 @@ class OpenCodeConfig:
 
     def verify(self) -> list[str]:
         return self.plan()
+
+
+def output_limit(context: int | None) -> int:
+    """Tokens one agent reply may produce: half the context, at most oMLX's 32K. A coder writes whole files in
+    one reply; replies of 10K+ tokens came close to the old 16K cap (2026-10-21), and a cut-off reply is lost."""
+    return min(32768, (context or 32768) // 2)
 
 
 def lan_hostname(sysapi: SysAPI) -> str:
