@@ -74,7 +74,9 @@ version, installed version, how it is selected. Commit `.law/`.
 """ + ENV_PLATFORMS
 
 DEV_SPEC = """Build {name} version {version} as specified in {spec_file}{scope}. The tools are ready
-(.law/ENVIRONMENT.md); do not change versions without updating it.
+(.law/ENVIRONMENT.md); do not change versions without updating it. Do not re-check the environment, the installed
+tools or the library versions the environment stage recorded: start on the work, and look into a tool only when a
+build error points at it.
 
 Work like a team on a Jira board, in .law/PLAN.md:
 - If there is no section "## Build version {version}", create it first, with exactly that heading. Split the work
