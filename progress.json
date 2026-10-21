@@ -1,9 +1,9 @@
 {
   "stage": "C-user-requests",
-  "task": "lan-chat v2 rebuild from the proposal (Go via Tony)",
-  "status": "running",
-  "next_step": "Owner (17:30): finish lan-chat first; Garmin and iOS capability projects are planned later. Rebuild run 552011d4129e: LC-1, LC-2 done + verified; LC-3..LC-18 to go. Monitor every 5 min; fix v6 only; commands via Tony.",
-  "timestamp": "2026-10-21T17:31+08:00",
+  "task": "lan-chat v2 rebuild running unattended (owner out of Claude tokens)",
+  "status": "running_unattended",
+  "next_step": "Rebuild root 552011d4129e runs unattended (stage 5d240e77e8ef at LC-3; LC-1 5bfa247, LC-2 e00f72f verified). Owner retries via Tony (Retry button / /retry 552011d4129e) if it fails. Next session: check /jobs lan-chat, verify new LC commits on a clean clone, continue the E2E plan (review rounds, handover, verify gate, No go+stop/resume). Later (owner): capability projects for Garmin (devices installed, toolchain verified) and iOS; evaluate Laguna XS 2.1 vs Qwen3.8 27B as coder on LAW evals (needs ADR). Final summary email items still open.",
+  "timestamp": "2026-10-21T17:55+08:00",
   "files_touched": [
     "src/law/apilookup.py",
     "src/law/cli.py",
