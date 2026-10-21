@@ -195,8 +195,49 @@ def filter_members(text: str, member: str) -> str:
     lines = text.splitlines()
     header = [ln for ln in lines if not ln.startswith(" ")]
     hits = [ln for ln in lines if ln.startswith(" ") and member.lower() in ln.lower()]
-    body = hits or [f"  (no public member mentions '{member}')"]
+    body = hits or [f"  (no public member mentions '{member}', declared or inherited: it does not exist here)"]
     return "\n".join([*header[:-1], *body, *header[-1:]]) if header else "\n".join(body)
+
+
+def supertypes(javap_text: str) -> list[str]:
+    """Fully qualified supertypes named in a javap class header (generics dropped)."""
+    header = next((ln for ln in javap_text.splitlines() if not ln.startswith((" ", "Compiled"))), "")
+    names: list[str] = []
+    for part in re.findall(r"\b(?:extends|implements)\s+(.+?)(?=\s+(?:extends|implements)\b|\s*\{|$)", header):
+        depth, current = 0, ""
+        for ch in part:
+            depth += ch == "<"
+            depth -= ch == ">"
+            if ch == "," and depth == 0:
+                names.append(current)
+                current = ""
+            elif depth == 0 and ch not in "<>":
+                current += ch
+        names.append(current)
+    return [n.strip() for n in names if n.strip() and not n.strip().startswith("java.lang.Object")]
+
+
+def inherited(fqcn: str, member: str, classes: dict[str, str], java_home: str | None, depth: int = 4) -> list[str]:
+    """Member lines that mention `member` in the supertypes of `fqcn` (javap lists only declared members)."""
+    found: list[str] = []
+    seen: set[str] = set()
+    frontier = [fqcn]
+    for _ in range(depth):
+        nxt: list[str] = []
+        for name in frontier:
+            text = javap(name, classes.get(name), java_home)
+            for parent in supertypes(text):
+                if parent in seen:
+                    continue
+                seen.add(parent)
+                ptext = javap(parent, classes.get(parent), java_home)
+                hits = [ln for ln in ptext.splitlines() if ln.startswith(" ") and member.lower() in ln.lower()]
+                if hits:
+                    found.append(f"  // inherited from {parent}")
+                    found.extend(hits)
+                nxt.append(parent)
+        frontier = nxt
+    return found
 
 
 def lookup(query: str, member: str | None = None, *, start: Path, java_home: str | None = None,
@@ -207,7 +248,14 @@ def lookup(query: str, member: str | None = None, *, start: Path, java_home: str
         return clip(filter_members(text, member) if member else text)
     project = find_project(start)
     classes = class_index(project, classpath(project, mvn))
+    query = query.replace("/", ".").removesuffix(".class").removesuffix(".java")
     matches = resolve(query, classes)
+    note = ""
+    if not matches and "." in query:
+        # A wrong package guess (jakarta.websocket.client.StandardWebSocketClient): the simple name decides.
+        matches = resolve(query.rsplit(".", 1)[-1], classes)
+        if matches:
+            note = f"'{query}' is not a class; the real one is {matches[0]}:\n"
     if not matches:
         listing = package_listing(query, classes)
         if listing:
@@ -222,11 +270,17 @@ def lookup(query: str, member: str | None = None, *, start: Path, java_home: str
         return (f"No class named '{query}' on the test classpath of {project.root.name}: it is not in the project's "
                 f"current dependencies.{hint}{add}\nIf neither fits, it does not exist in these versions: do not use "
                 "it.")
-    out: list[str] = []
+    out: list[str] = [note.rstrip("\n")] if note else []
     if len(matches) > 1:
         out.append(f"{len(matches)} classes named '{query}': " + ", ".join(matches[:10]))
     for fqcn in matches[:3]:
         text = javap(fqcn, classes[fqcn], java_home)
+        if member and not any(ln.startswith(" ") and member.lower() in ln.lower() for ln in text.splitlines()):
+            extra = inherited(fqcn, member, classes, java_home)
+            if extra:
+                header = [ln for ln in text.splitlines() if not ln.startswith(" ")]
+                out.append("\n".join([*header[:-1], *extra, *header[-1:]]))
+                continue
         out.append(filter_members(text, member) if member else text)
     return clip("\n\n".join(out))
 

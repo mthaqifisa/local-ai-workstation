@@ -87,7 +87,7 @@ def test_binary_name_and_member_filter():
             "  public abstract void send(java.lang.String);\n}")
     filtered = apilookup.filter_members(text, "SUBSCRIBE")
     assert "subscribe" in filtered and "send" not in filtered and filtered.endswith("}")
-    assert "no public member mentions 'x'" in apilookup.filter_members(text, "x")
+    assert "no public member mentions 'x', declared or inherited" in apilookup.filter_members(text, "x")
 
 
 @pytest.mark.skipif(shutil.which("javap") is None, reason="needs a JDK")
@@ -133,3 +133,30 @@ def test_a_missing_class_points_at_the_managed_module_that_holds_it(tmp_path: Pa
     assert "may live in a module this project has not added" in out
     assert "<artifactId>spring-boot-resttestclient</artifactId>" in out
     assert "presto" not in out and "spring-messaging" not in out
+
+
+def test_a_wrong_package_guess_is_answered_with_the_real_class(tmp_path: Path, monkeypatch):
+    _project(tmp_path)
+    monkeypatch.setattr(apilookup, "javap", lambda fqcn, entry, java_home=None: f"interface {fqcn} {{}}")
+    out = apilookup.lookup("jakarta/websocket/StompSession", start=tmp_path, mvn="/nonexistent/mvn")
+    assert out.splitlines()[0] == ("'jakarta.websocket.StompSession' is not a class; the real one is "
+                                   "org.springframework.messaging.simp.stomp.StompSession:")
+    assert "interface org.springframework.messaging.simp.stomp.StompSession" in out
+
+
+def test_inherited_members_are_found_in_supertypes(tmp_path: Path, monkeypatch):
+    _project(tmp_path)
+    pkg = "org.springframework.messaging.simp.stomp."
+    pages = {
+        pkg + "StompSessionHandlerAdapter": f"public abstract class {pkg}StompSessionHandlerAdapter implements "
+                                            f"{pkg}StompSessionHandler {{\n  public {pkg}StompSessionHandlerAdapter();\n}}",
+        pkg + "StompSessionHandler": f"public interface {pkg}StompSessionHandler extends {pkg}StompFrameHandler {{\n"
+                                     f"  public abstract void afterConnected({pkg}StompSession, {pkg}StompHeaders);\n}}",
+        pkg + "StompFrameHandler": f"public interface {pkg}StompFrameHandler {{\n  public abstract void handleFrame();\n}}",
+    }
+    monkeypatch.setattr(apilookup, "javap", lambda fqcn, entry, java_home=None: pages.get(fqcn, f"class {fqcn} {{\n}}"))
+    assert apilookup.supertypes(pages[pkg + "StompSessionHandler"]) == [pkg + "StompFrameHandler"]
+    out = apilookup.lookup("StompSessionHandlerAdapter", "handleFrame", start=tmp_path, mvn="/nonexistent/mvn")
+    assert f"  // inherited from {pkg}StompFrameHandler" in out and "public abstract void handleFrame();" in out
+    assert "declared or inherited" in apilookup.lookup("StompSessionHandlerAdapter", "nope", start=tmp_path,
+                                                       mvn="/nonexistent/mvn")
