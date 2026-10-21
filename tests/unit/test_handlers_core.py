@@ -552,6 +552,13 @@ async def test_a_stalled_writer_is_told_to_save_sections_not_to_build(setup, san
     ("▶ running unzip -l target/app.jar | grep BOOT-INF", False),
     ("▶ running find src -name '*.java' | head", False),
     ("▶ running law api StompSession subscribe", False),
+    ("▶ running grep -rn 'export declare class HttpClient' node_modules/@angular/common/types", True),
+    ("▶ running cat ~/go/pkg/mod/github.com/gorilla/websocket@v1.5.3/client.go | head -80", True),
+    ("▶ running grep -n NavigationStack /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator."
+     "platform/Developer/SDKs/iPhoneSimulator.sdk/x.swiftinterface", True),
+    ("▶ running rm -rf node_modules && npm ci", False),
+    ("▶ running node_modules/.bin/ng test --watch=false | tail -40", False),
+    ("▶ running npx ng build 2>&1 | tail -30", False),
     ("▶ running source .law/env.sh && mvn -q -B test 2>&1 | grep -E 'Tests run|ERROR'", False),
     ("▶ running source .law/env.sh && mvn -B dependency:tree", False),
 ])

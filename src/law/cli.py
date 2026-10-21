@@ -213,16 +213,19 @@ def retry(job_id: str) -> None:
 
 
 @app.command("api")
-def api_cmd(name: Annotated[str, typer.Argument(help="class: simple (StompSession), nested (StompSession."
-                                                      "Subscription), fully qualified, or a package")],
+def api_cmd(name: Annotated[str, typer.Argument(help="Java: StompSession · Go: http.Client · TypeScript: "
+                                                      "@angular/core:signal or HttpClient · Swift: NavigationStack · "
+                                                      "Monkey C: WatchUi.View")],
             member: Annotated[str | None, typer.Argument(help="only members mentioning this, e.g. subscribe")] = None,
-            directory: Annotated[Path, typer.Option("--dir", help="project directory")] = Path()) -> None:
-    """Real public API of a library class on this Maven project's classpath (signatures, or the closest real
-    names when the class does not exist). Use it instead of guessing an API or digging in jars."""
+            directory: Annotated[Path, typer.Option("--dir", help="project directory")] = Path(),
+            lang: Annotated[str | None, typer.Option(
+                "--lang", help="java, go, ts, swift or monkeyc (default: detected)")] = None) -> None:
+    """Real public API of a library symbol for this project's exact dependency versions (signatures, or the
+    closest real names when it does not exist). Use it instead of guessing an API or digging in packages."""
     from law import apilookup
 
     try:
-        print(apilookup.lookup(name, member, start=directory, java_home=os.environ.get("JAVA_HOME")))
+        print(apilookup.lookup(name, member, start=directory, lang=lang, java_home=os.environ.get("JAVA_HOME")))
     except apilookup.ApiLookupError as exc:
         err.print(f"[red]{exc}[/red]")
         raise typer.Exit(1) from exc

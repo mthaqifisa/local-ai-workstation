@@ -178,19 +178,27 @@ LIB_DIG_LIMIT = 3
 
 def is_library_dig(command: str) -> bool:
     """A command that inspects library internals: decompilers, jar listings, a search for library jars anywhere,
-    or the Maven/Gradle caches' jars. The project's own build output (target/, build/) is not a library."""
+    the Maven/Gradle caches' jars, or reading node_modules, the Go module cache or the Xcode SDK. The project's
+    own build output (target/, build/) is not a library."""
     c = command.lower()
     if re.search(r"\bjavap\b|\bjar\s+-?t|\bcfr\b|\bprocyon\b|\bfernflower\b", c):
         return True
     # `.ja` at the very end: the progress summary cuts commands at 140 characters.
     if re.search(r"\bfind\b[^|;&]*-i?name\s+\S*\.ja(?:r\b|\S?$)", c) or "localrepository" in c:
         return True
+    # Reading installed packages or the SDK to learn an API (cleanup such as `rm -rf node_modules` is not reading).
+    reads = re.search(r"(?:^|[\s;&|(])(?:find|grep|rg|cat|head|tail|less|sed|awk|ls)\s", c)
+    internals = re.search(r"node_modules/|/pkg/mod/|gomodcache|\.swiftinterface|\.platform/developer/sdks/|"
+                          r"\.build/checkouts/", c)
+    if reads and internals and not re.search(r"node_modules/\.bin/", c):
+        return True
     in_cache = any(k in c for k in (".m2/", "cache/m2", "m2/repository", ".gradle/caches", "cache/gradle"))
     return in_cache and any(k in c for k in (".jar", ".ja\"", "unzip", "find ", "ls ", "javap"))
-LIB_NUDGE = ("Stop reading library internals (jar contents, javap, the Maven cache). To learn a library API run "
-             "`law api <Class> [member]` in the project: it prints the real public signatures, or the closest real "
-             "class names when the one you used does not exist. Use only what it shows, compile, and let the test "
-             "output guide you. Check .law/PROGRESS.md for notes, then continue the current ticket.")
+LIB_NUDGE = ("Stop reading library internals (jars, node_modules, the Go module cache, the Xcode SDK). To learn a "
+             "library or SDK API run `law api <name> [member]` in the project (Java, Go, TypeScript/JavaScript, "
+             "Swift, Monkey C): it prints the real signatures, or the closest real names when the one you used "
+             "does not exist. Use only what it shows, compile, and let the test output guide you. Check "
+             ".law/PROGRESS.md for notes, then continue the current ticket.")
 DOC_ROLES = {"writer", "researcher", "designer", "analyst", "architect"}
 
 

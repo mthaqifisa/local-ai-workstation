@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from law import apilookup
+from law.apilookup import java as apilookup
 
 STOMP = "org/springframework/messaging/simp/stomp/"
 

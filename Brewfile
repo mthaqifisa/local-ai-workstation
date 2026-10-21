@@ -14,6 +14,12 @@ brew "docker-compose"
 brew "node"
 brew "openjdk@25"   # LTS JDK for Java/Spring projects (keg-only; LAW puts it on PATH)
 brew "maven"
+# Stacks the coding agents build (ADR-0016): Go, iOS (XcodeGen generates the Xcode project from project.yml),
+# React Native on iOS (CocoaPods, Watchman) and Garmin watch apps (Connect IQ SDK: monkeyc, simulator).
+brew "go"
+brew "xcodegen"
+brew "cocoapods"
+brew "watchman"
 brew "pandoc"
 brew "typst"
 brew "graphviz"
@@ -26,3 +32,5 @@ brew "gitleaks"
 brew "shellcheck"
 brew "jundot/omlx/omlx", args: ["with-custom-kernel"]
 cask "libreoffice"
+cask "connectiq"
+cask "connectiq-sdk-manager"   # downloads Garmin device definitions (needs the owner's Garmin sign-in once)

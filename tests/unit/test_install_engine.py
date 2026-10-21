@@ -497,3 +497,25 @@ def test_thinking_off_turns_the_chat_template_switch(ctx: Ctx):
     off = json.loads(OpenCodeConfig(ctx).files()[ctx.paths.config / "opencode-writer-off.json"])
     assert off["provider"]["law"]["models"]["qwen3.8-27b-8bit"]["options"] == {
         "chat_template_kwargs": {"enable_thinking": False}}
+
+
+def test_api_tools_installs_the_pinned_typescript_once(ctx: Ctx):
+    import json
+
+    from law.install.steps import ApiTools
+
+    class Npm(FakeSys):
+        def run(self, cmd, *, env=None, timeout=1800, cwd=None):  # type: ignore[no-untyped-def,override]
+            self.calls.append(cmd)
+            prefix = Path(cmd[cmd.index("--prefix") + 1])
+            pkg = json.loads((prefix / "package.json").read_text())
+            ts = prefix / "node_modules" / "typescript"
+            ts.mkdir(parents=True, exist_ok=True)
+            (ts / "package.json").write_text(json.dumps({"version": pkg["dependencies"]["typescript"]}))
+            return Result(0, "")
+
+    ctx.sys = Npm()
+    step = ApiTools(ctx)
+    assert step.plan() == [f"install typescript {ApiTools.TYPESCRIPT} for law api"]
+    step.apply()
+    assert ctx.sys.calls[0][:3] == ["npm", "install", "--prefix"] and step.plan() == []

@@ -1,4 +1,4 @@
-"""`law api`: the real public API of a library class on a project's classpath, in one command.
+"""`law api` for Java: the real public API of a library class on a Maven project's classpath.
 
 Coding agents guess library APIs from memory; when a guess is wrong the compiler says only "cannot find
 symbol", and the agent either guesses again or digs through jars for hours (seen in the lan-chat runs with
@@ -11,7 +11,6 @@ cached under target/law-api/ until pom.xml changes; JDK classes are looked up by
 
 from __future__ import annotations
 
-import difflib
 import json
 import re
 import shutil
@@ -20,12 +19,10 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
-MAX_LINES = 200
+from law.apilookup.common import ApiLookupError, clip, close_names, find_up, not_found
+
 JDK_PREFIXES = ("java.", "javax.", "jdk.", "sun.")
-
-
-class ApiLookupError(Exception):
-    """A lookup that cannot run (no supported project, classpath not resolvable, no javap)."""
+MARKERS = ("pom.xml",)
 
 
 @dataclass(frozen=True)
@@ -39,10 +36,10 @@ class Project:
 
 def find_project(start: Path) -> Project:
     """The nearest directory at or above `start` with a pom.xml."""
-    for d in (start.resolve(), *start.resolve().parents):
-        if (d / "pom.xml").is_file():
-            return Project(d)
-    raise ApiLookupError(f"no pom.xml at or above {start}; `law api` supports Maven projects")
+    root = find_up(start, MARKERS)
+    if root is None:
+        raise ApiLookupError(f"no pom.xml at or above {start}")
+    return Project(root)
 
 
 def classpath(project: Project, mvn: str = "mvn") -> list[Path]:
@@ -101,14 +98,11 @@ def resolve(query: str, classes: dict[str, str]) -> list[str]:
 
 
 def suggestions(query: str, classes: dict[str, str], limit: int = 8) -> list[str]:
-    """Real class names close to a name that does not exist (similar spelling first, then a shared prefix)."""
-    simple = query.rsplit(".", 1)[-1]
+    """Real classes whose simple names are close to a class that does not exist."""
     by_simple: dict[str, list[str]] = {}
     for fqcn in classes:
         by_simple.setdefault(fqcn.rsplit(".", 1)[-1], []).append(fqcn)
-    close = difflib.get_close_matches(simple, list(by_simple), n=limit, cutoff=0.6)
-    prefix = sorted(n for n in by_simple if len(simple) >= 4 and n.startswith(simple[:4]))
-    names = list(dict.fromkeys([*close, *prefix]))
+    names = close_names(query.rsplit(".", 1)[-1], by_simple, limit)
     return [f for n in names for f in sorted(by_simple[n])[:2]][:limit]
 
 
@@ -163,10 +157,7 @@ def lookup(query: str, member: str | None = None, *, start: Path, java_home: str
         listing = package_listing(query, classes)
         if listing:
             return clip(f"Package {query} ({len(listing)} classes):\n" + "\n".join(listing))
-        near = suggestions(query, classes)
-        hint = ("\nClosest real classes:\n" + "\n".join(f"  {n}" for n in near)) if near else ""
-        return (f"No class named '{query}' on the test classpath of {project.root.name}. "
-                f"It does not exist in these library versions: do not use it.{hint}")
+        return not_found("class", query, f"the test classpath of {project.root.name}", suggestions(query, classes))
     out: list[str] = []
     if len(matches) > 1:
         out.append(f"{len(matches)} classes named '{query}': " + ", ".join(matches[:10]))
@@ -175,9 +166,3 @@ def lookup(query: str, member: str | None = None, *, start: Path, java_home: str
         out.append(filter_members(text, member) if member else text)
     return clip("\n\n".join(out))
 
-
-def clip(text: str) -> str:
-    lines = text.splitlines()
-    if len(lines) <= MAX_LINES:
-        return text
-    return "\n".join([*lines[:MAX_LINES], f"... {len(lines) - MAX_LINES} more lines: add a member filter"])
