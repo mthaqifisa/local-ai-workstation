@@ -151,7 +151,7 @@ class LawBot:
             if self._ok(message):
                 await self._send(message.chat.id, roles_text())
 
-        @dp.message(Command("jobs"))
+        @dp.message(Command("jobs", "job"))  # /job: the singular is a common slip
         async def jobs(message: Message, command: CommandObject) -> None:
             """`/jobs`: what is running (and what failed today) with health; `/jobs <keyword>`: details + buttons."""
             if not self._ok(message):
