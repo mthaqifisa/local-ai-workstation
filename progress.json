@@ -1,7 +1,7 @@
 {
   "stage": "C-user-requests",
   "task": "E2E test of /project init on lan-chat (development v2, ticket LC-2)",
-  "status": "paused",
-  "next_step": "Laptop restarted by the owner (ran hot for 2 days); dev run 2292ed0603bb was CANCELLED cleanly at 09:3x on 2026-10-21. Resume: check `law doctor` / Console :8100 is healthy, then retry the run from its stopped stage: Telegram `/jobs lan-chat` -> Retry, or `curl -X POST localhost:8100/jobs/2292ed0603bb/retry`. The coder continues LC-2 (uncommitted work on disk: WebSocketConfig, OriginPolicyTest 14/14 green, BrokerIntegrationTest rewritten with WebSocketStompClient + receipts; see lan-chat/.law/PROGRESS.md lead note 08:35). Monitor every 5 min. Remaining E2E: LC-2..LC-17, deploy mid-step, Retry/Skip on real steps, review/fix rounds, handover doc with screenshots, verify -> Needs changes -> enhanced proposal -> Go, All good; then independent verification + email to owner (folder tree, screenshots, verdict). Later: /code init (code-only) E2E; final summary email with recommendations (revoke Tony token, push decision, LAN no-login risk, speed/fast-model option).",
-  "timestamp": "2026-10-21T09:31+08:00"
+  "status": "running",
+  "next_step": "Resumed after the laptop restart: law doctor all healthy; dev run 2292ed0603bb retried -> stage f611f87f67e8 (LC-2, uncommitted WebSocket work intact) running. Monitor every 5 min. Remaining E2E: LC-2..LC-17, deploy mid-step, Retry/Skip on real steps, review/fix rounds, handover doc with screenshots, verify -> Needs changes -> enhanced proposal -> Go, All good; then independent verification + email to owner. Later: /code init (code-only) E2E; final summary email with recommendations.",
+  "timestamp": "2026-10-21T11:00+08:00"
 }
