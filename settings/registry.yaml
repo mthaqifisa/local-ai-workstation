@@ -10,6 +10,9 @@ machine:
   model_budget_gb: 48
   # oMLX keeps prompt caches on disk to speed up long agent sessions; capped so it can't fill the SSD.
   llm_ssd_cache_gb: 20
+  # An idle LLM is unloaded after this many minutes (owner: 5; the 27B coder holds ~29 GB). Reloading takes ~5 s and the
+  # prompt cache stays on disk, so agent sessions resume quickly; gaps between agent steps are seconds.
+  llm_idle_unload_min: 5
 
 # How long history is kept (Console → Storage to change). Live jobs are never pruned.
 retention:

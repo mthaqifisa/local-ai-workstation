@@ -876,10 +876,12 @@ class Compose:
 
 
 class OmlxSettings:
-    """Settings oMLX reads from its settings.json that the CLI can't set: the on-disk prompt-cache cap.
+    """Settings oMLX reads from its settings.json that the CLI can't set: the on-disk prompt-cache cap and the idle
+    unload.
 
-    Without a cap ("auto") long agent sessions grew the cache to 61 GB in one evening (measured 2026-10-20).
-    Changing the file restarts oMLX so the setting takes effect.
+    Without a cap ("auto") long agent sessions grew the cache to 61 GB in one evening (measured 2026-10-20). Without
+    an idle unload a cancelled or finished agent left its model holding ~29 GB until the next model swap (seen
+    2026-10-21). Changing the file restarts oMLX so the settings take effect.
     """
 
     name = "omlx-settings"
@@ -888,22 +890,23 @@ class OmlxSettings:
         self.c = c
         self.file = c.paths.runtime / "omlx" / "settings.json"
 
-    def _want(self) -> str:
-        return f"{self.c.reg.machine.llm_ssd_cache_gb}GB"
-
-    def _current(self) -> str | None:
-        if not self.file.exists():
-            return None
-        return str(json.loads(self.file.read_text()).get("cache", {}).get("ssd_cache_max_size"))
+    def _want(self) -> dict[str, object]:
+        m = self.c.reg.machine
+        return {"cache.ssd_cache_max_size": f"{m.llm_ssd_cache_gb}GB",
+                "idle_timeout.idle_timeout_seconds": m.llm_idle_unload_min * 60}
 
     def plan(self) -> list[str]:
         if not self.file.exists():
-            return []  # oMLX creates it on first start; the next run sets the cap
-        return [] if self._current() == self._want() else [f"cap oMLX disk cache at {self._want()}"]
+            return []  # oMLX creates it on first start; the next run applies the settings
+        doc = json.loads(self.file.read_text())
+        return [f"set oMLX {key} = {value}" for key, value in self._want().items()
+                if doc.get(key.split(".")[0], {}).get(key.split(".")[1]) != value]
 
     def apply(self) -> None:
         doc = json.loads(self.file.read_text())
-        doc.setdefault("cache", {})["ssd_cache_max_size"] = self._want()
+        for key, value in self._want().items():
+            section, field = key.split(".")
+            doc.setdefault(section, {})[field] = value
         self.file.write_text(json.dumps(doc, indent=2) + "\n")
         label = self.c.reg.services["omlx"].label or "com.law6.omlx"
         self.c.sys.launchd_kickstart(label)
