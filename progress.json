@@ -1,7 +1,7 @@
 {
   "stage": "C-user-requests",
-  "task": "C4 film render test, C7 lan-chat verification, C8 reclaim + email",
-  "status": "in_progress",
-  "next_step": "Finish pre-E2E: oMLX rebuilt with kernels (compare kbench before/after: same answers, prompt time), rerun the 10 s film test (LoRA fix), law reclaim. Then run the E2E plan in PROGRESS.md from Telegram (/code init ... thinking low, proposal brief), monitoring every 5 min, fixing issues between steps.",
-  "timestamp": "2026-10-20T21:35:00"
+  "task": "E2E test of /project init on lan-chat (development v2, ticket LC-2)",
+  "status": "paused",
+  "next_step": "Laptop restarted by the owner (ran hot for 2 days); dev run 2292ed0603bb was CANCELLED cleanly at 09:3x on 2026-10-21. Resume: check `law doctor` / Console :8100 is healthy, then retry the run from its stopped stage: Telegram `/jobs lan-chat` -> Retry, or `curl -X POST localhost:8100/jobs/2292ed0603bb/retry`. The coder continues LC-2 (uncommitted work on disk: WebSocketConfig, OriginPolicyTest 14/14 green, BrokerIntegrationTest rewritten with WebSocketStompClient + receipts; see lan-chat/.law/PROGRESS.md lead note 08:35). Monitor every 5 min. Remaining E2E: LC-2..LC-17, deploy mid-step, Retry/Skip on real steps, review/fix rounds, handover doc with screenshots, verify -> Needs changes -> enhanced proposal -> Go, All good; then independent verification + email to owner (folder tree, screenshots, verdict). Later: /code init (code-only) E2E; final summary email with recommendations (revoke Tony token, push decision, LAN no-login risk, speed/fast-model option).",
+  "timestamp": "2026-10-21T09:31+08:00"
 }
