@@ -59,7 +59,8 @@ DEV_PLATFORMS = """Build and test per platform:
 - Go: gate `gofmt -l .` (empty), `go vet ./...` and `go test ./...`.
 - Garmin Connect IQ (Monkey C): manifest.xml, monkey.jungle, source/, resources/. Gate: `monkeyc -d <device> -f
   monkey.jungle -o bin/<app>.prg -y "$CIQ_DEVELOPER_KEY" -w` for every target device, and the (:test) unit tests:
-  build with `-t`, start the simulator (`connectiq &`) and run `monkeydo bin/<app>.prg <device> -t`."""
+  build with `-t`, start the simulator (`open -a ConnectIQ`, wait ~10 s) and run `monkeydo bin/<app>.prg <device>
+  -t`."""
 
 ENV_SPEC = """This stage prepares the Mac for the project; write no application code.
 Read {spec_file} (the stack and technical design). For every tool the project needs (language runtimes with
@@ -104,12 +105,12 @@ application code in this stage.
    and capture the key screens and steps of the main journeys (e.g. join, chat, error states) as PNG files in
    {hout}/assets/. iOS apps: build for the simulator, `xcrun simctl boot`, install and launch the app, then `xcrun
    simctl io booted screenshot <file>` for each screen (drive the steps with an XCUITest or deep links). Garmin
-   apps: run in the Connect IQ simulator (`connectiq &`, `monkeydo bin/<app>.prg <device>`) and capture its window
-   with `peekaboo image --app ConnectIQ --path <file>`. Web apps (1280x800): a headless browser: Chrome headless
-   (`"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --screenshot=<file>
-   --window-size=1280,800 <url>`) for single pages, or a short puppeteer-core script (install it in a temp folder
-   with npm; the browser is the chrome-headless-shell under ~/LAW/runtime/chrome) for steps that need typing or
-   clicking. Stop everything you started when done.
+   apps: run in the Connect IQ simulator (`open -a ConnectIQ`, `monkeydo bin/<app>.prg <device>`) and capture its
+   window with `peekaboo image --app "Connect IQ Device Simulator" --path <file>`. Web apps (1280x800): a headless
+   browser: Chrome headless (`"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new
+   --screenshot=<file> --window-size=1280,800 <url>`) for single pages, or a short puppeteer-core script (install it
+   in a temp folder with npm; the browser is the chrome-headless-shell under ~/LAW/runtime/chrome) for steps that
+   need typing or clicking. Stop everything you started when done.
 2. Then write the document, starting with this YAML header:
 ---
 title: <product name>
