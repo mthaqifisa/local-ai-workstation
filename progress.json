@@ -1,9 +1,9 @@
 {
   "stage": "C-user-requests",
-  "task": "E2E lan-chat dev v2 (LC-2) + agent training",
-  "status": "running",
-  "next_step": "LC-2 done + verified (530286d). Coder continues to LC-3 in stage 523cbcc340d8 (milestone run). Monitor every 5 min (cron 827bd702). Watch: dead receipt scheduler in BrokerIntegrationTest for the review round; bookkeeping time per ticket. Agent commands only via Tony in Telegram.",
-  "timestamp": "2026-10-21T13:41+08:00",
+  "task": "Multi-stack agent capability + final tweaks before lan-chat v2 rebuild",
+  "status": "in_progress",
+  "next_step": "Owner (13:55): cancel the coder (done via Tony in Telegram), scrap the coding (lan-chat reset to proposal 07f8303; old code on branch backup/v2-coding-2026-10-21; .law restored with state awaiting_go, no session.json), let me finish tweaks, then via Telegram ask the agent to start coding from the proposal (press Go). Tweaks in progress: law api package (java done; golang.py written, untested; next TypeScript for Node/Angular/React/RN, Swift SDK symbol graphs), coder prompt for all stacks, env-stage knowledge (iOS/XcodeGen, RN/CocoaPods, Garmin Connect IQ), handover screenshots per platform, Brewfile (go, typescript, xcodegen, cocoapods, watchman), Tony: /job alias, stale wrong-moment decision jobs shown as failed with Retry. Garmin SDK needs the owner's Garmin account.",
+  "timestamp": "2026-10-21T14:00+08:00",
   "files_touched": [
     "src/law/apilookup.py",
     "src/law/cli.py",
