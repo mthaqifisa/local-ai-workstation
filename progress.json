@@ -1,7 +1,20 @@
 {
   "stage": "C-user-requests",
-  "task": "E2E test of /project init on lan-chat (development v2, ticket LC-2)",
+  "task": "E2E lan-chat dev v2 (LC-2) + agent training",
   "status": "running",
-  "next_step": "Resumed after the laptop restart: law doctor all healthy; dev run 2292ed0603bb retried -> stage f611f87f67e8 (LC-2, uncommitted WebSocket work intact) running. Monitor every 5 min. Remaining E2E: LC-2..LC-17, deploy mid-step, Retry/Skip on real steps, review/fix rounds, handover doc with screenshots, verify -> Needs changes -> enhanced proposal -> Go, All good; then independent verification + email to owner. Later: /code init (code-only) E2E; final summary email with recommendations.",
-  "timestamp": "2026-10-21T11:00+08:00"
+  "next_step": "Owner rule: never patch lan-chat myself; train/tweak agents (lan-chat is the capability benchmark; a bigger project follows once it passes with a high standard). Deploying c281564 (law api + wider dig guard + coder prompt). Then: verify `law api` from ~/LAW/runtime/bin and the coder's rendered prompt; Restart step on f611f87f67e8 (exercises Restart on a real step) so the coder resumes its session with law api; watch it fix BrokerIntegrationTest on its own (it guessed StompFrame/startSubscription/handleReceipt; simple broker sends no RECEIPT for SUBSCRIBE, which it must discover by test). Monitor every 5 min.",
+  "timestamp": "2026-10-21T11:42+08:00",
+  "files_touched": [
+    "src/law/apilookup.py",
+    "src/law/cli.py",
+    "src/law/handlers/tasks.py",
+    "settings/roles.yaml",
+    "tests/unit/test_apilookup.py",
+    "tests/unit/test_handlers_core.py",
+    "docs/adr/0015-reliable-agent-runs.md",
+    "docs/RUNBOOK.md"
+  ],
+  "commands": [
+    "./install.sh (deploy law api)"
+  ]
 }
