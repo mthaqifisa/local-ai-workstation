@@ -153,8 +153,20 @@ def describe_opencode_line(line: str) -> str | None:
     if not target:
         return label
     lines = [ln.strip() for ln in str(target).replace(str(Path.home()), "~").splitlines() if ln.strip()]
+    if tool == "bash":  # what ran, not the boilerplate around it (every command starts with sourcing env.sh)
+        heredoc = next((i for i, ln in enumerate(lines) if "<<" in ln), None)  # after it: data, not commands
+        lines = lines[:heredoc + 1] if heredoc is not None else lines
+        meaningful = [BANNER.sub("", BOILERPLATE_PREFIX.sub("", ln)).strip() for ln in lines
+                      if not BOILERPLATE_LINE.match(ln)]
+        lines = [ln for ln in meaningful if ln] or lines
+        return f"{label} {' ; '.join(lines)[:140]}"
     text = lines[0] if lines else ""
     return f"{label} {text[:140]}"
+
+
+BOILERPLATE_LINE = re.compile(r"^(?:source \S*env\.sh|cd \S+|echo [\"']?=+[^;&|]*[\"']?)\s*;?\s*$")
+BANNER = re.compile(r"echo\s+([\"'])=+[^\"']*\1\s*(?:;|&&)\s*")  # echo "=== X ===";  between commands
+BOILERPLATE_PREFIX = re.compile(r"^(?:(?:source \S*env\.sh|cd \S+)\s*(?:&&|;)\s*)+")
 
 
 # An agent that changes no file for this long is stuck (seen: a 2h20m re-read loop across context compactions).
@@ -201,6 +213,13 @@ LIB_NUDGE = ("Stop reading library internals (jars, node_modules, the Go module 
              "Swift, Monkey C): it prints the real signatures, or the closest real names when the one you used "
              "does not exist. Use only what it shows, compile, and let the test output guide you. Check "
              ".law/PROGRESS.md for notes, then continue the current ticket.")
+# Looking up API after API without writing anything (seen 2026-10-21: LC-3 ran 20+ law api lookups over 1h40m,
+# each followed by 10-20 min of planning, and wrote no code). After LOOKUP_LIMIT lookups since the last saved file
+# the agent is told to write the code with what it has.
+LOOKUP_LIMIT = 6
+LOOKUP_NUDGE = ("You have looked up enough APIs. Write the code for the current ticket now, using what the lookups "
+                "showed. Then compile and run the tests, and look up only a symbol the compiler reports as wrong. "
+                "Small steps: write one file, build, fix, continue.")
 DOC_ROLES = {"writer", "researcher", "designer", "analyst", "architect"}
 
 
@@ -311,15 +330,23 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 edits.append(summary.split(" ", 2)[-1])
             return summary
 
-        digs = 0
+        digs = lookups = 0
 
         def steer(summary: str) -> str | None:
-            nonlocal digs
+            nonlocal digs, lookups
+            if summary.startswith("✏️"):
+                digs = lookups = 0
+                return None
             if summary.startswith("▶") and is_library_dig(summary):
                 digs += 1
                 if digs >= LIB_DIG_LIMIT:
                     digs = 0
                     return LIB_NUDGE
+            if summary.startswith("▶"):
+                lookups += summary.count("law api ")
+                if lookups >= LOOKUP_LIMIT:
+                    lookups = 0
+                    return LOOKUP_NUDGE
             return None
 
         # Interventions in a row without progress: an agent that saved files since the last nudge earned a fresh
@@ -342,8 +369,10 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 sid = session_id(exc.output)
                 strikes = 1 if made_progress(exc.output) else strikes + 1
                 if sid is None or strikes > STALL_NUDGES:
-                    raise Fatal(f"{role} agent kept reading library internals") from exc
-                await ctx.progress("⚠️ reading library internals: redirecting the agent to compile and test instead")
+                    raise Fatal(f"{role} agent kept researching without writing code") from exc
+                why = ("looked up enough APIs: telling the agent to write the code" if exc.message == LOOKUP_NUDGE
+                       else "reading library internals: redirecting the agent to compile and test instead")
+                await ctx.progress(f"⚠️ {why}")
                 cmd = [*base, "--session", sid, exc.message]
                 continue
             except Stalled as exc:
