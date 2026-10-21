@@ -119,16 +119,22 @@ def package_listing(package: str, classes: dict[str, str]) -> list[str]:
 
 def javap(fqcn: str, entry: str | None, java_home: str | None = None) -> str:
     """`javap -public` of one class; nested classes are passed with `$`."""
-    tool = (str(Path(java_home) / "bin" / "javap") if java_home else None) or shutil.which("javap")
-    if not tool or not Path(tool).exists():
-        raise ApiLookupError("javap not found: source the project's .law/env.sh (it sets JAVA_HOME)")
-    binary = binary_name(fqcn, entry)
-    cmd = [tool, "-public", *(["-cp", entry] if entry else []), binary]
+    tool = javap_tool(java_home)
+    cmd = [tool, "-public", *(["-cp", entry] if entry else []), binary_name(fqcn)]
     run = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
     return (run.stdout or run.stderr).strip()
 
 
-def binary_name(fqcn: str, entry: str | None) -> str:
+def javap_tool(java_home: str | None) -> str:
+    """The project JDK's javap (JAVA_HOME), else the first one on PATH."""
+    home = Path(java_home) / "bin" / "javap" if java_home else None
+    tool = str(home) if home and home.is_file() else shutil.which("javap")
+    if tool is None:
+        raise ApiLookupError("javap not found: source the project's .law/env.sh (it sets JAVA_HOME)")
+    return tool
+
+
+def binary_name(fqcn: str) -> str:
     """`a.b.Outer.Inner` -> `a.b.Outer$Inner`: the first capitalised segment starts the class name."""
     parts = fqcn.split(".")
     first = next((i for i, p in enumerate(parts) if p[:1].isupper()), len(parts) - 1)

@@ -12,7 +12,7 @@ is a different model family from the writer, so the system never grades its own 
 | Use it from | How |
 |---|---|
 | **Telegram** (main channel) | Message your bot: text, voice notes, photos; `/help` lists every command (`/image`, `/video`, `/music`, `/code`, `/agent`, …). Replies show live thinking |
-| **Terminal** | `law ask "…"`, `law code "…"`, `law image "…"`, `law tts "…"`, `law stt file.wav`, `law music "…"`, `law jobs` |
+| **Terminal** | `law ask "…"`, `law code "…"`, `law image "…"`, `law tts "…"`, `law stt file.wav`, `law music "…"`, `law jobs`, `law api <Class>` |
 | **Browser** (any device) | Open WebUI chat `http://<mac>.local:3000` · LAW Console `http://<mac>.local:8100` (live stats, jobs, personas, settings) · dashboard `http://<mac>.local:3010` |
 | **Any OpenAI/Anthropic client** | `http://<mac>.local:8000/v1` |
 
