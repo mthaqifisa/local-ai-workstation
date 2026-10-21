@@ -161,8 +161,10 @@ def describe_opencode_line(line: str) -> str | None:
 # It is stopped and its session resumed with a nudge to build and fix, at most STALL_NUDGES times.
 STALL_MINUTES = 25
 STALL_NUDGES = 3
-NUDGE = ("You have not changed any file for {minutes} minutes. Stop reading and exploring. Run the project's "
-         "build or tests now, fix the first error they report (open only the file it names), and repeat. "
+NUDGE = ("You have not changed any file for {minutes} minutes. Stop reading and exploring. If the plan or the "
+         "project does not exist yet, write it now: the build section of .law/PLAN.md, then the first ticket's "
+         "files. Otherwise run the project's build or tests now, fix the first error they report (open only the "
+         "file it names), and repeat. "
          "If the error is a library class or method that does not exist (cannot find symbol, does not override), "
          "run `law api <Class> [member]` once for the real signatures instead of guessing again. "
          "Commit when a gate passes.")
