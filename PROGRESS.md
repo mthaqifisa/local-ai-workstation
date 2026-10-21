@@ -182,10 +182,12 @@ Happy path and unhappy paths, all from Telegram, monitored every 5 min:
 
 ### Multi-stack capability (owner request 2026-10-21 13:55): Go, Swift, Node.js, Angular, React, React Native; iOS + Garmin apps
 Machine: Xcode + iOS simulator runtimes 26.5-27.1, Swift 6.4, Go 1.26, Node 26, Maven present. Missing: Garmin Connect IQ SDK, CocoaPods, XcodeGen.
-- [ ] `law api` per ecosystem (nearest project marker wins): Java/Maven (done), TypeScript/JS (Node, Angular, React, React Native via the TS compiler on .d.ts), Go (`go doc`), Swift (SDK symbol graphs: SwiftUI, UIKit, Foundation, ...), Monkey C (Connect IQ SDK)
-- [ ] Coder prompt + guards generalised to every stack (no guessing APIs; no digging node_modules/SDK internals)
-- [ ] Environment stage knows each stack: iOS (Xcode, simulator, XcodeGen project.yml instead of hand-edited .pbxproj, xcodebuild test), React Native (CocoaPods, Metro), Garmin (Connect IQ SDK, developer key, monkeyc, simulator)
-- [ ] Handover screenshots per platform: web (Chrome), iOS (`simctl io screenshot`), Garmin (simulator window capture)
-- [ ] ADR-0016 multi-stack development
+- [x] `law api` per ecosystem (nearest project marker wins): Java/Maven (done), TypeScript/JS (Node, Angular, React, React Native via the TS compiler on .d.ts), Go (`go doc`), Swift (SDK symbol graphs: SwiftUI, UIKit, Foundation, ...), Monkey C (Connect IQ SDK)
+- [x] Coder prompt + guards generalised to every stack (no guessing APIs; no digging node_modules/SDK internals)
+- [x] Environment stage knows each stack: iOS (Xcode, simulator, XcodeGen project.yml instead of hand-edited .pbxproj, xcodebuild test), React Native (CocoaPods, Metro), Garmin (Connect IQ SDK, developer key, monkeyc, simulator)
+- [x] Handover screenshots per platform: web (Chrome), iOS (`simctl io screenshot`), Garmin (simulator window capture)
+- [x] ADR-0016 multi-stack development
 - [ ] Capability proof, independent checks: small real projects per stack built by the agents from Telegram (after lan-chat frees the heavy lane)
 - 2026-10-21 13:56 Owner: cancel + scrap the coding. Cancelled via Tony in Telegram (Cancel button; root 2292ed0603bb + stage cancelled; worker restarted on new code, keep-awake live). lan-chat reset to the proposal commit 07f8303 (code kept on branch backup/v2-coding-2026-10-21); .law/ rebuilt at 'awaiting_go' without env/build notes or the old session. Next: final tweaks (multi-stack), then Go from Telegram.
+- 2026-10-21 14:05 Owner: memory still high -> the 27B coder stayed loaded (29 GB) after the cancel; oMLX never unloaded idle models. omlx-settings now sets idle_timeout_seconds = 300 (owner: free RAM after 5 min without agent work); applied, model unloaded, 90% RAM free.
+- 2026-10-21 14:15 Multi-stack shipped (d79d348, deployed; install re-run 0 changes; 338 unit tests): law api for Java, Go (go doc), TypeScript/JS for Node/Angular/React/React Native (TS compiler on .d.ts; LAW-pinned TypeScript 6.0.3 since TS 7 has no JS API), Swift (synthesized SDK interfaces incl. ObjC, cached; SwiftPM sources), Monkey C (Connect IQ SDK reference); coder prompt, nudges, dig guard for all stacks; env/dev/handover platform notes (XcodeGen, xcodebuild, Expo, Go gates, monkeyc + simulator, simctl/peekaboo screenshots); Brewfile go, xcodegen, cocoapods, watchman, connectiq SDK 9.3.0 + SDK Manager. Tony: /job alias. Open: Garmin device definitions need the owner's sign-in in SDK Manager; capability proof projects per stack.
