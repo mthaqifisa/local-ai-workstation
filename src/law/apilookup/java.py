@@ -21,8 +21,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from law.apilookup.common import ApiLookupError, clip, close_names, find_up
+from law.paths import LawPaths
 
-JDK_PREFIXES = ("java.", "javax.", "jdk.", "sun.")
+JDK_API = ("java.", "javax.")  # the JDK's public API packages (indexed with the classpath)
 MARKERS = ("pom.xml",)
 
 
@@ -114,6 +115,28 @@ def unused_modules(query: str, managed: list[tuple[str, str]], entries: list[Pat
     return [(g, a) for *_, g, a in sorted(scored)[:limit]]
 
 
+def jdk_classes(java_home: str | None) -> dict[str, str]:
+    """The JDK's public API classes (java.*, javax.*) from its runtime image, so `law api java.net.http.WebSocket`
+    and `law api CountDownLatch` work like library classes. Cached per JDK; an empty entry means "no -cp"."""
+    home = Path(java_home) if java_home else Path(javap_tool(None)).resolve().parent.parent
+    modules = home / "lib" / "modules"
+    jimage = home / "bin" / "jimage"
+    if not modules.is_file() or not jimage.is_file():
+        return {}
+    cache = LawPaths.from_env().cache / "apilookup" / "jdk" / f"{re.sub(r'[^\w.-]', '_', str(home))}.json"
+    if cache.is_file() and cache.stat().st_mtime >= modules.stat().st_mtime:
+        return dict(json.loads(cache.read_text()))
+    run = subprocess.run([str(jimage), "list", str(modules)], capture_output=True, text=True, timeout=120)
+    found: dict[str, str] = {}
+    for line in run.stdout.splitlines():
+        fqcn = class_name(line.strip())
+        if fqcn and fqcn.startswith(JDK_API):
+            found[fqcn] = ""
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(json.dumps(found))
+    return found
+
+
 def class_index(project: Project, entries: list[Path]) -> dict[str, str]:
     """Fully qualified class name (nested classes as Outer.Inner) -> the classpath entry that holds it."""
     key = [f"{p}:{p.stat().st_mtime}" for p in entries]
@@ -169,7 +192,7 @@ def package_listing(package: str, classes: dict[str, str]) -> list[str]:
 def javap(fqcn: str, entry: str | None, java_home: str | None = None) -> str:
     """`javap -public` of one class; nested classes are passed with `$`."""
     tool = javap_tool(java_home)
-    cmd = [tool, "-public", *(["-cp", entry] if entry else []), binary_name(fqcn)]
+    cmd = [tool, "-public", *(["-cp", entry] if entry else []), binary_name(fqcn)]  # no entry: a JDK class
     run = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
     return (run.stdout or run.stderr).strip()
 
@@ -243,12 +266,9 @@ def inherited(fqcn: str, member: str, classes: dict[str, str], java_home: str | 
 def lookup(query: str, member: str | None = None, *, start: Path, java_home: str | None = None,
            mvn: str = "mvn") -> str:
     """The answer `law api` prints."""
-    if query.startswith(JDK_PREFIXES):
-        text = javap(query, None, java_home)
-        return clip(filter_members(text, member) if member else text)
-    project = find_project(start)
-    classes = class_index(project, classpath(project, mvn))
     query = query.replace("/", ".").removesuffix(".class").removesuffix(".java")
+    project = find_project(start)
+    classes = {**jdk_classes(java_home), **class_index(project, classpath(project, mvn))}
     matches = resolve(query, classes)
     note = ""
     if not matches and "." in query:

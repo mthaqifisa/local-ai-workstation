@@ -15,6 +15,13 @@ from law.apilookup import java as apilookup
 STOMP = "org/springframework/messaging/simp/stomp/"
 
 
+@pytest.fixture(autouse=True)
+def small_jdk(monkeypatch, request):
+    """Most tests use a tiny JDK index; test_jdk_* tests read the real runtime image."""
+    if not request.node.name.startswith("test_jdk"):
+        monkeypatch.setattr(apilookup, "jdk_classes", lambda java_home: {"java.util.concurrent.CountDownLatch": ""})
+
+
 def _project(tmp_path: Path) -> apilookup.Project:
     """A Maven project whose cached classpath is one fake jar (no mvn run needed)."""
     (tmp_path / "pom.xml").write_text("<project/>")
@@ -90,10 +97,14 @@ def test_binary_name_and_member_filter():
     assert "no public member mentions 'x', declared or inherited" in apilookup.filter_members(text, "x")
 
 
-@pytest.mark.skipif(shutil.which("javap") is None, reason="needs a JDK")
-def test_jdk_class_by_fully_qualified_name():
-    out = apilookup.lookup("java.util.concurrent.CountDownLatch", "await", start=Path())
-    assert "await(long, java.util.concurrent.TimeUnit)" in out and "countDown" not in out
+@pytest.mark.skipif(shutil.which("jimage") is None and not os.environ.get("JAVA_HOME"), reason="needs a JDK")
+def test_jdk_classes_are_indexed_like_library_classes(tmp_path: Path):
+    _project(tmp_path)
+    home = os.environ.get("JAVA_HOME")
+    by_path = apilookup.lookup("java/net/http/WebSocket", start=tmp_path, java_home=home, mvn="/nonexistent/mvn")
+    assert "public interface java.net.http.WebSocket" in by_path
+    simple = apilookup.lookup("CountDownLatch", "await", start=tmp_path, java_home=home, mvn="/nonexistent/mvn")
+    assert "await(long, java.util.concurrent.TimeUnit)" in simple and "countDown()" not in simple
 
 
 def test_javap_falls_back_to_path_when_java_home_has_none(tmp_path: Path, monkeypatch):
