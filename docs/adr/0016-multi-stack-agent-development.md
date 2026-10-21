@@ -37,7 +37,7 @@ also web-only: the environment, build and handover stages knew Chrome screenshot
     (:test) unit tests in the simulator; screenshots of the simulator window with peekaboo.
 
 ## Consequences
-One lookup command across stacks instead of per-language habits. Garmin device definitions need the owner's Garmin
+One lookup command across stacks instead of per-language habits. Verified 2026-10-21 after the owner signed in to the SDK Manager: 178 devices installed; the SDK's Analog sample built for fenix7, ran in the simulator (`open -a ConnectIQ`, `monkeydo`) and was captured with peekaboo (window app name "Connect IQ Device Simulator"); macOS asked once to confirm opening ConnectIQ.app (Gatekeeper), which the setup session approved. Garmin device definitions need the owner's Garmin
 sign-in in the SDK Manager once; until then the environment stage stops with that instruction. Android is out of
 scope until an Android SDK is installed. The first Swift lookup per SDK version takes ~25 s (interface synthesis),
 later ones ~0.3 s.
