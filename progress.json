@@ -2,8 +2,8 @@
   "stage": "C-user-requests",
   "task": "lan-chat v2 rebuild from the proposal (Go via Tony)",
   "status": "running",
-  "next_step": "lan-chat v2 rebuild running (root 552011d4129e, env stage first) with the multi-stack setup. Monitor every 5 min; fix v6 only; commands via Tony. Pending owner: Garmin sign-in in Connect IQ SDK Manager. After lan-chat: capability-proof projects per stack.",
-  "timestamp": "2026-10-21T14:14+08:00",
+  "next_step": "Owner (17:30): finish lan-chat first; Garmin and iOS capability projects are planned later. Rebuild run 552011d4129e: LC-1, LC-2 done + verified; LC-3..LC-18 to go. Monitor every 5 min; fix v6 only; commands via Tony.",
+  "timestamp": "2026-10-21T17:31+08:00",
   "files_touched": [
     "src/law/apilookup.py",
     "src/law/cli.py",
