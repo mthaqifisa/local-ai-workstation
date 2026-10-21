@@ -90,6 +90,7 @@ rm -rf ~/LAW             # remove all machine-local data (models, outputs, secre
 | Symptom | Check | Fix |
 |---|---|---|
 | `law doctor` shows a service down | `law services logs <name>` | `law install` repairs it; or `law services restart <name>` |
+| An agent step pauses for a long time with no model activity | `pmset -g log \| grep Sleep` | The Mac slept. The worker keeps it awake while jobs run (`caffeinate`), but closing the lid on battery still sleeps it: keep the lid open or the charger plugged in during long jobs |
 | Jobs stay queued | `law jobs`; worker log | A heavy job may be running (one at a time by design). `law services restart worker` requeues safely |
 | Very slow first answer | Model is loading (about 0.25 s per GB) | Normal after a swap; repeated jobs on the same model are fast |
 | Open WebUI page empty | `law services logs` for Colima; `law install` | First start takes about a minute |

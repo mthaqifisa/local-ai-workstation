@@ -24,6 +24,8 @@ no way to see from Telegram or the Console whether an agent was working, thinkin
 - Queue: planned restarts give back the attempt and requeue; a dead stage fails its pipeline; Retry (from the
   stopped step, earlier results kept), Skip and Restart via API, CLI, Console and Telegram buttons; every failure
   asks the owner Retry / Skip.
+- Keep awake (2026-10-21): the worker holds `caffeinate -i -s -w <worker pid>` while any job runs; a coder step
+  froze 31 minutes when the Mac idle-slept on battery (the only assertion had come from an interactive session).
 - `law install` defers a worker restart while jobs run (the worker restarts itself between steps).
 - Visibility: Console Agents tab and Telegram `/jobs [keyword]` with health (working, thinking, stalled, stuck,
   failed), step, last actions, to-do progress and model activity.

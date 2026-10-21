@@ -24,9 +24,10 @@ def build_worker(paths: LawPaths) -> tuple[Worker, JobStore]:
     internal = f"http://{rt.reg.network.loopback}:{rt.reg.ports.llm_internal}"
     models = OmlxModelControl(internal, light)
     from law.install.steps import WORKER_RESTART_FLAG
+    from law.queue.awake import KeepAwake, caffeinate_argv
 
     worker = Worker(store, handlers(rt), capacity(rt), resolver(rt), models=models,
-                    restart_flag=paths.state / WORKER_RESTART_FLAG)
+                    restart_flag=paths.state / WORKER_RESTART_FLAG, awake=KeepAwake(caffeinate_argv()))
     return worker, store
 
 
