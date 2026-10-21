@@ -296,7 +296,11 @@ def lookup(query: str, member: str | None = None, *, start: Path, java_home: str
     for fqcn in matches[:3]:
         text = javap(fqcn, classes[fqcn], java_home)
         if member and not any(ln.startswith(" ") and member.lower() in ln.lower() for ln in text.splitlines()):
-            extra = inherited(fqcn, member, classes, java_home)
+            # javap lists no nested types: WebSocket Listener means the nested interface WebSocket.Listener
+            nested = sorted(c for c in classes if c.startswith(fqcn + ".") and "." not in c[len(fqcn) + 1:]
+                            and member.lower() in c[len(fqcn) + 1:].lower())
+            extra = [f"  nested type {c}: run law api {c}" for c in nested] + inherited(fqcn, member, classes,
+                                                                                     java_home)
             if extra:
                 header = [ln for ln in text.splitlines() if not ln.startswith(" ")]
                 out.append("\n".join([*header[:-1], *extra, *header[-1:]]))
