@@ -1096,9 +1096,39 @@ class DocTools:
         return self.plan()
 
 
+class ApiTools:
+    """The pinned TypeScript compiler `law api` reads .d.ts files with. TypeScript 7 (the native compiler) has no
+    JavaScript compiler API, so projects on it cannot lend theirs; this one is used whenever theirs is 7 or newer."""
+
+    name = "api-tools"
+    TYPESCRIPT = "6.0.3"
+
+    def __init__(self, c: Ctx) -> None:
+        self.c = c
+        self.root = c.paths.runtime / "api-tools"
+
+    def _installed(self) -> str | None:
+        manifest = self.root / "node_modules" / "typescript" / "package.json"
+        return str(json.loads(manifest.read_text()).get("version")) if manifest.exists() else None
+
+    def plan(self) -> list[str]:
+        return [] if self._installed() == self.TYPESCRIPT else [f"install typescript {self.TYPESCRIPT} for law api"]
+
+    def apply(self) -> None:
+        self.root.mkdir(parents=True, exist_ok=True)
+        manifest = {"name": "law-api-tools", "private": True, "dependencies": {"typescript": self.TYPESCRIPT}}
+        (self.root / "package.json").write_text(json.dumps(manifest, indent=2) + "\n")
+        res = self.c.sys.run(["npm", "install", "--prefix", str(self.root), "--no-audit", "--no-fund"], timeout=900)
+        if not res.ok:
+            raise RuntimeError(res.out[-1500:])
+
+    def verify(self) -> list[str]:
+        return self.plan()
+
+
 def default_steps(c: Ctx) -> list[Step]:
     return [
-        Skeleton(c), EnvProfile(c), Secrets(c), Brew(c), LawVenv(c), CalcEnv(c), DocTools(c), MediaTools(c), Models(c),
-        MediaModels(c), OpenCodeConfig(c), Services(c), OmlxSettings(c), ComfyUIStep(c), Colima(c), Compose(c),
-        OpenWebUIState(c),
+        Skeleton(c), EnvProfile(c), Secrets(c), Brew(c), LawVenv(c), CalcEnv(c), DocTools(c), ApiTools(c),
+        MediaTools(c), Models(c), MediaModels(c), OpenCodeConfig(c), Services(c), OmlxSettings(c), ComfyUIStep(c),
+        Colima(c), Compose(c), OpenWebUIState(c),
     ]

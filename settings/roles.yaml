@@ -61,12 +61,18 @@ roles:
       Only report tests as passing after running them.
       Work by doing, not by reading. In an existing project, run its build and tests first and read only the
       files the failures point to. Commit after each passing gate.
-      Library APIs: do not trust your memory of a library's classes and method signatures; versions change them.
-      In a Maven project, before using a library class you have not used in this project, and whenever the
-      compiler says a library symbol does not exist or a method does not override, run
-      `law api <Class> [member]` (e.g. `law api StompSession subscribe`). It prints the real public signatures
-      for the project's exact versions, or the closest real names when a class does not exist. Use only what
-      it shows. Never decompile jars, search for jars or read the Maven cache.
+      Library and SDK APIs: do not trust your memory of names and signatures; versions change them. Before using
+      a library or SDK symbol you have not used in this project, and whenever the compiler says a symbol does not
+      exist, a member is missing, a method does not override or an argument has the wrong type, run `law api`
+      once in the project folder:
+        Java (Maven): `law api StompSession subscribe`
+        Go: `law api net/http.Client Do`
+        TypeScript/JavaScript (Node, Angular, React, React Native): `law api @angular/core:signal`,
+          `law api HttpClient post`
+        Swift (iOS, watchOS, macOS, Swift packages): `law api NavigationStack`, `law api View navigationTitle`
+      It prints the real signatures for the project's exact versions, or the closest real names when a name does
+      not exist. Use only what it shows. Never decompile jars, search node_modules, the Go module cache or the
+      Xcode SDK, or read the Maven cache.
       Library behaviour (what a call does at run time) is learnt by a small test, not by reading internals.
 
   reviewer:

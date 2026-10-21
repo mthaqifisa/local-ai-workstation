@@ -31,6 +31,36 @@ HANDOVER_OUT = "docs/handover"
 MILESTONE_STAGES = 12  # unused stages finish at once when every milestone is ticked
 REVIEW_ROUNDS = 3
 
+# What each stack needs on this Mac and how it is built, tested and shown (ADR-0016). Shared by the stages below.
+ENV_PLATFORMS = """Per platform (only what the project's stack needs):
+- iOS / watchOS / macOS (Swift): Xcode and XcodeGen are installed. Pick an installed simulator
+  (`xcrun simctl list devices available`) and record its destination, e.g. `platform=iOS Simulator,name=iPhone 17`,
+  in .law/ENVIRONMENT.md and as `export XCODE_DESTINATION=...` in .law/env.sh.
+- React Native: Node, CocoaPods and Watchman are installed; it runs on the iOS simulator (no Android SDK on this
+  Mac: say so in ENVIRONMENT.md if the spec needs Android).
+- Go: use the Go version go.mod declares (`go version`; Homebrew `go`).
+- Garmin Connect IQ (Monkey C): the SDK is installed (`monkeyc --version`). Device definitions come from the
+  Connect IQ SDK Manager with the owner's Garmin sign-in: check that the target devices exist in
+  `~/Library/Application Support/Garmin/ConnectIQ/Devices`; if they do not, stop and report that the owner must
+  open "Connect IQ SDK Manager", sign in and download them. The developer key is
+  ~/LAW/state/keys/connectiq_developer_key.der; if it is missing create it (`mkdir -p ~/LAW/state/keys && cd
+  ~/LAW/state/keys && openssl genrsa -out connectiq_developer_key.pem 4096 && openssl pkcs8 -topk8 -inform PEM
+  -outform DER -in connectiq_developer_key.pem -out connectiq_developer_key.der -nocrypt && chmod 600 *`). Never
+  copy it into the project; export `CIQ_DEVELOPER_KEY` in .law/env.sh."""
+
+DEV_PLATFORMS = """Build and test per platform:
+- iOS / watchOS (Swift, SwiftUI): describe the Xcode project in project.yml and generate it with `xcodegen generate`
+  (commit project.yml; never hand-edit project.pbxproj). Gate: `xcodebuild test -scheme <App> -destination
+  "$XCODE_DESTINATION" -quiet` (unit tests with Swift Testing or XCTest, UI flows with XCUITest).
+- React Native: create the app with `npx create-expo-app@latest` (TypeScript) unless the spec asks for bare React
+  Native; gate: `npx tsc --noEmit` and Jest with React Native Testing Library; run it with `npx expo run:ios`.
+- Angular / React web: the framework CLI's build, lint and unit tests (e.g. `npx ng test --watch=false`), plus an
+  end-to-end check against the running app.
+- Go: gate `gofmt -l .` (empty), `go vet ./...` and `go test ./...`.
+- Garmin Connect IQ (Monkey C): manifest.xml, monkey.jungle, source/, resources/. Gate: `monkeyc -d <device> -f
+  monkey.jungle -o bin/<app>.prg -y "$CIQ_DEVELOPER_KEY" -w` for every target device, and the (:test) unit tests:
+  build with `-t`, start the simulator (`connectiq &`) and run `monkeydo bin/<app>.prg <device> -t`."""
+
 ENV_SPEC = """This stage prepares the Mac for the project; write no application code.
 Read {spec_file} (the stack and technical design). For every tool the project needs (language runtimes with
 their exact major versions, build tools, package managers, databases, browsers for tests), check what is installed
@@ -39,7 +69,9 @@ this Mac: install what is missing or the wrong version with Homebrew (e.g. `brew
 runs. Prefer the current LTS versions the proposal's libraries support.
 Write `.law/env.sh` with the exports this project needs (e.g. `export JAVA_HOME=...`, `export PATH=...:$PATH`);
 LAW loads it into every later agent session for this project. Record each tool in `.law/ENVIRONMENT.md`: required
-version, installed version, how it is selected. Commit `.law/`."""
+version, installed version, how it is selected. Commit `.law/`.
+
+""" + ENV_PLATFORMS
 
 DEV_SPEC = """Build {name} version {version} as specified in {spec_file}{scope}. The tools are ready
 (.law/ENVIRONMENT.md); do not change versions without updating it.
@@ -55,7 +87,9 @@ Work like a team on a Jira board, in .law/PLAN.md:
   line to .law/PROGRESS.md. When the milestone's tickets are all ticked, stop; the next session takes the next
   milestone. If you are interrupted, the next session continues from the first unticked ticket.
 - The last milestone includes a README that explains how to install, run and test the product, including from
-  another device if it is a network service."""
+  another device if it is a network service.
+
+""" + DEV_PLATFORMS
 
 FIX_SPEC = """Fix in the codebase, run the full build and tests until they pass, commit, and record the fixes in
 .law/PROGRESS.md. The specification is {spec_file} (version {version})."""
@@ -64,9 +98,12 @@ HANDOVER_SPEC = """The build of {name} version {version} is finished, tested and
 DOCUMENT in {hout}/handover.md (pandoc Markdown) so someone new can run, use and maintain it. Change no
 application code in this stage.
 
-1. Take real screenshots first. Start the app the way its README says (in the background), wait until it
-   answers, and capture the key screens and steps of the main journeys (e.g. join, chat, error states) as PNG
-   files in {hout}/assets/ (1280x800). Use a headless browser: Chrome headless
+1. Take real screenshots first. Start the app the way its README says (in the background), wait until it answers,
+   and capture the key screens and steps of the main journeys (e.g. join, chat, error states) as PNG files in
+   {hout}/assets/. iOS apps: build for the simulator, `xcrun simctl boot`, install and launch the app, then `xcrun
+   simctl io booted screenshot <file>` for each screen (drive the steps with an XCUITest or deep links). Garmin
+   apps: run in the Connect IQ simulator (`connectiq &`, `monkeydo bin/<app>.prg <device>`) and capture its window
+   with `peekaboo image --app ConnectIQ --path <file>`. Web apps (1280x800): a headless browser: Chrome headless
    (`"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --screenshot=<file>
    --window-size=1280,800 <url>`) for single pages, or a short puppeteer-core script (install it in a temp folder
    with npm; the browser is the chrome-headless-shell under ~/LAW/runtime/chrome) for steps that need typing or
