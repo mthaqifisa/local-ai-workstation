@@ -519,3 +519,9 @@ def test_api_tools_installs_the_pinned_typescript_once(ctx: Ctx):
     assert step.plan() == [f"install typescript {ApiTools.TYPESCRIPT} for law api"]
     step.apply()
     assert ctx.sys.calls[0][:3] == ["npm", "install", "--prefix"] and step.plan() == []
+
+
+def test_agent_reply_limit_is_half_the_context_capped_at_32k():
+    from law.install.steps import output_limit
+
+    assert output_limit(98304) == 32768 and output_limit(32768) == 16384 and output_limit(None) == 16384
