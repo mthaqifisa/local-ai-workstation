@@ -171,3 +171,11 @@ def test_inherited_members_are_found_in_supertypes(tmp_path: Path, monkeypatch):
     assert f"  // inherited from {pkg}StompFrameHandler" in out and "public abstract void handleFrame();" in out
     assert "declared or inherited" in apilookup.lookup("StompSessionHandlerAdapter", "nope", start=tmp_path,
                                                        mvn="/nonexistent/mvn")
+
+
+def test_a_member_filter_names_matching_nested_types(tmp_path: Path, monkeypatch):
+    _project(tmp_path)
+    monkeypatch.setattr(apilookup, "javap", lambda fqcn, entry, java_home=None: f"public interface {fqcn} {{\n}}")
+    out = apilookup.lookup("StompSession", "subscription", start=tmp_path, mvn="/nonexistent/mvn")
+    assert ("  nested type org.springframework.messaging.simp.stomp.StompSession.Subscription: run law api "
+            "org.springframework.messaging.simp.stomp.StompSession.Subscription") in out
