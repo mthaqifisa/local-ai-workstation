@@ -1,9 +1,9 @@
 {
   "stage": "C-user-requests",
-  "task": "Multi-stack agent capability + final tweaks before lan-chat v2 rebuild",
+  "task": "lan-chat v2 rebuild from the proposal (Go via Tony)",
   "status": "in_progress",
-  "next_step": "Owner (13:55): cancel the coder (done via Tony in Telegram), scrap the coding (lan-chat reset to proposal 07f8303; old code on branch backup/v2-coding-2026-10-21; .law restored with state awaiting_go, no session.json), let me finish tweaks, then via Telegram ask the agent to start coding from the proposal (press Go). Tweaks in progress: law api package (java done; golang.py written, untested; next TypeScript for Node/Angular/React/RN, Swift SDK symbol graphs), coder prompt for all stacks, env-stage knowledge (iOS/XcodeGen, RN/CocoaPods, Garmin Connect IQ), handover screenshots per platform, Brewfile (go, typescript, xcodegen, cocoapods, watchman), Tony: /job alias, stale wrong-moment decision jobs shown as failed with Retry. Garmin SDK needs the owner's Garmin account.",
-  "timestamp": "2026-10-21T14:00+08:00",
+  "next_step": "Send /projects then /go lan-chat to Tony in the owner's Telegram app (peekaboo). Re-arm the 5-min monitor. Ask the owner to sign in to Connect IQ SDK Manager for Garmin devices. Then capability-proof projects per stack (Go, iOS SwiftUI, React/Angular, React Native/Expo, Garmin) after lan-chat.",
+  "timestamp": "2026-10-21T14:16+08:00",
   "files_touched": [
     "src/law/apilookup.py",
     "src/law/cli.py",
