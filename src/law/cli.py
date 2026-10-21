@@ -212,6 +212,22 @@ def retry(job_id: str) -> None:
     con.print(f"retrying {job_id} from stage {int(r.json()['stage']) + 1}: {r.json()['kind']}")
 
 
+@app.command("api")
+def api_cmd(name: Annotated[str, typer.Argument(help="class: simple (StompSession), nested (StompSession."
+                                                      "Subscription), fully qualified, or a package")],
+            member: Annotated[str | None, typer.Argument(help="only members mentioning this, e.g. subscribe")] = None,
+            directory: Annotated[Path, typer.Option("--dir", help="project directory")] = Path()) -> None:
+    """Real public API of a library class on this Maven project's classpath (signatures, or the closest real
+    names when the class does not exist). Use it instead of guessing an API or digging in jars."""
+    from law import apilookup
+
+    try:
+        print(apilookup.lookup(name, member, start=directory, java_home=os.environ.get("JAVA_HOME")))
+    except apilookup.ApiLookupError as exc:
+        err.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from exc
+
+
 # ---- platform -------------------------------------------------------------------------------
 @app.command()
 def version() -> None:

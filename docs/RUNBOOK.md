@@ -8,6 +8,7 @@
 | Live stats, jobs (cancel), personas, settings | LAW Console: `http://<mac-name>.local:8100` |
 | One-line status | `law status` |
 | Recent jobs | `law jobs` |
+| Real API of a library class (Maven projects; what coding agents use instead of guessing) | `law api StompSession subscribe` |
 | Deploying while agents work | `law install` prints "restarts on the new code between steps" | Nothing to do; `LAW_FORCE_RESTART=1 law install` restarts at once (interrupts the step) |
 | Disk filling up | Console → **Storage** (sizes per cache) | Clear a cache or all LAW caches there, or `law reclaim`; shorten retention in the same tab |
 | Is an agent working, thinking or stuck? | Console → **Agents**, or `/jobs <project>` in Telegram |

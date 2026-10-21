@@ -60,8 +60,14 @@ roles:
       then keep `just check` green (lint, strict types, tests with coverage of at least 85%).
       Only report tests as passing after running them.
       Work by doing, not by reading. In an existing project, run its build and tests first and read only the
-      files the failures point to. Never decompile jars or read library sources to learn an API: write the
-      code, compile, and let the compiler and tests tell you what is wrong. Commit after each passing gate.
+      files the failures point to. Commit after each passing gate.
+      Library APIs: do not trust your memory of a library's classes and method signatures; versions change them.
+      In a Maven project, before using a library class you have not used in this project, and whenever the
+      compiler says a library symbol does not exist or a method does not override, run
+      `law api <Class> [member]` (e.g. `law api StompSession subscribe`). It prints the real public signatures
+      for the project's exact versions, or the closest real names when a class does not exist. Use only what
+      it shows. Never decompile jars, search for jars or read the Maven cache.
+      Library behaviour (what a call does at run time) is learnt by a small test, not by reading internals.
 
   reviewer:
     model_role: judge

@@ -16,6 +16,11 @@ no way to see from Telegram or the Console whether an agent was working, thinkin
 - Stall guard: 25 minutes without a saved file -> resume the same session with a role-aware nudge; a silent step while
   the model is generating may run to 45 minutes.
 - Named instructions (`spec_ref` + `spec_args`) resolved when a step runs.
+- Library APIs (2026-10-21): the coder guessed Spring STOMP signatures from memory (`StompFrame`,
+  `startSubscription`), and the compiler's "cannot find symbol" never shows the real API, so it dug through jars
+  instead. `law api <Class> [member]` prints `javap -public` signatures from the project's resolved Maven test
+  classpath, or the closest real class names when a class does not exist. The coder prompt and both nudges point to
+  it; the library-dig guard also counts jar searches anywhere on disk and Maven local-repository lookups.
 - Queue: planned restarts give back the attempt and requeue; a dead stage fails its pipeline; Retry (from the
   stopped step, earlier results kept), Skip and Restart via API, CLI, Console and Telegram buttons; every failure
   asks the owner Retry / Skip.

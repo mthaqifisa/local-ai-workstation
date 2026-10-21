@@ -547,7 +547,11 @@ async def test_a_stalled_writer_is_told_to_save_sections_not_to_build(setup, san
     ('▶ running JAR=~/LAW/cache/m2/repository/org/springframework/spring-websocket/7.0.9/spring-websocket-7.0.9.jar; javap -classpath "$JAR" org.springframe', True),
     ('▶ running find ~/LAW/cache/m2/repository/org/springframework/spring-websocket -name "*.jar" 2>/dev/null', True),
     ('▶ running M2=~/LAW/cache/m2/org/springframework; MSG=$(find $M2/spring-messaging -name "spring-messaging-7*.ja', True),
+    ('▶ running find / -name "spring-messaging-*.jar" 2>/dev/null | head', True),
+    ("▶ running mvn -q help:evaluate -Dexpression=settings.localRepository -DforceStdout", True),
     ("▶ running unzip -l target/app.jar | grep BOOT-INF", False),
+    ("▶ running find src -name '*.java' | head", False),
+    ("▶ running law api StompSession subscribe", False),
     ("▶ running source .law/env.sh && mvn -q -B test 2>&1 | grep -E 'Tests run|ERROR'", False),
     ("▶ running source .law/env.sh && mvn -B dependency:tree", False),
 ])
@@ -580,3 +584,4 @@ async def test_a_coder_reading_library_internals_is_redirected(setup, sandbox, m
                                                               "review": False, "translate": False})))
     await w.drain()
     assert cmds[1][cmds[1].index("--session") + 1] == "ses_dig" and "Stop reading library internals" in cmds[1][-1]
+    assert "law api" in cmds[1][-1]
