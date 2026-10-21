@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
+from law.queue.awake import KeepAwake
 from law.queue.jobs import Job, Priority, Status
 from law.queue.scheduler import Capacity, Running, pick
 from law.queue.store import JobStore
@@ -169,7 +170,9 @@ retry_pipeline = retry_job
 class Worker:
     def __init__(self, store: JobStore, handlers: dict[str, Handler], capacity: Capacity,
                  resolve: Resolver, models: ModelControl | None = None, tick_s: float = 0.5,
-                 job_timeout_s: float = 6 * 3600, restart_flag: Path | None = None) -> None:
+                 job_timeout_s: float = 6 * 3600, restart_flag: Path | None = None,
+                 awake: KeepAwake | None = None) -> None:
+        self.awake = awake or KeepAwake(None)  # holds a sleep assertion while any job runs
         self.restart_flag = restart_flag  # set by `law install` when new code waits for a pause between steps
         self.store = store
         self.handlers = handlers
@@ -226,6 +229,7 @@ class Worker:
             for task in list(self.tasks.values()):
                 task.cancel()
             await asyncio.gather(*self.tasks.values(), return_exceptions=True)
+            self.awake.update(False)
 
     async def _requeue_on_shutdown(self) -> None:
         """A planned stop (e.g. `law install` restarting the worker) is not a failure: give back the attempt and put
@@ -275,6 +279,7 @@ class Worker:
             self.running.none.append(job)
         self.cancel_events[job.id] = asyncio.Event()
         self.tasks[job.id] = asyncio.create_task(self._execute(job))
+        self.awake.update(True)
 
     def _release(self, job: Job) -> None:
         if self.running.heavy and self.running.heavy.id == job.id:
@@ -283,6 +288,7 @@ class Worker:
         self.running.none = [j for j in self.running.none if j.id != job.id]
         self.tasks.pop(job.id, None)
         self.cancel_events.pop(job.id, None)
+        self.awake.update(bool(self.tasks))
         self._wake.set()
 
     async def _heartbeat(self, job_id: str) -> None:
