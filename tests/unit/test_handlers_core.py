@@ -348,6 +348,29 @@ async def test_an_agent_that_keeps_stalling_fails(setup, sandbox, monkeypatch):
     assert calls == tasks.STALL_NUDGES + 1
 
 
+async def test_nudges_after_real_progress_do_not_use_up_the_budget(setup, sandbox, monkeypatch):
+    """One stage runs a whole milestone: tickets committed between nudges earn a fresh budget."""
+    from law.handlers import tasks
+    from law.handlers.base import Stalled
+
+    rt, store, w = setup
+    calls = 0
+
+    async def fake_run_cmd(ctx, cmd, **kw):  # type: ignore[no-untyped-def]
+        nonlocal calls
+        calls += 1
+        if calls <= tasks.STALL_NUDGES + 2:  # more stalls than the budget, each after saving a file
+            raise Stalled(_tool_event("write", f"/a/T{calls}.java", "ses_7"), 1500)
+        return _opencode_json("milestone done")
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    job = await store.submit(resolver(rt)(Job(kind="task", payload={"prompt": "build M1", "role": "coder",
+                                                                        "dir": str(sandbox), "review": False})))
+    await w.drain()
+    done = await store.require(job.id)
+    assert done.status == Status.DONE and calls == tasks.STALL_NUDGES + 3
+
+
 async def test_reviewer_is_never_treated_as_stalled(setup, sandbox, monkeypatch):
     from law.handlers import tasks
 

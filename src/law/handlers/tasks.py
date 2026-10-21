@@ -204,6 +204,11 @@ LIB_NUDGE = ("Stop reading library internals (jars, node_modules, the Go module 
 DOC_ROLES = {"writer", "researcher", "designer", "analyst", "architect"}
 
 
+def made_progress(output: str) -> bool:
+    """Whether an agent run saved any file before it was stopped."""
+    return any(is_file_change(line) for line in output.splitlines())
+
+
 def is_file_change(line: str) -> bool:
     """Progress for the stall guard: a file written, or a page fetched (research agents read before they write)."""
     summary = describe_opencode_line(line)
@@ -317,7 +322,11 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                     return LIB_NUDGE
             return None
 
-        for attempt in range(STALL_NUDGES + 1):
+        # Interventions in a row without progress: an agent that saved files since the last nudge earned a fresh
+        # budget (one stage runs a whole milestone for hours; seen 2026-10-21: two tickets committed between
+        # nudges, then the fourth nudge failed the pipeline).
+        strikes = 0
+        while True:
             try:
                 env = {**agent_env(rt, role, ctx.job.payload.get("effort")), **project_env(workdir)}
                 out = await run_cmd(ctx, cmd, cwd=workdir, env=env, describe=describe,
@@ -331,20 +340,21 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 return answer_text
             except Steered as exc:
                 sid = session_id(exc.output)
-                if sid is None or attempt == STALL_NUDGES:
+                strikes = 1 if made_progress(exc.output) else strikes + 1
+                if sid is None or strikes > STALL_NUDGES:
                     raise Fatal(f"{role} agent kept reading library internals") from exc
                 await ctx.progress("⚠️ reading library internals: redirecting the agent to compile and test instead")
                 cmd = [*base, "--session", sid, exc.message]
                 continue
             except Stalled as exc:
                 sid = session_id(exc.output)
-                if sid is None or attempt == STALL_NUDGES:
+                strikes = 1 if made_progress(exc.output) else strikes + 1
+                if sid is None or strikes > STALL_NUDGES:
                     raise Fatal(f"{role} agent stalled: {exc}") from exc
                 nudge = NUDGE_DOCS if role in DOC_ROLES else NUDGE
                 what = "save the next section" if role in DOC_ROLES else "build and fix"
                 await ctx.progress(f"⚠️ nothing saved for {stall_min:.0f} min: nudging the agent to {what}")
                 cmd = [*base, "--session", sid, nudge.format(minutes=f"{stall_min:.0f}")]
-        raise AssertionError("unreachable")
 
     def _scoped(p: dict[str, Any], memory: ProjectMemory | None = None, writes: bool = True) -> str:
         """The agent's prompt: the brief (or the raw request), the folder to work in, and how to keep `.law/`."""
