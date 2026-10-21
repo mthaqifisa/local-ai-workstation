@@ -163,27 +163,34 @@ STALL_MINUTES = 25
 STALL_NUDGES = 3
 NUDGE = ("You have not changed any file for {minutes} minutes. Stop reading and exploring. Run the project's "
          "build or tests now, fix the first error they report (open only the file it names), and repeat. "
+         "If the error is a library class or method that does not exist (cannot find symbol, does not override), "
+         "run `law api <Class> [member]` once for the real signatures instead of guessing again. "
          "Commit when a gate passes.")
 # Writers, researchers and designers produce documents: the nudge is to save work, a section at a time.
 NUDGE_DOCS = ("You have not saved anything for {minutes} minutes. Save your work now: write the next section of the "
               "document to its file (at most about 1,500 words per write, appending section by section), tick it in "
               ".law/PLAN.md, and continue the same way. Do not write the whole document in one step.")
-# Reading library internals (decompiling jars, listing their contents) instead of letting the compiler and tests
-# show the API: seen in three coder runs, costing hours each. After LIB_DIG_LIMIT such commands in one step the
-# agent is stopped and resumed with LIB_NUDGE.
+# Reading library internals (decompiling jars, hunting jars on disk) to learn an API: seen in four coder runs,
+# costing hours each. The sanctioned way is one `law api` call (law.apilookup). After LIB_DIG_LIMIT such commands
+# in one step the agent is stopped and resumed with LIB_NUDGE.
 LIB_DIG_LIMIT = 3
 
 
 def is_library_dig(command: str) -> bool:
-    """A command that inspects library internals: decompilers, jar listings, or the Maven/Gradle caches' jars."""
+    """A command that inspects library internals: decompilers, jar listings, a search for library jars anywhere,
+    or the Maven/Gradle caches' jars. The project's own build output (target/, build/) is not a library."""
     c = command.lower()
     if re.search(r"\bjavap\b|\bjar\s+-?t|\bcfr\b|\bprocyon\b|\bfernflower\b", c):
         return True
+    # `.ja` at the very end: the progress summary cuts commands at 140 characters.
+    if re.search(r"\bfind\b[^|;&]*-i?name\s+\S*\.ja(?:r\b|\S?$)", c) or "localrepository" in c:
+        return True
     in_cache = any(k in c for k in (".m2/", "cache/m2", "m2/repository", ".gradle/caches", "cache/gradle"))
     return in_cache and any(k in c for k in (".jar", ".ja\"", "unzip", "find ", "ls ", "javap"))
-LIB_NUDGE = ("Stop reading library internals (jar contents, javap, the Maven cache). Write the code you need, compile, "
-             "and let the compiler errors and the test output tell you the API; read only the files the errors name. "
-             "Check .law/PROGRESS.md for notes, then continue the current ticket.")
+LIB_NUDGE = ("Stop reading library internals (jar contents, javap, the Maven cache). To learn a library API run "
+             "`law api <Class> [member]` in the project: it prints the real public signatures, or the closest real "
+             "class names when the one you used does not exist. Use only what it shows, compile, and let the test "
+             "output guide you. Check .law/PROGRESS.md for notes, then continue the current ticket.")
 DOC_ROLES = {"writer", "researcher", "designer", "analyst", "architect"}
 
 
