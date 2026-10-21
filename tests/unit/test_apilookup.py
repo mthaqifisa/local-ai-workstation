@@ -107,3 +107,29 @@ def test_javap_falls_back_to_path_when_java_home_has_none(tmp_path: Path, monkey
     monkeypatch.setenv("PATH", str(tmp_path / "empty"))
     with pytest.raises(apilookup.ApiLookupError, match="javap not found"):
         apilookup.javap_tool(None)
+
+
+def test_leading_words_count_only_at_segment_starts():
+    words = {"test", "rest", "template"}
+    assert apilookup.leading_words("resttestclient", words) == 2
+    assert apilookup.leading_words("presto", words) == 0
+    assert apilookup.leading_words("templates", words) == 1
+
+
+def test_a_missing_class_points_at_the_managed_module_that_holds_it(tmp_path: Path):
+    """Spring Boot 4 moved TestRestTemplate into spring-boot-resttestclient; the answer must name that module."""
+    project = _project(tmp_path)
+    (project.cache / "effective-pom.xml").write_text(
+        '<project xmlns="http://maven.apache.org/POM/4.0.0"><dependencyManagement><dependencies>'
+        + "".join(f"<dependency><groupId>{g}</groupId><artifactId>{a}</artifactId><version>1</version></dependency>"
+                  for g, a in [("org.springframework.boot", "spring-boot-resttestclient"),
+                               ("org.springframework.boot", "spring-messaging"),
+                               ("org.testcontainers", "testcontainers-presto"),
+                               ("org.springframework.boot", "spring-boot-test")])
+        + "</dependencies></dependencyManagement></project>")
+    future = time.time() + 10
+    os.utime(project.cache / "effective-pom.xml", (future, future))
+    out = apilookup.lookup("TestRestTemplate", start=tmp_path, mvn="/nonexistent/mvn")
+    assert "may live in a module this project has not added" in out
+    assert "<artifactId>spring-boot-resttestclient</artifactId>" in out
+    assert "presto" not in out and "spring-messaging" not in out

@@ -15,11 +15,12 @@ import json
 import re
 import shutil
 import subprocess
+import xml.etree.ElementTree as ET
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from law.apilookup.common import ApiLookupError, clip, close_names, find_up, not_found
+from law.apilookup.common import ApiLookupError, clip, close_names, find_up
 
 JDK_PREFIXES = ("java.", "javax.", "jdk.", "sun.")
 MARKERS = ("pom.xml",)
@@ -57,6 +58,60 @@ def classpath(project: Project, mvn: str = "mvn") -> list[Path]:
     entries = [Path(p) for p in out.read_text().strip().split(":") if p]
     own = [project.root / "target" / "classes", project.root / "target" / "test-classes"]
     return [p for p in (*own, *entries) if p.exists()]
+
+
+def managed_artifacts(project: Project, mvn: str = "mvn") -> list[tuple[str, str]]:
+    """(groupId, artifactId) of every dependency the effective POM manages (a parent such as Spring Boot's lists
+    all its modules), cached until pom.xml changes. Empty when Maven cannot produce it."""
+    out = project.cache / "effective-pom.xml"
+    pom = project.root / "pom.xml"
+    if not out.is_file() or out.stat().st_mtime < pom.stat().st_mtime:
+        project.cache.mkdir(parents=True, exist_ok=True)
+        try:
+            run = subprocess.run([mvn, "-q", "help:effective-pom", f"-Doutput={out}"], cwd=project.root,
+                                 capture_output=True, text=True, timeout=600)
+        except (OSError, subprocess.TimeoutExpired):
+            return []  # a hint, not the answer: the lookup still reports the class itself
+        if run.returncode != 0 or not out.is_file():
+            return []
+    try:
+        root = ET.parse(out).getroot()  # noqa: S314 - written just now by Maven from the project's own POMs
+    except ET.ParseError:
+        return []
+    found: list[tuple[str, str]] = []
+    for dep in root.iterfind(".//{*}dependencyManagement/{*}dependencies/{*}dependency"):
+        group, artifact = dep.findtext("{*}groupId"), dep.findtext("{*}artifactId")
+        if group and artifact:
+            found.append((group, artifact))
+    return list(dict.fromkeys(found))
+
+
+def leading_words(segment: str, words: set[str]) -> int:
+    """How many of `words` a name segment starts with, read left to right: `resttestclient` -> rest, test = 2;
+    `presto` -> 0 (a word inside another word does not count)."""
+    count, rest = 0, segment
+    while True:
+        word = next((w for w in sorted(words, key=len, reverse=True) if rest.startswith(w)), None)
+        if word is None:
+            return count
+        count, rest = count + 1, rest[len(word):]
+
+
+def unused_modules(query: str, managed: list[tuple[str, str]], entries: list[Path],
+                   limit: int = 5) -> list[tuple[str, str]]:
+    """Managed artifacts not on the classpath whose names share at least two words with the class name
+    (`TestRestTemplate` -> spring-boot-resttestclient). Best match first; groups the project already uses first."""
+    words = {w.lower() for w in re.findall(r"[A-Z][a-z]+|[a-z]+", query.rsplit(".", 1)[-1]) if len(w) >= 3}
+    present = {e.name for e in entries}
+    used_groups = {g for g, a in managed if any(name.startswith(f"{a}-") for name in present)}
+    scored = []
+    for group, artifact in managed:
+        if any(name.startswith(f"{artifact}-") for name in present):
+            continue
+        score = sum(leading_words(seg, words) for seg in artifact.lower().split("-"))
+        if score >= min(2, len(words)):
+            scored.append((-score, group not in used_groups, len(artifact), group, artifact))
+    return [(g, a) for *_, g, a in sorted(scored)[:limit]]
 
 
 def class_index(project: Project, entries: list[Path]) -> dict[str, str]:
@@ -157,7 +212,16 @@ def lookup(query: str, member: str | None = None, *, start: Path, java_home: str
         listing = package_listing(query, classes)
         if listing:
             return clip(f"Package {query} ({len(listing)} classes):\n" + "\n".join(listing))
-        return not_found("class", query, f"the test classpath of {project.root.name}", suggestions(query, classes))
+        near = suggestions(query, classes)
+        hint = ("\nClosest real classes on the classpath:\n" + "\n".join(f"  {n}" for n in near)) if near else ""
+        modules = unused_modules(query, managed_artifacts(project, mvn), classpath(project, mvn))
+        add = ("\nIt may live in a module this project has not added. Managed modules whose names match "
+               "(add one as a dependency, version from the parent, then run law api again):\n"
+               + "\n".join(f"  <dependency><groupId>{g}</groupId><artifactId>{a}</artifactId></dependency>"
+                            for g, a in modules)) if modules else ""
+        return (f"No class named '{query}' on the test classpath of {project.root.name}: it is not in the project's "
+                f"current dependencies.{hint}{add}\nIf neither fits, it does not exist in these versions: do not use "
+                "it.")
     out: list[str] = []
     if len(matches) > 1:
         out.append(f"{len(matches)} classes named '{query}': " + ", ".join(matches[:10]))
