@@ -269,7 +269,7 @@ def test_latest_thought_picks_the_last_complete_sentence():
                "input": {"filePath": "{HOME}/SourceCode/lan-chat/backend/pom.xml"}}}},
      "✏️ writing ~/SourceCode/lan-chat/backend/pom.xml"),
     ({"part": {"type": "tool", "tool": "bash", "state": {"status": "completed",
-               "input": {"command": "./mvnw verify\nmore"}}}}, "▶ running ./mvnw verify"),
+               "input": {"command": "./mvnw verify\nmore"}}}}, "▶ running ./mvnw verify ; more"),
     ({"part": {"type": "tool", "tool": "bash", "state": {"status": "completed",
                "input": {"command": "\n  osascript <<'EOF'\ntell app \"TextEdit\""}}}}, "▶ running osascript <<'EOF'"),
     ({"part": {"type": "tool", "tool": "mac_set_volume", "state": {"status": "completed", "input": {}}}}, "🖥 set volume"),
@@ -615,3 +615,48 @@ async def test_a_coder_reading_library_internals_is_redirected(setup, sandbox, m
     await w.drain()
     assert cmds[1][cmds[1].index("--session") + 1] == "ses_dig" and "Stop reading library internals" in cmds[1][-1]
     assert "law api" in cmds[1][-1]
+
+
+def test_command_summaries_skip_boilerplate_and_count_lookups():
+    import json as _json
+
+    from law.handlers.tasks import describe_opencode_line
+
+    def bash(command: str) -> str:
+        return _json.dumps({"part": {"type": "tool", "tool": "bash",
+                                     "state": {"status": "completed", "input": {"command": command}}}})
+
+    cmd = ('source .law/env.sh\necho "=== Stomp ==="; law api StompHeaderAccessor fromMessage 2>&1 | head -8\n'
+           'echo "=== Chan ==="; law api ChannelInterceptor')
+    summary = describe_opencode_line(bash(cmd))
+    assert summary is not None and summary.startswith("▶ running echo") is False
+    assert "law api StompHeaderAccessor" in summary and summary.count("law api ") == 2
+    assert describe_opencode_line(bash("source .law/env.sh && mvn -q test")) == "▶ running mvn -q test"
+
+
+async def test_a_coder_that_only_looks_up_apis_is_told_to_write_code(setup, sandbox, monkeypatch):
+    from law.handlers import tasks
+    from law.handlers.base import Steered
+
+    rt, store, w = setup
+    cmds: list[list[str]] = []
+
+    async def fake_run_cmd(ctx, cmd, **kw):  # type: ignore[no-untyped-def]
+        cmds.append(cmd)
+        if len(cmds) == 1:
+            steer = kw["steer"]
+            for _ in range(tasks.LOOKUP_LIMIT - 2):
+                assert steer("▶ running law api A x") is None
+            assert steer("✏️ writing ~/p/A.java") is None  # a saved file resets the budget
+            for _ in range(tasks.LOOKUP_LIMIT - 1):
+                assert steer("▶ running law api B y") is None
+            message = steer("▶ running law api C z")
+            assert message == tasks.LOOKUP_NUDGE
+            raise Steered(_tool_event("bash", "law api", "ses_look"), message)
+        return _opencode_json("LC-3 committed")
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    await store.submit(resolver(rt)(Job(kind="task", payload={"prompt": "build", "role": "coder", "dir": str(sandbox),
+                                                              "review": False, "translate": False})))
+    await w.drain()
+    assert cmds[1][cmds[1].index("--session") + 1] == "ses_look" and "looked up enough" in cmds[1][-1]
