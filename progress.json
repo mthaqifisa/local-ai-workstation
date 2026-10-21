@@ -1,9 +1,9 @@
 {
   "stage": "C-user-requests",
   "task": "lan-chat v2 rebuild from the proposal (Go via Tony)",
-  "status": "in_progress",
-  "next_step": "Send /projects then /go lan-chat to Tony in the owner's Telegram app (peekaboo). Re-arm the 5-min monitor. Ask the owner to sign in to Connect IQ SDK Manager for Garmin devices. Then capability-proof projects per stack (Go, iOS SwiftUI, React/Angular, React Native/Expo, Garmin) after lan-chat.",
-  "timestamp": "2026-10-21T14:16+08:00",
+  "status": "running",
+  "next_step": "lan-chat v2 rebuild running (root 552011d4129e, env stage first) with the multi-stack setup. Monitor every 5 min; fix v6 only; commands via Tony. Pending owner: Garmin sign-in in Connect IQ SDK Manager. After lan-chat: capability-proof projects per stack.",
+  "timestamp": "2026-10-21T14:14+08:00",
   "files_touched": [
     "src/law/apilookup.py",
     "src/law/cli.py",
