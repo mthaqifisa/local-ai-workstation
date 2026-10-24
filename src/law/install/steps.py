@@ -637,7 +637,8 @@ class OpenCodeConfig:
     def render(self) -> str:
         reg = self.c.reg
         base = f"http://127.0.0.1:{reg.ports.llm_public}/v1"
-        models = {m.id: {"name": m.id, "limit": {"context": m.context or 32768, "output": output_limit(m.context)}}
+        models = {m.id: {"name": m.id, "limit": {"context": m.context or 32768,
+                                                 "output": output_limit(m.context, writes=set(m.roles) != {"judge"})}}
                   for m in reg.llm_models if m.lane == "heavy"}
         doc = {
             "$schema": "https://opencode.ai/config.json",
@@ -712,10 +713,15 @@ class OpenCodeConfig:
         return self.plan()
 
 
-def output_limit(context: int | None) -> int:
+JUDGE_OUTPUT = 6144
+
+
+def output_limit(context: int | None, *, writes: bool = True) -> int:
     """Tokens one agent reply may produce: half the context, at most oMLX's 32K. A coder writes whole files in
-    one reply; replies of 10K+ tokens came close to the old 16K cap (2026-10-21), and a cut-off reply is lost."""
-    return min(32768, (context or 32768) // 2)
+    one reply; replies of 10K+ tokens came close to the old 16K cap (2026-10-21), and a cut-off reply is lost.
+    A judge-only model writes a verdict, so its context goes to reading: with half of 32K reserved, a review of a
+    28 KB proposal was compacted mid-way and lost its findings (2026-10-25)."""
+    return min(32768, (context or 32768) // 2) if writes else min(JUDGE_OUTPUT, (context or 32768) // 2)
 
 
 def lan_hostname(sysapi: SysAPI) -> str:
