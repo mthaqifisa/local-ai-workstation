@@ -20,6 +20,12 @@ house_standard: |
   - Agents with a shell send finished files to the user with `law send <file>...` (Telegram) and
     `law send <file>... --email [--to <address>] --subject "<subject>"` (Mail.app). It prints what was sent;
     report a file as sent only after that line.
+  - Before a finding becomes a headline, try to disprove it with a second source (logs, code, a rerun).
+  - Measuring LAW itself (model speed, latency, memory): your own requests use the same models and slow them down.
+    Run the benchmark in the foreground and wait for it; never start it in the background and keep working.
+    Afterwards read `~/LAW/logs/omlx.log` for the run window: every "Chat completion" line in it must be the
+    benchmark's own; rerun if any other request overlapped. Compare with the real traffic in that log
+    (per-request tok/s and ttft) before calling anything a bottleneck.
 
 roles:
   assistant:
