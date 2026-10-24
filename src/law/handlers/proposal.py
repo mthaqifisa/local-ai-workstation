@@ -54,6 +54,9 @@ Then these sections, as level-1 headings in this order:
 
 Rules:
 - Diagrams are Mermaid in fenced blocks written as ```{{.mermaid caption="<caption>"}}; keep them valid Mermaid.
+  LAW draws the images when it builds the PDF; to check a block, save it as x.mmd and run
+  `mmdc -p ~/LAW/config/puppeteer.json -i x.mmd -o x.svg` once (no output error = valid). Ids cannot be Mermaid
+  keywords (end, off, opt, loop, alt, note; any case). Do not render or inspect images yourself.
 - Wireframes are simple lo-fi SVG files you write in {out}/assets/ (greyscale; only rect, line, circle and text
   elements; viewBox 0 0 1200 800; no foreignObject), included as ![Wireframe: <screen>](assets/<file>.svg).
 - Tables are pipe tables with a caption line `: <caption>` under them.
@@ -198,6 +201,9 @@ Base every fact on {out}/research.md and stay consistent with the sections alrea
 the web; a fact research.md lacks is written as an assumption or estimate.
 Format rules:
 - Diagrams are Mermaid in fenced blocks written as ```{{.mermaid caption="<caption>"}}; keep them valid Mermaid.
+  LAW draws the images when it builds the PDF; to check a block, save it as x.mmd and run
+  `mmdc -p ~/LAW/config/puppeteer.json -i x.mmd -o x.svg` once (no output error = valid). Ids cannot be Mermaid
+  keywords (end, off, opt, loop, alt, note; any case). Do not render or inspect images yourself.
 - Wireframes are simple lo-fi SVG files you write in {out}/assets/ (greyscale; only rect, line, circle and text
   elements; viewBox 0 0 1200 800; no foreignObject), included as ![Wireframe: <screen>](assets/<file>.svg).
 - Tables are pipe tables with a caption line `: <caption>` under them.
