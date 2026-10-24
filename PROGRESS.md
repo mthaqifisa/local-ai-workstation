@@ -207,3 +207,14 @@ Machine: Xcode + iOS simulator runtimes 26.5-27.1, Swift 6.4, Go 1.26, Node 26, 
 - 2026-10-21 17:52 Dev stage 647c8bd445c6 FAILED at 17:48 ('coder agent stalled'): the per-stage nudge budget (3) was used up across hours of a milestone with LC-1/LC-2 committed in between. Fixed: the budget counts interventions in a row without any saved file (346 tests, deployed). Pressed Retry in Telegram (Tony's Retry/Skip card): stage 5d240e77e8ef running, continues at LC-3.
 - 2026-10-21 17:55 Handoff: owner out of Claude tokens; run left unattended (stage 5d240e77e8ef, LC-3). 5-min monitor stopped. Owner retries via Tony if it fails. Today's v6 fixes all committed and deployed (346 unit tests).
 - 2026-10-21 19:43 Owner: 'agent stalled'. LC-3 had run 1h40m of law api lookups (20+), each followed by 10-20 min planning, no code; nudges led to more lookups. Fixed: research budget (6 lookups since the last saved file -> 'write the code now'), readable command summaries (skip source env.sh/cd/echo banners, stop at heredocs) so Telegram and guards see what ran. 348 tests, deployed. Restart step pressed in Telegram (first two clicks missed: the window had moved; harmless). New stage 1c5e8309f319 on the new worker code (19:41).
+
+### Tony usable now (owner request 2026-10-24: "fix it, no more lag"; ADR-0017)
+Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min in the chat model (calculator-only tool budget) and delivered nothing; "Proceed"/"Continue" answered "no prior context"; "hey bro" took 29 s. lan-chat was cancelled by the owner on 10-21 21:56 (code kept at LC-2 e00f72f).
+- [x] Conversation memory per chat (~/LAW/state/telegram-chats), `/new` to start over; history reaches draft, judge and revise
+- [x] `start_agent` in chat: the model names the deliverable (document/software/research/data/design/architecture/mac_task), LAW picks the agent; the job reports in the same chat; one agent per message; folders only inside ~
+- [x] `law send` (Telegram allow-list + Mail.app) for agents; writer gets shell + PDF/diagram/chart recipe
+- [x] Chat on the MoE model (75 tok/s vs 10); draft inside the ask job; review only for long answers
+- [x] Shared heavy slots: chat runs beside an agent step on the loaded model instead of queueing behind it
+- [x] Apple Foundation Models evaluated (macOS 27 `fm`, 8K context): not adopted now; option for a router later (ADR-0017)
+- [ ] Owner re-sends the report request from Telegram; verify the writer agent delivers PDF + Telegram + email
+- 2026-10-24 21:20 Tony fixes shipped (376 unit tests, ruff + mypy clean, deployed, install re-run 0 changes, doctor all healthy). Live model probes on the real prompt: 12/12 hand-offs routed right (report and "Continue" -> writer in ../doc; lan-chat fix -> coder; music -> operator); warm small talk 0.7-4.7 s (was 29 s). The first wording (agent role instead of deliverable) sent the report to the coder 2/6 times, once in v6 itself.

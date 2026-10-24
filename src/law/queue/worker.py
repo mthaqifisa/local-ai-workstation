@@ -254,6 +254,8 @@ class Worker:
         resident = await self.store.resident()
         started: list[str] = []
         for job in pick(queued, self.running, resident, self.cap, time.time()):
+            if job.lane == "heavy" and self.running.heavy is not None:
+                job.resource = self.running.heavy.resource  # a shared slot: run on the model already loaded
             if await self.store.claim(job):
                 self._start(job)
                 started.append(job.id)
@@ -271,8 +273,10 @@ class Worker:
 
     # ---- internals ------------------------------------------------------------
     def _start(self, job: Job) -> None:
-        if job.lane == "heavy":
+        if job.lane == "heavy" and self.running.heavy is None:
             self.running.heavy = job
+        elif job.lane == "heavy":
+            self.running.shared.append(job)
         elif job.lane == "light":
             self.running.light.append(job)
         else:
@@ -283,7 +287,9 @@ class Worker:
 
     def _release(self, job: Job) -> None:
         if self.running.heavy and self.running.heavy.id == job.id:
-            self.running.heavy = None
+            # a job still sharing the model keeps it loaded: no other model may replace it under that job
+            self.running.heavy = self.running.shared.pop(0) if self.running.shared else None
+        self.running.shared = [j for j in self.running.shared if j.id != job.id]
         self.running.light = [j for j in self.running.light if j.id != job.id]
         self.running.none = [j for j in self.running.none if j.id != job.id]
         self.tasks.pop(job.id, None)

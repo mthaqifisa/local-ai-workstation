@@ -1,24 +1,29 @@
 {
   "stage": "C-user-requests",
-  "task": "lan-chat v2 rebuild running unattended (owner out of Claude tokens)",
-  "status": "running_unattended",
-  "next_step": "Rebuild root 552011d4129e runs unattended (stage 1c5e8309f319 at LC-3 (research budget active); LC-1 5bfa247, LC-2 e00f72f verified). Owner retries via Tony (Retry button / /retry 552011d4129e) if it fails. Next session: check /jobs lan-chat, verify new LC commits on a clean clone, continue the E2E plan (review rounds, handover, verify gate, No go+stop/resume). Later (owner): capability projects for Garmin (devices installed, toolchain verified) and iOS; evaluate Laguna XS 2.1 vs Qwen3.8 27B as coder on LAW evals (needs ADR). Final summary email items still open.",
-  "timestamp": "2026-10-21T19:43+08:00",
+  "task": "Tony usable now: memory, hand-off to agents, fast replies, shared model slots, law send (ADR-0017)",
+  "status": "done_awaiting_owner_test",
+  "next_step": "Owner re-sends the report request to Tony (or any task). Check: writer job starts in the same chat, PDF in ~/SourceCode/OpenSourceLocalAI/doc, `law send` Telegram + email lines in the job output. Then resume lan-chat (cancelled 10-21; /go or Retry via Tony) if the owner wants it. Optional: `sudo fm license` (owner) to try Apple's fm as a router.",
+  "timestamp": "2026-10-24T21:20+08:00",
   "files_touched": [
-    "src/law/apilookup.py",
-    "src/law/cli.py",
-    "src/law/handlers/tasks.py",
-    "settings/roles.yaml",
-    "tests/unit/test_apilookup.py",
-    "tests/unit/test_handlers_core.py",
-    "docs/adr/0015-reliable-agent-runs.md",
-    "docs/RUNBOOK.md",
-    "src/law/queue/awake.py",
+    "src/law/handlers/core.py",
+    "src/law/queue/scheduler.py",
     "src/law/queue/worker.py",
-    "src/law/worker_main.py",
-    "tests/unit/test_awake.py"
+    "src/law/app.py",
+    "src/law/roles.py",
+    "src/law/console_edit.py",
+    "src/law/telegram_bot.py",
+    "src/law/deliver.py",
+    "src/law/cli.py",
+    "settings/roles.yaml",
+    "docs/adr/0017-tony-conversation-and-handoff.md",
+    "docs/RUNBOOK.md",
+    "tests/unit/test_tony_chat.py",
+    "tests/unit/test_deliver.py",
+    "tests/unit/test_scheduler.py",
+    "tests/unit/test_worker.py"
   ],
   "commands": [
-    "./install.sh (deploy law api)"
+    "./install.sh (deployed twice; re-run 0 changes)",
+    "law doctor (all healthy)"
   ]
 }
