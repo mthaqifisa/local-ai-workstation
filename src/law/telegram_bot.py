@@ -28,12 +28,13 @@ log = logging.getLogger("law.telegram")
 
 class LawBot:
     def __init__(self, token: str, allowed: set[int], api_base: str, delivered: Path | None = None,
-                 notify_sources: set[str] | None = None) -> None:
+                 notify_sources: set[str] | None = None, history: Path | None = None) -> None:
         self.bot = Bot(token)
         self.dp = Dispatcher()
         self.allowed = allowed
         self.api = api_base.rstrip("/")
         self.delivered = Delivered(delivered or LawPaths.from_env().state / "telegram-delivered.txt")
+        self.history = ChatHistory(history or LawPaths.from_env().state / "telegram-chats")
         self._tasks: set[asyncio.Task[None]] = set()
         self.notify_sources = notify_sources or set()
         self.pending: dict[int, tuple[str, str]] = {}  # chat -> (project, action) waiting for the owner's note
@@ -50,6 +51,12 @@ class LawBot:
         async def help_(message: Message) -> None:
             if self._ok(message):
                 await self._send(message.chat.id, HELP_TEXT)
+
+        @dp.message(Command("new"))
+        async def new(message: Message) -> None:
+            if self._ok(message):
+                self.history.clear(message.chat.id)
+                await self._send(message.chat.id, "🆕 New conversation: Tony has forgotten the earlier messages.")
 
         @dp.message(Command("ask"))
         async def ask(message: Message, command: CommandObject) -> None:
@@ -310,7 +317,10 @@ class LawBot:
 
     async def _submit(self, chat: int, kind: str, payload: dict[str, Any], *,
                       file_field: str | None = None, then: str | None = None) -> None:
-        """Submit a job that remembers where to reply, then deliver the result (resumable after restarts)."""
+        """Submit a job that remembers where to reply, then deliver the result (resumable after restarts).
+        A chat question carries the recent conversation, so "continue" or "yes" means something."""
+        if kind == "ask":
+            payload = {**payload, "history": self.history.get(chat)}
         status = await self.bot.send_message(chat, "⏳ queued")
         reply = {"chat_id": chat, "status_id": status.message_id, "file_field": file_field, "then": then}
         async with httpx.AsyncClient(timeout=30) as client:
@@ -377,6 +387,7 @@ class LawBot:
 
         chat = reply["chat_id"]
         result = final.get("result") or {}
+        self.history.remember(chat, final)
         if final.get("status") != "done":
             await self._edit(reply, outcome_line(final))
             await self._offer_recovery(chat, final)
@@ -387,7 +398,8 @@ class LawBot:
                 status = await self.bot.send_message(chat, "working…")
                 follow = {"chat_id": chat, "status_id": status.message_id, "file_field": None, "then": None}
                 r = await client.post(f"{self.api}/jobs", json={
-                    "kind": "ask", "payload": {"prompt": result["text"], "role": "assistant"},
+                    "kind": "ask", "payload": {"prompt": result["text"], "role": "assistant",
+                                               "history": self.history.get(chat)},
                     "source": "telegram", "reply_to": follow})
             if r.status_code == 201:
                 await self._deliver(r.json()["id"], follow)
@@ -538,7 +550,8 @@ class LawBot:
                 and not self.delivered.seen(key)):
             self.delivered.add(key)
             chat = job["reply_to"]["chat_id"]
-            status = await self.bot.send_message(chat, f"🔁 `{job['id']}` resumed; following it here")
+            note = "🔁 resumed" if runs else "▶️ started"  # started: e.g. an agent Tony handed the work to
+            status = await self.bot.send_message(chat, f"`{job['id']}` {note}; following it here")
             reply = {**job["reply_to"], "status_id": status.message_id}
             task = asyncio.create_task(self._deliver(job["id"], reply, again=True))
             self._tasks.add(task)
@@ -645,6 +658,7 @@ LIVE = {"queued", "running", "waiting"}
 # (command, menu description, help example) — one table drives the "/" menu, /help and the handlers above.
 COMMANDS: list[tuple[str, str, str]] = [
     ("help", "Everything Tony can do", "/help"),
+    ("new", "Start a new conversation (Tony forgets the earlier messages)", "/new"),
     ("ask", "Ask anything (same as just typing)", "/ask Should we lease or buy our office laptops?"),
     ("search", "Web search with sources", "/search latest MAS guidelines on AI risk management"),
     ("project", "Full project (SDLC): template → research and proposal PDF (emailed) → your go → build and test → "
@@ -681,8 +695,10 @@ COMMANDS: list[tuple[str, str, str]] = [
 
 HELP_TEXT = (
     "**Tony — your local AI** (runs on your Mac; nothing leaves it)\n\n"
-    "Just type to ask anything. Every answer is drafted, checked by an independent reviewer and revised "
-    "if needed.\n"
+    "Just type to ask anything; Tony remembers the recent conversation (/new starts over). Short replies come "
+    "straight back; longer answers are checked by an independent reviewer and revised if needed. Work that needs "
+    "files, code, documents or apps (\"study this project and email me a PDF report\") goes to an agent, which "
+    "reports progress and the result here.\n"
     "**Voice note** → transcribed and answered. **Photo** → described or answered about "
     "(add a question as caption).\n\n"
     + "\n".join(f"/{c} — {d}\n  e.g. `{ex}`" for c, d, ex in COMMANDS if c != "help")
@@ -785,6 +801,61 @@ def media_path(job: dict[str, Any]) -> str | None:
         if value and Path(str(value)).is_file():
             return str(value)
     return None
+
+
+class ChatHistory:
+    """The recent conversation per chat (question, answer, agent results), kept in ~/LAW/state across restarts."""
+
+    def __init__(self, folder: Path, messages: int = 16, chars: int = 6000) -> None:
+        self.folder = folder
+        self.messages = messages
+        self.chars = chars
+
+    def _file(self, chat: int) -> Path:
+        return self.folder / f"{chat}.json"
+
+    def get(self, chat: int) -> list[dict[str, str]]:
+        try:
+            data = json.loads(self._file(chat).read_text())
+        except (OSError, ValueError):
+            return []
+        return [m for m in data if isinstance(m, dict) and m.get("role") in {"user", "assistant"}] \
+            if isinstance(data, list) else []
+
+    def add(self, chat: int, role: str, content: str) -> None:
+        text = content.strip()
+        if len(text) > self.chars:
+            text = text[:self.chars] + " … (cut)"
+        if not text:
+            return
+        items = self.get(chat)
+        if items and items[-1]["role"] == role:  # chat templates expect turns to alternate
+            items[-1] = {"role": role, "content": f"{items[-1]['content']}\n\n{text}"}
+        else:
+            items.append({"role": role, "content": text})
+        items = items[-self.messages:]
+        while items and items[0]["role"] != "user":  # a conversation starts with the user
+            items.pop(0)
+        self.folder.mkdir(parents=True, exist_ok=True)
+        self._file(chat).write_text(json.dumps(items, ensure_ascii=False))
+
+    def remember(self, chat: int, job: dict[str, Any]) -> None:
+        """Record a finished job delivered in this chat: a question and its answer, or an agent's outcome."""
+        payload = job.get("payload") or {}
+        result = job.get("result") or {}
+        if job.get("kind") == "ask" and payload.get("prompt"):
+            self.add(chat, "user", str(payload["prompt"]))
+            answer = result.get("answer") if job.get("status") == "done" else None
+            self.add(chat, "assistant", str(answer or f"(no answer: {job.get('status')}, {job.get('error')})"))
+            return
+        role = payload.get("role") or ""
+        outcome = (result.get("answer") or result.get("text") or "") if job.get("status") == "done" \
+            else f"{job.get('status')}: {job.get('error')}"
+        self.add(chat, "assistant", f"[{job.get('kind')} job {job.get('id')}{f' ({role} agent)' if role else ''} "
+                                    f"{job.get('status')}] {outcome}".strip())
+
+    def clear(self, chat: int) -> None:
+        self._file(chat).unlink(missing_ok=True)
 
 
 class Delivered:

@@ -438,3 +438,60 @@ async def test_a_pending_restart_still_runs_quick_jobs_but_no_model_steps(tmp_pa
     await w.schedule_once(quick_only=True)
     await asyncio.gather(*w.tasks.values())
     assert ran == ["mail"]  # the email went out; the agent step waits for the restarted worker
+
+
+async def test_a_chat_runs_beside_a_long_agent_step_on_the_loaded_model(store):
+    release = asyncio.Event()
+    ran_on: dict[str, str] = {}
+
+    async def slow(ctx: Context) -> Done:
+        await release.wait()
+        return Done({"ok": True})
+
+    async def ask(ctx: Context) -> Done:
+        ran_on[ctx.job.id] = ctx.job.resource
+        return Done({"answer": "hi"})
+
+    models = Models()
+    w = make_worker(store, handlers={"slow": slow, "ask": ask}, models=models)
+    agent = await store.submit(resolve(Job(kind="slow", payload={})))
+    await w.schedule_once()
+    asked = resolve(Job(kind="ask", payload={"share_model": True}))
+    asked.resource = "llm:fast"
+    await store.submit(asked)
+    for _ in range(50):
+        await w.schedule_once()
+        if (await store.require(asked.id)).status == Status.DONE:
+            break
+        await asyncio.sleep(0.01)
+    assert (await store.require(asked.id)).status == Status.DONE  # answered while the agent step still runs
+    assert ran_on[asked.id] == "llm:a" and models.loads == ["llm:a"]  # on the loaded model: no swap
+    assert (await store.require(agent.id)).status == Status.RUNNING
+    release.set()
+    await w.drain()
+
+
+async def test_a_sharing_job_keeps_the_model_after_the_step_it_joined_ends(store):
+    agent_done, chat_done = asyncio.Event(), asyncio.Event()
+
+    async def slow(ctx: Context) -> Done:
+        await agent_done.wait()
+        return Done({"ok": True})
+
+    async def ask(ctx: Context) -> Done:
+        await chat_done.wait()
+        return Done({"answer": "hi"})
+
+    w = make_worker(store, handlers={"slow": slow, "ask": ask}, models=Models())
+    await store.submit(resolve(Job(kind="slow", payload={})))
+    await w.schedule_once()
+    asked = await store.submit(resolve(Job(kind="ask", payload={"share_model": True})))
+    await w.schedule_once()
+    agent_done.set()
+    for _ in range(50):
+        if w.running.heavy is not None and w.running.heavy.id == asked.id:
+            break
+        await asyncio.sleep(0.01)
+    assert w.running.heavy is not None and w.running.heavy.id == asked.id and w.running.shared == []
+    chat_done.set()
+    await w.drain()

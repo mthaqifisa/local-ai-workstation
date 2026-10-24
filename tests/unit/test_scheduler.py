@@ -112,3 +112,28 @@ def test_randomized_invariants():
         assert running.used_gb() + sum(j.mem_gb for j in started) <= CAP.budget_gb + 1e-9
         assert len([j for j in started if j.lane == "light"]) + len(running.light) <= CAP.light_slots
         assert len({j.id for j in started}) == len(started)
+
+
+def chat(resource: str = "llm:fast", age: float = 0.0) -> Job:
+    j = job(resource, age=age)
+    j.payload = {"share_model": True}
+    return j
+
+
+def test_a_chat_answer_shares_the_running_language_model():
+    started = pick([job("llm:agent"), chat()], Running(heavy=job("llm:agent")), "llm:agent", CAP, NOW)
+    assert [j.payload.get("share_model") for j in started] == [True]  # the agent's next step still waits
+
+
+def test_shared_slots_are_capped():
+    running = Running(heavy=job("llm:agent"), shared=[chat(), chat()])
+    assert pick([chat()], running, "llm:agent", CAP, NOW) == []
+
+
+def test_a_chat_never_shares_a_media_model():
+    assert pick([chat()], Running(heavy=job("video:wan", mem=46)), "video:wan", CAP, NOW) == []
+
+
+def test_an_idle_heavy_lane_runs_a_chat_on_its_own_model():
+    started = pick([chat("llm:fast")], Running(), "llm:agent", CAP, NOW)
+    assert [j.resource for j in started] == ["llm:fast"]

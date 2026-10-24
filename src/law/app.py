@@ -13,6 +13,9 @@ from law.queue.worker import Handler
 # Job kinds that need no model at all.
 NO_MODEL = {"search", "song", "film", "film_join", "proposal", "proposal_check", "proposal_render", "proposal_mail",
             "project_new", "project_step", "project_gate"}
+# Text answers that may run beside an agent step on the language model already loaded (ADR-0017). Not the judge:
+# it must be another model family than the one that wrote the answer.
+SHAREABLE = {"ask", "draft", "revise"}
 # Job kinds whose model comes from the role in the payload (default role in brackets).
 ROLE_KINDS = {"ask": "assistant", "draft": "assistant", "revise": "assistant", "judge": "reviewer",
               "task": "coder", "task_translate": "translator", "task_work": "coder", "task_review": "reviewer",
@@ -44,6 +47,8 @@ def resolver(rt: Runtime) -> Any:
                 role = "translator"
             model = rt.reg.model(rt.model_id(role))
             job.resource, job.lane, job.mem_gb = f"llm:{model.id}", model.lane, model.mem_gb
+            if job.kind in SHAREABLE and not (job.payload.get("images") or job.payload.get("image")):
+                job.payload.setdefault("share_model", True)  # images need a vision model, so they never share
             return job
         media = rt.reg.media.get(job.kind)
         if media is not None:

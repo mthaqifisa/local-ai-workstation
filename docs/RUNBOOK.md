@@ -8,6 +8,8 @@
 | Live stats, jobs (cancel), personas, settings | LAW Console: `http://<mac-name>.local:8100` |
 | One-line status | `law status` |
 | Recent jobs | `law jobs` |
+| Talk to Tony | Just type in Telegram: Tony remembers the recent conversation (`/new` starts over), answers short questions in seconds, and hands work that needs files, code, documents or apps to an agent that reports in the same chat (ADR-0017) |
+| Send a file to yourself (what agents use) | `law send report.pdf` (Telegram) · `law send report.pdf --email --subject "Report"` (Mail.app; `--to` for another address) |
 | Real API of a library symbol (what coding agents use instead of guessing; ADR-0016) | Java `law api StompSession subscribe` · Go `law api net/http.Client Do` · TS `law api @angular/core:signal` · Swift `law api View navigationTitle` · Monkey C `law api WatchUi.View` |
 | Deploying while agents work | `law install` prints "restarts on the new code between steps" | Nothing to do; `LAW_FORCE_RESTART=1 law install` restarts at once (interrupts the step) |
 | Disk filling up | Console → **Storage** (sizes per cache) | Clear a cache or all LAW caches there, or `law reclaim`; shorten retention in the same tab |

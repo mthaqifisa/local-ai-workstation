@@ -15,6 +15,8 @@ class Role(BaseModel):
     temperature: float
     reasoning: Literal["off", "low", "medium", "xhigh"] = "medium"
     tools: list[str]
+    # Chat answers up to this many characters skip the independent review (ADR-0017); 0 reviews every answer.
+    quick_reply_chars: int = 0
     summary: str
     prompt: str
 

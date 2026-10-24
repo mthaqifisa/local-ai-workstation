@@ -88,6 +88,35 @@ def ask(prompt: Annotated[list[str], typer.Argument()], role: str = "assistant",
 
 
 @app.command()
+def send(files: Annotated[list[Path] | None, typer.Argument(help="files to send (PDF, images, ...)")] = None,
+         telegram: Annotated[bool, typer.Option("--telegram/--no-telegram", help="send to Tony's chat")] = True,
+         email: Annotated[bool, typer.Option("--email", help="also email them (Mail.app)")] = False,
+         to: Annotated[str | None, typer.Option("--to", help="email address (default: the report email)")] = None,
+         subject: Annotated[str, typer.Option("--subject")] = "From LAW",
+         message: Annotated[str, typer.Option("--message", "-m", help="caption / email text")] = "") -> None:
+    """Send finished files to the owner: Telegram (default) and/or email. Prints what was sent; exit 1 if not."""
+    from law import deliver
+
+    paths = _paths()
+    items = [f.expanduser().resolve() for f in files or []]
+    if not items and not message:
+        raise typer.BadParameter("give files to send, or a --message")
+    if email and not items:
+        raise typer.BadParameter("--email needs at least one file")
+    try:
+        if telegram:
+            chats = deliver.to_telegram(paths.env_file, items, message)
+            con.print(f"sent to Telegram ({chats} chat{'s' if chats != 1 else ''}): "
+                      f"{', '.join(p.name for p in items) or 'message'}")
+        if email:
+            address = deliver.by_email(paths.env_file, paths.tmp, items, subject, message, to)
+            con.print(f"emailed to {address}: {', '.join(p.name for p in items)}")
+    except deliver.DeliveryError as exc:
+        err.print(f"[red]not sent: {exc}[/]")
+        raise typer.Exit(1) from exc
+
+
+@app.command()
 def agent(role: str, task: Annotated[list[str], typer.Argument()],
           directory: Annotated[str | None, typer.Option("--dir")] = None, quiet: bool = False) -> None:
     """Run a role as a coding/operating agent (OpenCode) in a directory."""

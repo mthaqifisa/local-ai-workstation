@@ -17,7 +17,7 @@ from ruamel.yaml.scalarstring import LiteralScalarString
 from law import registry, roles, secrets, telegram_setup
 from law.paths import LawPaths
 
-KNOWN_TOOLS = {"read", "files", "shell", "search", "browser", "vision", "docs", "mac", "python"}
+KNOWN_TOOLS = {"read", "files", "shell", "search", "browser", "vision", "docs", "mac", "python", "agents"}
 
 
 class RoleUpdate(BaseModel):
