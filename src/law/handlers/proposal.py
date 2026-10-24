@@ -408,7 +408,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         pdf = docs / (f"{doc}.pdf" if version == 1 else f"{doc}-v{version}.pdf")
         template = rt.paths.repo / "templates" / "docs" / "proposal.typst"
         await ctx.progress("📄 building the PDF")
-        await run_cmd(ctx, ["pandoc", str(rendered), "-o", str(pdf), "--pdf-engine=typst",
+        # -citations: "@zxing/browser" or an email address is text, not a citation (Typst fails with no bibliography)
+        await run_cmd(ctx, ["pandoc", str(rendered), "-f", "markdown-citations", "-o", str(pdf), "--pdf-engine=typst",
                             f"--template={template}", f"--resource-path={docs}"], cwd=docs, timeout_s=600)
         rendered.unlink(missing_ok=True)
         if not pdf.exists() or pdf.stat().st_size < 10_000:

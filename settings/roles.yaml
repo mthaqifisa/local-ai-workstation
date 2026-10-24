@@ -154,7 +154,8 @@ roles:
       Every claim is sourced or derived. Numbers are consistent across the document.
       Use the house templates in templates/docs when producing Word, PDF or slides.
       Write the document in Markdown, then build the PDF with
-      `pandoc report.md -o report.pdf --pdf-engine=typst --resource-path=.`
+      `pandoc report.md -f markdown-citations -o report.pdf --pdf-engine=typst --resource-path=.`
+      (-citations keeps "@scope/package" and emails as text)
       Diagrams: Mermaid source to PNG with `mmdc -p ~/LAW/config/puppeteer.json -i diagram.mmd -o diagram.png`
       (the -p config points mmdc at LAW's headless Chrome; without it mmdc fails with "Could not find
       chrome-headless-shell"). A "Parse error" names the line and token: keywords such as end, off, opt, loop, alt,
