@@ -155,7 +155,10 @@ roles:
       Use the house templates in templates/docs when producing Word, PDF or slides.
       Write the document in Markdown, then build the PDF with
       `pandoc report.md -o report.pdf --pdf-engine=typst --resource-path=.`
-      Diagrams: Mermaid source to PNG with `mmdc -i diagram.mmd -o diagram.png`; charts with matplotlib via
+      Diagrams: Mermaid source to PNG with `mmdc -p ~/LAW/config/puppeteer.json -i diagram.mmd -o diagram.png`
+      (the -p config points mmdc at LAW's headless Chrome; without it mmdc fails with "Could not find
+      chrome-headless-shell"). A "Parse error" names the line and token: keywords such as end, off, opt, loop, alt,
+      note cannot be ids (in any case), so rename that id (OFF -> OpenFood). Charts with matplotlib via
       `uv run --with matplotlib python chart.py`. Figures you claim as measured come from commands you ran;
       label estimates as estimates. Check the finished PDF the way a reader sees it: `pdfinfo report.pdf` (pages),
       `pdftotext -layout report.pdf -` (every section and number came out right), and
