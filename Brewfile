@@ -22,6 +22,7 @@ brew "cocoapods"
 brew "watchman"
 brew "pandoc"
 brew "typst"
+brew "poppler"     # pdftotext / pdftoppm: agents read and look at the PDFs they build
 brew "graphviz"
 brew "mermaid-cli"   # diagrams in documents (/proposal); its headless browser is the doc-tools step
 brew "tesseract"
