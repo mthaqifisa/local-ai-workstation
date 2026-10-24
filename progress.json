@@ -1,33 +1,17 @@
 {
   "stage": "C-user-requests",
-  "task": "Tony fixes + /hardreset shipped; writer agent running the owner's report; Apple fm pending model download",
+  "task": "Pantry project (full SDLC via Tony); writer measurement + PDF checks shipped",
   "status": "running",
-  "next_step": "1) Watch writer job 6692b8a1b98b: PDF in ~/SourceCode/OpenSourceLocalAI/doc, `law send` lines (Telegram + email). 2) When `fm available` is ready: fm serve as com.law6.fm (registry port, doctor row), measure, decide use (chat while a media model holds the heavy lane; tiny tasks), ADR update.",
-  "timestamp": "2026-10-24T21:30+08:00",
+  "next_step": "Monitor pantry: proposal -> owner go/no-go (owner decides) -> development milestones; fix Tony/agent gaps in v6 as they show. Then Apple fm service.",
+  "timestamp": "2026-10-25T04:45+08:00",
   "files_touched": [
-    "src/law/handlers/core.py",
-    "src/law/queue/scheduler.py",
-    "src/law/queue/worker.py",
-    "src/law/app.py",
-    "src/law/roles.py",
-    "src/law/console_edit.py",
-    "src/law/telegram_bot.py",
-    "src/law/deliver.py",
-    "src/law/cli.py",
     "settings/roles.yaml",
-    "docs/adr/0017-tony-conversation-and-handoff.md",
-    "docs/RUNBOOK.md",
-    "tests/unit/test_tony_chat.py",
-    "tests/unit/test_deliver.py",
-    "tests/unit/test_scheduler.py",
-    "tests/unit/test_worker.py",
-    "src/law/storage.py",
-    "src/law/console.py",
-    "src/law/queue/store.py",
-    "tests/unit/test_hard_reset.py"
+    "Brewfile",
+    "PROGRESS.md",
+    "progress.json"
   ],
   "commands": [
-    "./install.sh (deployed twice; re-run 0 changes)",
-    "law doctor (all healthy)"
+    "./install.sh (deployed; re-run 0 changes)",
+    "uv run pytest tests/unit (379 passed)"
   ]
 }
