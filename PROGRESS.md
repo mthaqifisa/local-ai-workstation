@@ -216,5 +216,8 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - [x] Chat on the MoE model (75 tok/s vs 10); draft inside the ask job; review only for long answers
 - [x] Shared heavy slots: chat runs beside an agent step on the loaded model instead of queueing behind it
 - [x] Apple Foundation Models evaluated (macOS 27 `fm`, 8K context): not adopted now; option for a router later (ADR-0017)
-- [ ] Owner re-sends the report request from Telegram; verify the writer agent delivers PDF + Telegram + email
+- [~] Owner re-sent the report request (21:10): Tony handed it to the writer (job 6692b8a1b98b, folder ../doc); brief done, writer studying v6. Verify PDF + Telegram + email when it finishes
+- [x] /hardreset (owner request): confirm buttons; stops all jobs, clears job history, agent sessions, chat memory, all LAW caches; keeps models, settings, projects, outputs and unfinished projects' jobs (lan-chat Retry still works)
+- [ ] Apple fm as a LAW service: owner accepted the licence; model reports modelNotReady (Apple Intelligence on / download / language). Then `fm serve` launchd agent + use
 - 2026-10-24 21:20 Tony fixes shipped (376 unit tests, ruff + mypy clean, deployed, install re-run 0 changes, doctor all healthy). Live model probes on the real prompt: 12/12 hand-offs routed right (report and "Continue" -> writer in ../doc; lan-chat fix -> coder; music -> operator); warm small talk 0.7-4.7 s (was 29 s). The first wording (agent role instead of deliverable) sent the report to the coder 2/6 times, once in v6 itself.
+- 2026-10-24 21:30 /hardreset shipped (379 tests, deployed while the writer agent ran; worker restarts between steps). Apple fm: licence accepted, `fm serve` works, model not ready yet (owner checking Apple Intelligence settings).

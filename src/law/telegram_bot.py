@@ -97,6 +97,39 @@ class LawBot:
             await query.message.edit_reply_markup(reply_markup=None)
             await self._job_action(query.message.chat.id, job_id, action)
 
+        @dp.message(Command("hardreset"))
+        async def hardreset(message: Message) -> None:
+            if not self._ok(message):
+                return
+            markup = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="🧨 Reset now", callback_data="r|yes"),
+                InlineKeyboardButton(text="Keep everything", callback_data="r|no")]])
+            await self.bot.send_message(message.chat.id, to_telegram_html(HARD_RESET_TEXT), parse_mode="HTML",
+                                        reply_markup=markup)
+
+        @dp.callback_query(F.data.startswith("r|"))
+        async def reset_button(query: CallbackQuery) -> None:
+            if query.from_user.id not in self.allowed or not query.data or not isinstance(query.message, Message):
+                return
+            await query.answer()
+            await query.message.edit_reply_markup(reply_markup=None)  # one answer per question
+            chat = query.message.chat.id
+            if query.data != "r|yes":
+                await self._send(chat, "Nothing was reset.")
+                return
+            status = await self.bot.send_message(chat, "🧨 resetting: stopping jobs, then clearing (a few minutes)…")
+            reply = {"chat_id": chat, "status_id": status.message_id}
+            try:
+                async with httpx.AsyncClient(timeout=httpx.Timeout(1800, connect=10)) as client:
+                    r = await client.post(f"{self.api}/reset")
+                    r.raise_for_status()
+                    done = r.json()
+            except (httpx.HTTPError, ValueError) as exc:
+                await self._edit(reply, f"reset failed: {exc}")
+                return
+            self.pending.pop(chat, None)
+            await self._edit(reply, reset_summary(done), rich=True)
+
         @dp.callback_query(F.data.startswith("p|"))
         async def decision_button(query: CallbackQuery) -> None:
             if query.from_user.id not in self.allowed or not query.data or not isinstance(query.message, Message):
@@ -659,6 +692,8 @@ LIVE = {"queued", "running", "waiting"}
 COMMANDS: list[tuple[str, str, str]] = [
     ("help", "Everything Tony can do", "/help"),
     ("new", "Start a new conversation (Tony forgets the earlier messages)", "/new"),
+    ("hardreset", "Stop all jobs and clear all history, chat memory and caches (asks first; keeps models, "
+     "projects, outputs and settings)", "/hardreset"),
     ("ask", "Ask anything (same as just typing)", "/ask Should we lease or buy our office laptops?"),
     ("search", "Web search with sources", "/search latest MAS guidelines on AI risk management"),
     ("project", "Full project (SDLC): template → research and proposal PDF (emailed) → your go → build and test → "
@@ -711,6 +746,36 @@ HELP_TEXT = (
     "`lyrics:` or Tony writes them.\n"
     "**Video**: say the duration (2-10 s), subject and style; or send a photo with /animate."
 )
+
+
+HARD_RESET_TEXT = (
+    "**Hard reset?**\n"
+    "Stops every running or queued job, then deletes:\n"
+    "• all job history and progress logs\n"
+    "• agents' saved conversations\n"
+    "• Tony's chat memory (all chats)\n"
+    "• every LAW cache: model prompt cache (the model server restarts), Python/npm/Maven packages, temp files, "
+    "unused Docker images\n\n"
+    "**Kept:** models, settings, secrets, your projects and their plans, generated files (images, videos, "
+    "documents), and the jobs of unfinished projects so **Retry** still continues their build."
+)
+
+
+def reset_summary(done: dict[str, Any]) -> str:
+    gb = int(done.get("freed_bytes", 0)) / 1024 ** 3
+    lines = [
+        "✅ **Hard reset done**",
+        f"• {done.get('cancelled', 0)} job(s) stopped, {done.get('jobs_deleted', 0)} deleted from history",
+        f"• {done.get('agent_sessions_deleted', 0)} agent conversation(s) and {done.get('chats_cleared', 0)} chat "
+        "memory file(s) cleared",
+        f"• caches cleared: {gb:.1f} GB freed",
+    ]
+    if done.get("project_jobs_kept"):
+        lines.append(f"• kept {done['project_jobs_kept']} job(s) of unfinished projects (Retry continues them)")
+    if done.get("skipped_busy"):
+        lines.append(f"• not cleared because a job was still stopping: {', '.join(done['skipped_busy'])}; "
+                     "run /hardreset again in a minute")
+    return "\n".join(lines)
 
 
 def roles_text() -> str:

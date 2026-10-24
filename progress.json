@@ -1,9 +1,9 @@
 {
   "stage": "C-user-requests",
-  "task": "Tony usable now: memory, hand-off to agents, fast replies, shared model slots, law send (ADR-0017)",
-  "status": "done_awaiting_owner_test",
-  "next_step": "Owner re-sends the report request to Tony (or any task). Check: writer job starts in the same chat, PDF in ~/SourceCode/OpenSourceLocalAI/doc, `law send` Telegram + email lines in the job output. Then resume lan-chat (cancelled 10-21; /go or Retry via Tony) if the owner wants it. Optional: `sudo fm license` (owner) to try Apple's fm as a router.",
-  "timestamp": "2026-10-24T21:20+08:00",
+  "task": "Tony fixes + /hardreset shipped; writer agent running the owner's report; Apple fm pending model download",
+  "status": "running",
+  "next_step": "1) Watch writer job 6692b8a1b98b: PDF in ~/SourceCode/OpenSourceLocalAI/doc, `law send` lines (Telegram + email). 2) When `fm available` is ready: fm serve as com.law6.fm (registry port, doctor row), measure, decide use (chat while a media model holds the heavy lane; tiny tasks), ADR update.",
+  "timestamp": "2026-10-24T21:30+08:00",
   "files_touched": [
     "src/law/handlers/core.py",
     "src/law/queue/scheduler.py",
@@ -20,7 +20,11 @@
     "tests/unit/test_tony_chat.py",
     "tests/unit/test_deliver.py",
     "tests/unit/test_scheduler.py",
-    "tests/unit/test_worker.py"
+    "tests/unit/test_worker.py",
+    "src/law/storage.py",
+    "src/law/console.py",
+    "src/law/queue/store.py",
+    "tests/unit/test_hard_reset.py"
   ],
   "commands": [
     "./install.sh (deployed twice; re-run 0 changes)",
