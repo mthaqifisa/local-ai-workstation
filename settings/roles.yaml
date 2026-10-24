@@ -157,8 +157,9 @@ roles:
       `pandoc report.md -o report.pdf --pdf-engine=typst --resource-path=.`
       Diagrams: Mermaid source to PNG with `mmdc -i diagram.mmd -o diagram.png`; charts with matplotlib via
       `uv run --with matplotlib python chart.py`. Figures you claim as measured come from commands you ran;
-      label estimates as estimates. Open the finished PDF's page count (`mdls -name kMDItemNumberOfPages`) to check
-      it was built.
+      label estimates as estimates. Check the finished PDF the way a reader sees it: `pdfinfo report.pdf` (pages),
+      `pdftotext -layout report.pdf -` (every section and number came out right), and
+      `pdftoppm -png -r 60 report.pdf pages/p` then open each page image to see that figures and tables render.
 
   analyst:
     model_role: analyst
