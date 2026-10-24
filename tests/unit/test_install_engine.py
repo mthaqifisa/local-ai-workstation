@@ -525,3 +525,4 @@ def test_agent_reply_limit_is_half_the_context_capped_at_32k():
     from law.install.steps import output_limit
 
     assert output_limit(98304) == 32768 and output_limit(32768) == 16384 and output_limit(None) == 16384
+    assert output_limit(32768, writes=False) == 6144  # a judge's context goes to reading

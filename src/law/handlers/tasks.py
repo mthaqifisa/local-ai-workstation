@@ -172,6 +172,7 @@ BOILERPLATE_PREFIX = re.compile(r"^(?:(?:source \S*env\.sh|cd \S+)\s*(?:&&|;)\s*
 # An agent that changes no file for this long is stuck (seen: a 2h20m re-read loop across context compactions).
 # It is stopped and its session resumed with a nudge to build and fix, at most STALL_NUDGES times.
 STALL_MINUTES = 25
+EMPTY_REVIEW_CHARS = 400  # a review shorter than this has no findings to state a verdict from
 STALL_NUDGES = 3
 NUDGE = ("You have not changed any file for {minutes} minutes. Stop reading and exploring. If the plan or the "
          "project does not exist yet, write it now: the build section of .law/PLAN.md, then the first ticket's "
@@ -505,6 +506,12 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                   "~/SourceCode named after it). Verify claims against the code; do not trust the report.")
         reply = await _agent(ctx, "reviewer", prompt, _workdir(p), writes=False)
         verdict = parse_verdict(reply)
+        if verdict.get("unscored") and len(reply.strip()) < EMPTY_REVIEW_CHARS:
+            # no findings to restate (seen: a compacted session ended with one line, then a restated 5/5): review again
+            await ctx.progress("the review ended without findings: reviewing again")
+            reply = await _agent(ctx, "reviewer", prompt + "\n\nRead each file once, note problems as you go, and end "
+                                 "with the JSON verdict.", _workdir(p), writes=False)
+            verdict = parse_verdict(reply)
         if verdict.get("unscored"):  # ask the same model to state its verdict in the required format
             await ctx.progress("the reviewer gave no score: asking it to state its verdict")
             again = await answer(rt, "reviewer", [{"role": "user", "content": (

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -301,6 +302,33 @@ async def test_review_cannot_pass_with_undrawable_diagrams(tmp_path: Path, monke
     done = await tasks.make_handlers(rt)["task_review"](
         _ctx({"prompt": "x", "dir": str(tmp_path), "role": "writer", "_carry": carry}))
     assert done.result["review"]["score"] == 3 and "does not draw" in done.result["review"]["issues"][0]
+
+
+async def test_a_review_without_findings_runs_again_instead_of_being_restated(tmp_path: Path,
+                                                                             monkeypatch: pytest.MonkeyPatch):
+    from law.handlers import tasks
+
+    replies = ["Done.", '{"score": 3, "issues": ["proposal.md: Grocy uses SQLite"], "summary": "needs fixes"}']
+    runs: list[str] = []
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        runs.append(cmd[-1])
+        text = json.dumps(replies[len(runs) - 1])
+        return '{"type": "text", "part": {"type": "text", "text": ' + text + '}}'
+
+    async def no_restate(*a: Any, **k: Any) -> str:  # a restated verdict would invent a score from "Done."
+        raise AssertionError("restated")
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    monkeypatch.setattr(tasks, "answer", no_restate)
+    rt = _rt(tmp_path)
+    rt.roles = SimpleNamespace(get=lambda name: SimpleNamespace(model_role="judge"))
+    rt.model_id = lambda role: "m"
+    rt.reg.ports.llm_internal = 1
+    done = await tasks.make_handlers(rt)["task_review"](
+        _ctx({"prompt": "x", "dir": str(tmp_path), "role": "writer", "_carry": {"answer": "done"}}))
+    assert len(runs) == 2 and "end with the JSON verdict" in runs[1]
+    assert done.result["review"]["score"] == 3 and "SQLite" in done.result["review"]["issues"][0]
 
 
 async def test_broken_diagrams_are_repaired_and_verified_before_the_review(tmp_path: Path,
