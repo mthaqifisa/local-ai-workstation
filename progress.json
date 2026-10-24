@@ -1,17 +1,20 @@
 {
   "stage": "C-user-requests",
-  "task": "Pantry project (full SDLC via Tony); writer measurement + PDF checks shipped",
-  "status": "running",
-  "next_step": "Monitor pantry: proposal -> owner go/no-go (owner decides) -> development milestones; fix Tony/agent gaps in v6 as they show. Then Apple fm service.",
-  "timestamp": "2026-10-25T04:45+08:00",
+  "task": "Pantry: proposal v1 awaiting owner go/no-go; review + render fixes shipped",
+  "status": "waiting_owner",
+  "next_step": "Owner decides Go / No go in Telegram. Keep 10-min monitor; on Go watch env + milestones; on No go watch v2 with a real review.",
+  "timestamp": "2026-10-25T08:15+08:00",
   "files_touched": [
+    "src/law/handlers/proposal.py",
+    "src/law/handlers/tasks.py",
+    "src/law/install/steps.py",
     "settings/roles.yaml",
-    "Brewfile",
-    "PROGRESS.md",
-    "progress.json"
+    "tests/unit/test_proposal.py",
+    "tests/unit/test_install_engine.py"
   ],
   "commands": [
-    "./install.sh (deployed; re-run 0 changes)",
-    "uv run pytest tests/unit (379 passed)"
+    "./install.sh (re-run 0 changes)",
+    "uv run pytest tests/unit (380 passed)",
+    "ruff + mypy clean"
   ]
 }
