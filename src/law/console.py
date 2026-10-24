@@ -98,6 +98,14 @@ def mount(app: Any, llm_internal: str, paths: LawPaths) -> None:
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
 
+    @router.post("/reset")
+    async def hard_reset(request: Request) -> dict[str, Any]:
+        """Stop all jobs and clear all history, agent conversations, chat memory and LAW caches (Tony's /hardreset).
+        Models, settings, outputs, projects and unfinished projects' jobs are kept."""
+        from law import storage
+
+        return await storage.hard_reset(paths, request.app.state.store, _restart_llm)
+
     @router.put("/settings/storage")
     def put_storage(upd: edit.StorageUpdate, tasks: BackgroundTasks) -> dict[str, Any]:
         try:

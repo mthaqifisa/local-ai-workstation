@@ -14,9 +14,12 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from law.paths import LawPaths
+
+if TYPE_CHECKING:
+    from law.queue.store import JobStore
 
 OTHER = ("pip", "puppeteer", "opencode", "playwright", "torch")
 
@@ -153,3 +156,39 @@ def prune_sessions(paths: LawPaths, days: int, now: float | None = None) -> int:
         subprocess.run(["opencode", "session", "delete", sid], capture_output=True, timeout=60, env=full,
                        cwd=paths.home)
     return len(old)
+
+
+FINISHED_PROJECT = {"done", "parked"}
+
+
+async def hard_reset(paths: LawPaths, store: JobStore, restart_llm: Callable[[], None],
+                     wait_s: float = 120.0) -> dict[str, Any]:
+    """Tony's /hardreset: stop every job, then delete all job history, agent conversations, Tony's chat memory and
+    every LAW cache. Kept: models, settings, secrets, outputs, projects and their .law/ memory, and the jobs of
+    unfinished projects (their Retry continues the build). Returns what was done."""
+    import asyncio
+
+    from law.projects import Projects
+
+    live = [j for j in await store.history(limit=100_000) if j.parent is None and not j.status.terminal]
+    for job in live:
+        await store.request_cancel(job.id)
+    for _ in range(int(wait_s)):  # the worker (another process) stops each one; poll the queue until it has
+        if not await store.running_ids():
+            break
+        await asyncio.sleep(1)
+    busy = bool(await store.queued() or await store.running_ids())
+
+    active = {p.id for p in Projects(paths).all() if p.state not in FINISHED_PROJECT}
+    keep = frozenset(j.id for j in await store.history(limit=100_000)
+                     if j.parent is None and j.payload.get("project") in active)
+    jobs = await store.prune(time.time() + 1, keep)
+    sessions = await asyncio.to_thread(prune_sessions, paths, 0)
+
+    chats = paths.state / "telegram-chats"
+    cleared_chats = len(list(chats.glob("*.json"))) if chats.is_dir() else 0
+    _empty(chats)
+    ids = [i.id for i in items(paths, restart_llm) if not i.outside_law]
+    caches = await asyncio.to_thread(clear, paths, ids, restart_llm, busy)
+    return {"cancelled": len(live), "jobs_deleted": jobs, "project_jobs_kept": len(keep),
+            "agent_sessions_deleted": sessions, "chats_cleared": cleared_chats, **caches}
