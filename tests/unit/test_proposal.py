@@ -135,6 +135,7 @@ def test_render_draws_diagrams_and_builds_the_pdf(tmp_path: Path, monkeypatch: p
     assert "assets/diagram-1.png" in rendered and "sequenceDiagram" in rendered
     pandoc = next(c for c in calls if c[0] == "pandoc")
     assert "--pdf-engine=typst" in pandoc and any(a.endswith("templates/docs/proposal.typst") for a in pandoc)
+    assert pandoc[pandoc.index("-f") + 1] == "markdown-citations"  # "@scope/package" stays text
     assert not (docs / ".proposal.render.md").exists()
 
 
