@@ -285,7 +285,9 @@ def agent_env(rt: Runtime, role: str, effort: str | None = None) -> dict[str, st
             "COLIMA_HOME": str(rt.paths.home / "colima"),
             # docker talks to that VM even when the shared "colima" context is gone (`colima stop` on another
             # instance removes it)
-            "DOCKER_HOST": f"unix://{rt.paths.home / 'colima' / 'default' / 'docker.sock'}"}
+            "DOCKER_HOST": f"unix://{rt.paths.home / 'colima' / 'default' / 'docker.sock'}",
+            # Testcontainers mounts the socket into its Ryuk container: the path inside the Colima VM, not the host's
+            "TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE": "/var/run/docker.sock"}
 
 
 def make_handlers(rt: Runtime) -> dict[str, Any]:
