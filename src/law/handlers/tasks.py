@@ -282,7 +282,10 @@ def agent_env(rt: Runtime, role: str, effort: str | None = None) -> dict[str, st
             "UV_CACHE_DIR": str(cache / "uv"),
             # LAW's one Colima VM; agent shells skip the login profile, so `colima start` made a second VM in
             # ~/.colima (2026-10-25, Pantry environment stage)
-            "COLIMA_HOME": str(rt.paths.home / "colima")}
+            "COLIMA_HOME": str(rt.paths.home / "colima"),
+            # docker talks to that VM even when the shared "colima" context is gone (`colima stop` on another
+            # instance removes it)
+            "DOCKER_HOST": f"unix://{rt.paths.home / 'colima' / 'default' / 'docker.sock'}"}
 
 
 def make_handlers(rt: Runtime) -> dict[str, Any]:

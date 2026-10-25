@@ -206,6 +206,7 @@ def test_project_env_and_thinking_level_reach_the_agent(tmp_path: Path):
     assert agent_env(rt, "coder", "xhigh")["OPENCODE_CONFIG"].endswith("opencode-coder-xhigh.json")
     assert agent_env(rt, "coder", "low")["OPENCODE_CONFIG"].endswith("opencode-coder.json")  # no such file
     assert agent_env(rt, "coder")["COLIMA_HOME"] == str(rt.paths.home / "colima")  # never a second VM
+    assert agent_env(rt, "coder")["DOCKER_HOST"].endswith("/colima/default/docker.sock")
 
 
 def test_cloning_uses_the_repo_url(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
