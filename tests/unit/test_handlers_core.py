@@ -690,3 +690,15 @@ async def test_an_owner_note_reaches_the_working_agent_once(setup, sandbox, monk
     await w.drain()
     assert cmds[1][cmds[1].index("--session") + 1] == "ses_note" and "PEM files directly" in cmds[1][-1]
     assert "A note from the owner" in cmds[1][-1]
+
+
+def test_reading_law_internals_is_recognised():
+    from pathlib import Path
+
+    from law.handlers.tasks import reads_law_internals
+
+    repo, home = Path.home() / "SourceCode/OpenSourceLocalAI/v6", Path.home() / "LAW"
+    assert reads_law_internals("▶ running rg -n token ~/SourceCode/OpenSourceLocalAI/v6/src/law/deliver.py", repo, home)
+    assert reads_law_internals("📖 reading ~/LAW/state/.env", repo, home)
+    assert not reads_law_internals("▶ running mvn -f api/pom.xml verify", repo, home)
+    assert not reads_law_internals("▶ running curl http://127.0.0.1:8100/healthz", repo, home)
