@@ -104,13 +104,22 @@ class LawBot:
             if not self._ok(message):
                 return
             pid, _, text = (command.args or "").strip().partition(" ")
-            if not pid or not text.strip():
-                await self._send(message.chat.id, "Usage: `/bugfix <project> <what goes wrong, and what you expected>`")
+            if not pid:
+                await self._send(message.chat.id, "Usage: `/bugfix <project> <what goes wrong, and what you expected>`"
+                                                  ", or `/bugfix <project>` to fix every open bug")
                 return
             try:
                 project = projects.Projects(LawPaths.from_env()).get(pid)
             except KeyError as exc:
                 await self._send(message.chat.id, str(exc))
+                return
+            if not text.strip():  # fix what QA (or earlier reports) left open
+                if not bugs.unresolved(Path(project.dir)):
+                    await self._send(message.chat.id, f"✅ **{project.name}** has no open bugs.")
+                elif await self._project_busy(project.id):
+                    await self._send(message.chat.id, f"⏳ **{project.name}** is busy; QA rounds take its open bugs.")
+                else:
+                    await self._submit(message.chat.id, "project_bugfix", {"project": project.id})
                 return
             title, _, details = text.strip().partition("\n")
             bug = bugs.add(Path(project.dir), title, details, reporter="owner")
@@ -124,6 +133,24 @@ class LawBot:
             await self._send(message.chat.id, f"🐞 **{bug.id}** logged for **{project.name}**: fixing it now; QA "
                                               "retests the product after the fix.")
             await self._submit(message.chat.id, "project_bugfix", {"project": project.id})
+
+        @dp.message(Command("qa"))
+        async def qa(message: Message, command: CommandObject) -> None:
+            if not self._ok(message):
+                return
+            pid = (command.args or "").strip()
+            if not pid:
+                await self._send(message.chat.id, "Usage: `/qa <project>`: QA tests the product now and reports bugs")
+                return
+            try:
+                project = projects.Projects(LawPaths.from_env()).get(pid)
+            except KeyError as exc:
+                await self._send(message.chat.id, str(exc))
+                return
+            if await self._project_busy(project.id):
+                await self._send(message.chat.id, f"⏳ **{project.name}** is busy; QA runs in its review rounds.")
+                return
+            await self._submit(message.chat.id, "project_qa", {"project": project.id})
 
         @dp.message(Command("projects"))
         async def projects_(message: Message) -> None:
@@ -760,6 +787,7 @@ COMMANDS: list[tuple[str, str, str]] = [
     ("allgood", "Accept the build: the project is done", "/allgood office-chat"),
     ("email", "Email a project's latest document (proposal or handover) again", "/email office-chat"),
     ("note", "Tell the agent building a project something while it works", "/note office-chat use the PEM files"),
+    ("qa", "QA tests a project's running product now and reports bugs", "/qa office-chat"),
     ("bugfix", "Report a bug: the agent fixes it and QA retests the product",
      "/bugfix office-chat the send button does nothing"),
     ("proposal", "Consultant-grade proposal: research, full document (design, architecture, flows, "

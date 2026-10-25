@@ -23,7 +23,19 @@ bug on the fly.
 - `/bugfix <project> <what goes wrong>` in Telegram adds an owner bug. While a build of the project runs, the
   working agent gets it as a note (fix after the current step) and the next QA round retests it. Otherwise a
   `project_bugfix` pipeline runs: fix, then QA retest plus code review, up to three times, then a report in the chat.
-- The Console board shows a ticket per bug (from `BUGS.md`) and the fix and retest stages of each `/bugfix`.
+- The Console board shows a ticket per bug (from `BUGS.md`, with its severity) and the fix and retest stages of
+  each `/bugfix` and each QA run.
+- Severity: every bug is blocker, major or minor (`Severity:` line; owner reports default to major). Only blocker
+  and major bugs fail a round; minor ones are listed for the fix stage but do not hold a release back.
+- Regression pack: QA keeps every check it ran as a script in `<project>/qa/` (one command in `qa/README.md`),
+  committed with the project, and runs the whole pack first each round, so a fixed bug cannot return unnoticed.
+  The coder must not edit `qa/`.
+- A new blocker reaches the owner in Telegram at once, with its steps and screenshot.
+- On demand: `/qa <project>` (Telegram) and `law qa <project>` run QA only (no code review, no fixes) and report;
+  `/bugfix <project>` with no text fixes every open bug. Nightly at 03:00 the worker QA's every finished project
+  that has nothing running, and speaks up in Telegram only when it finds a blocker or major bug.
+- The handover document lists what only a person with the real device can check (certificate, camera,
+  notifications), since QA tests in a headless browser.
 
 ## Consequences
 - Pantry and every running project get QA without changing their pipelines: their review rounds already exist.

@@ -9,6 +9,8 @@
 | One-line status | `law status` |
 | Recent jobs | `law jobs` |
 | Talk to Tony | Just type in Telegram: Tony remembers the recent conversation (`/new` starts over), answers short questions in seconds, and hands work that needs files, code, documents or apps to an agent that reports in the same chat (ADR-0017) |
+| QA a project now | `/qa <project>` in Telegram or `law qa <project>`: black-box test of the running product, open bugs listed by severity. Finished projects also get a nightly run at 03:00 that messages you only on a blocker or major bug |
+| Fix every open bug | `/bugfix <project>` (no text) or `law bugfix <project>`: fix, then QA retest, up to 3 rounds |
 | Report a bug in a project | `/bugfix <project> <what goes wrong, what you expected>` in Telegram: logged in `<project>/.law/BUGS.md` and on the board; the agent fixes it, then QA retests the running product (ADR-0018) |
 | Start completely fresh | `/hardreset` in Telegram (asks first): stops all jobs, deletes job history, agent conversations, Tony's chat memory and every LAW cache. Keeps models, settings, secrets, projects with their `.law/`, generated files, and the jobs of unfinished projects (Retry still continues them). Console: `POST /reset` |
 | Send a file to yourself (what agents use) | `law send report.pdf` (Telegram) · `law send report.pdf --email --subject "Report"` (Mail.app; `--to` for another address) |

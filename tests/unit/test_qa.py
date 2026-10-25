@@ -32,7 +32,7 @@ def test_bug_list_numbers_parses_and_tracks_status(tmp_path: Path) -> None:
     bugs.path(tmp_path).write_text(text)
     loaded = bugs.load(tmp_path)
     assert [(b.id, b.status, b.reporter) for b in loaded] == [("BUG-1", "verified", "owner"), ("BUG-2", "open", "QA")]
-    assert loaded[0].body.startswith("Steps: scan twice")
+    assert loaded[0].body.startswith("Severity: major\nSteps: scan twice")
     assert [b.id for b in bugs.unresolved(tmp_path)] == ["BUG-2"]
     assert bugs.add(tmp_path, "third").id == "BUG-3"  # ids are never reused
     with pytest.raises(ValueError):
@@ -48,6 +48,8 @@ def test_bug_list_numbers_parses_and_tracks_status(tmp_path: Path) -> None:
     ("▶ running curl -sk https://127.0.0.1/api/health", False),
     ("▶ running node ~/LAW/cache/tmp/qa/scan.spec.js", False),
     ("▶ running cat ~/LAW/cache/tmp/qa/run.log", False),
+    ("📖 reading ~/SourceCode/pantry/qa/scan.spec.ts", False),  # its own regression pack
+    ("▶ running npx playwright test qa/", False),
 ])
 def test_qa_may_not_read_the_product_source(summary: str, blocked: bool) -> None:
     from law.handlers.tasks import reads_product_code
@@ -89,10 +91,10 @@ async def test_a_qa_bug_fails_the_round_even_when_the_code_review_passes(tmp_pat
                "_carry": {"answer": "done"}}
     done = await tasks.make_handlers(_review_rt(tmp_path))["task_review"](_ctx(payload))
     review = done.result["review"]
-    assert review["score"] < 4 and review["issues"][0].startswith("BUG-1 (open, found by QA)")
+    assert review["score"] < 4 and review["issues"][0].startswith("BUG-1 (open, major, found by QA)")
     assert review["qa"]["tested"] == ["checkout: fail"] and "QA: checkout broken" in review["summary"]
     qa_prompt = next(p for p in prompts if "independent user" in p)
-    assert "Retest first" in qa_prompt and ".law/BUGS.md" in qa_prompt
+    assert "regression pack" in qa_prompt and "Retest:" in qa_prompt and ".law/BUGS.md" in qa_prompt
 
 
 async def test_fix_works_from_a_bug_list_and_follows_the_bugs_protocol(tmp_path: Path,
@@ -121,4 +123,103 @@ def test_bug_tickets_come_from_the_bug_list(tmp_path: Path) -> None:
     tickets: dict[str, Ticket] = {}
     _bug_tickets(project, tickets)  # type: ignore[arg-type]
     t = tickets["BUG-1"]
-    assert (t.kind, t.column, t.state, t.epic) == ("bug", "todo", "open", "Bugs") and "owner" in t.details
+    assert (t.kind, t.column, t.state, t.epic) == ("bug", "todo", "major · open", "Bugs") and "owner" in t.details
+
+
+def test_severity_defaults_to_major_and_only_blocker_and_major_block(tmp_path: Path) -> None:
+    bugs.add(tmp_path, "Owner: totals wrong")  # owner reports are major unless they say otherwise
+    bugs.add(tmp_path, "Typo on the banner", "Severity: minor", reporter="QA")
+    bugs.add(tmp_path, "App does not start", "Severity: blocker\nEvidence: ~/LAW/cache/tmp/none.png", reporter="QA")
+    loaded = bugs.load(tmp_path)
+    assert [b.severity for b in loaded] == ["major", "minor", "blocker"]
+    assert [b.id for b in bugs.blocking(tmp_path)] == ["BUG-1", "BUG-3"]
+    assert loaded[2].screenshots == []  # named but missing on disk: not attached
+
+
+async def test_qa_only_run_skips_the_code_review_and_alerts_a_new_blocker(tmp_path: Path,
+                                                                         monkeypatch: pytest.MonkeyPatch) -> None:
+    from law import deliver
+    from law.handlers import project as _registers_project_specs  # noqa: F401
+    from law.handlers import tasks
+
+    project = tmp_path / "shop"
+    project.mkdir()
+    shot = tmp_path / "home.png"
+    shot.write_bytes(b"png")
+    agents: list[str] = []
+    sent: list[tuple[list[Path], str]] = []
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        agents.append(cmd[cmd.index("--agent") + 1])
+        bugs.add(project, "Home page is blank", f"Severity: blocker\nEvidence: {shot}", reporter="QA")
+        bugs.add(project, "Button text cut off", "Severity: minor", reporter="QA")
+        return '{"type": "text", "part": {"type": "text", "text": "{\\"summary\\": \\"blank home\\"}"}}'
+
+    def fake_send(env_file: Path, files: list[Path], message: str, transport: Any = None) -> int:
+        sent.append((files, message))
+        return 1
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    monkeypatch.setattr(deliver, "to_telegram", fake_send)
+    payload = {"prompt": "x", "dir": str(project), "role": "coder", "project": "shop", "qa_only": True,
+               "rubric_ref": "project.review", "version": 1, "spec_args": {"name": "Shop", "version": 1},
+               "_carry": {}}
+    done = await tasks.make_handlers(_review_rt(tmp_path))["task_review"](_ctx(payload))
+    review = done.result["review"]
+    assert agents == ["qa"]  # no code review in a QA-only run
+    assert review["score"] < 4 and review["qa"]["open"][0].startswith("BUG-1 (open, blocker")
+    assert any("BUG-2" in i for i in review["issues"]) and not any("BUG-2" in i for i in review["qa"]["open"])
+    assert len(sent) == 1 and sent[0][0] == [shot] and "blocker" in sent[0][1] and "Home page is blank" in sent[0][1]
+
+
+async def test_a_minor_bug_alone_does_not_fail_the_round(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from law.handlers import project as _registers_project_specs  # noqa: F401
+    from law.handlers import tasks
+
+    project = tmp_path / "shop"
+    project.mkdir()
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        if cmd[cmd.index("--agent") + 1] == "qa":
+            bugs.add(project, "Label slightly off", "Severity: minor", reporter="QA")
+            reply = '{"summary": "fine"}'
+        else:
+            reply = '{"score": 5, "issues": [], "summary": "clean"}'
+        return '{"type": "text", "part": {"type": "text", "text": ' + json.dumps(reply) + '}}'
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    payload = {"prompt": "x", "dir": str(project), "role": "coder", "project": "shop", "version": 1,
+               "rubric_ref": "project.review", "spec_args": {"name": "Shop", "out": "docs/proposal", "version": 1},
+               "_carry": {}}
+    done = await tasks.make_handlers(_review_rt(tmp_path))["task_review"](_ctx(payload))
+    assert done.result["review"]["score"] == 5 and done.result["review"]["qa"]["minor"]
+
+
+def test_nightly_qa_waits_for_the_next_three_oclock() -> None:
+    from datetime import datetime
+
+    from law.worker_main import seconds_until
+
+    two_am = datetime(2026, 10, 26, 2, 0).timestamp()
+    four_am = datetime(2026, 10, 26, 4, 0).timestamp()
+    assert seconds_until(3, two_am) == 3600 and seconds_until(3, four_am) == 23 * 3600
+
+
+async def test_nightly_qa_tests_finished_idle_projects_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import fakeredis
+
+    from law import worker_main
+    from law.queue.jobs import Job
+    from law.queue.store import JobStore
+
+    store = JobStore(fakeredis.FakeAsyncRedis(decode_responses=True))
+    rows = [SimpleNamespace(id="done-app", state="done"), SimpleNamespace(id="busy-app", state="done"),
+            SimpleNamespace(id="wip-app", state="developing")]
+    monkeypatch.setattr("law.projects.Projects", lambda paths: SimpleNamespace(all=lambda: rows))
+    monkeypatch.setattr(worker_main, "resolver", lambda rt: (lambda job: job))
+    monkeypatch.setattr(worker_main.Runtime, "load", staticmethod(lambda paths: None))
+    await store.submit(Job(kind="project_bugfix", payload={"project": "busy-app"}))
+    started = await worker_main.nightly_qa_once(SimpleNamespace(), store)  # type: ignore[arg-type]
+    assert started == ["done-app"]
+    queued = [j for j in await store.history(10) if j.kind == "project_qa"]
+    assert queued[0].payload == {"project": "done-app", "nightly": True} and queued[0].source == "nightly"

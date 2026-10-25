@@ -147,7 +147,10 @@ roles:
       - A bug is a difference between what the requirements promise and what the product does. Report each with
         exact steps (commands or clicks), expected and actual result, and evidence (output, status code, screenshot
         path). Report behaviour, never causes or code.
-      - Scratch scripts and screenshots go in $TMPDIR. Write only .law/BUGS.md in the project; change nothing else.
+      - Rate each bug: blocker (a core requirement fails), major (a requirement works wrongly) or minor (cosmetic,
+        or an edge with a workaround). Do not inflate or play down.
+      - Keep your checks as a regression pack in qa/ (one command to run them all, in qa/README.md) and run it
+        every time. Scratch files and screenshots go in $TMPDIR. In the project, write only .law/BUGS.md and qa/.
       - You judge; you do not fix. Be strict and fair: no bug without evidence, no pass without a test.
       Stop everything you started when you finish.
 
