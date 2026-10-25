@@ -84,7 +84,8 @@ async def test_a_qa_bug_fails_the_round_even_when_the_code_review_passes(tmp_pat
 
     monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
     payload = {"prompt": "build a shop", "dir": str(project), "role": "coder", "project": "shop",
-               "rubric_ref": "project.review", "spec_args": {"name": "Shop", "out": "docs/proposal"},
+               "rubric_ref": "project.review", "version": 1,
+               "spec_args": {"name": "Shop", "out": "docs/proposal", "version": 1},
                "_carry": {"answer": "done"}}
     done = await tasks.make_handlers(_review_rt(tmp_path))["task_review"](_ctx(payload))
     review = done.result["review"]
