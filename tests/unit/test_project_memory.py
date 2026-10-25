@@ -17,7 +17,8 @@ def test_prepare_seeds_files_once_and_logs_every_request(tmp_path: Path) -> None
     assert (law / "PLAN.md").read_text().endswith("- [ ] frontend\n")  # agent's plan is never overwritten
     assert "build a chat app" in (law / "REQUESTS.md").read_text() and "add dark mode" in (law / "REQUESTS.md").read_text()
     assert "add dark mode" in (law / "PROMPT.md").read_text()  # no brief: the request itself
-    assert (law / ".gitignore").read_text() == "session.json\n"
+    ignore = (law / ".gitignore").read_text()
+    assert ignore.startswith("*\n") and "!PLAN.md\n" in ignore and "session.json" not in ignore  # allow-list
     assert set(SEEDS) <= {p.name for p in law.iterdir()}
 
 
