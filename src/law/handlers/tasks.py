@@ -194,6 +194,17 @@ NUDGE_DOCS = ("You have not saved anything for {minutes} minutes. Save your work
 LIB_DIG_LIMIT = 3
 
 
+def reads_law_internals(summary: str, repo: Path, home: Path) -> bool:
+    """An agent reading LAW's own source or its state folder (secrets): seen 2026-10-26, a coder reading LAW's
+    cli.py, deliver.py and paths.py to learn how `law send` finds the Telegram token."""
+    return str(repo / "src" / "law") in summary.replace("~", str(Path.home())) or \
+        str(home / "state") in summary.replace("~", str(Path.home()))
+
+
+LAW_INTERNALS_NUDGE = ("Do not read LAW's own source code or its state folder (it holds secrets). Software you build "
+                       "uses only LAW's supported interfaces, listed here:")
+
+
 def is_library_dig(command: str) -> bool:
     """A command that inspects library internals: decompilers, jar listings, a search for library jars anywhere,
     the Maven/Gradle caches' jars, or reading node_modules, the Go module cache or the Xcode SDK. The project's
@@ -347,12 +358,18 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             return summary
 
         digs = lookups = 0
+        told_law = False
 
         def steer(summary: str) -> str | None:
-            nonlocal digs, lookups
+            nonlocal digs, lookups, told_law
             note = memory.take_notes() if memory is not None else None
             if note:
                 return OWNER_NOTE.format(note=note)
+            if not told_law and reads_law_internals(summary, rt.paths.repo, rt.paths.home):
+                told_law = True
+                from law.handlers.project import law_services
+
+                return LAW_INTERNALS_NUDGE + law_services()
             if role != "coder":
                 return None
             if summary.startswith("✏️"):
@@ -388,6 +405,10 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 return answer_text
             except Steered as exc:
                 sid = session_id(exc.output)
+                if exc.message.startswith(LAW_INTERNALS_NUDGE) and sid is not None:  # guidance, not a strike
+                    await ctx.progress("⚠️ reading LAW's own source or state: pointing the agent to LAW's interfaces")
+                    cmd = [*base, "--session", sid, exc.message]
+                    continue
                 if exc.message.startswith(OWNER_NOTE_HEAD) and sid is not None:  # the owner's word, not a strike
                     await ctx.progress("📨 passing the owner's note to the agent")
                     cmd = [*base, "--session", sid, exc.message]
