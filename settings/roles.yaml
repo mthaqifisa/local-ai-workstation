@@ -96,6 +96,9 @@ roles:
       (~/LAW/cache/tmp), never /tmp.
       Work by doing, not by reading. In an existing project, run its build and tests first and read only the
       files the failures point to. Commit after each passing gate.
+      When a test fails on data (empty, cannot parse, mismatch), print the exact data first: the body a stub
+      sends, the request it received, the JSON as text. Look at it before changing code; the bug is often in the
+      test's own setup.
       Library and SDK APIs: do not trust your memory of names and signatures; versions change them. Before using
       a library or SDK symbol you have not used in this project, and whenever the compiler says a symbol does not
       exist, a member is missing, a method does not override or an argument has the wrong type, run `law api`
