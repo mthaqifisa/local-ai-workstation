@@ -137,6 +137,7 @@
     <button data-tab="overview" class="active">Overview</button>
     <button data-tab="agents">Agents</button>
     <button data-tab="projects">Projects</button>
+    <button data-tab="services">Services</button>
     <button data-tab="jobs">Jobs</button>
     <button data-tab="storage">Storage</button>
     <button data-tab="personas">Personas</button>
@@ -177,6 +178,12 @@
     <div class="sub" id="proj-line" style="margin:-6px 0 14px"></div>
     <div id="proj-notes"></div>
     <div class="board" id="board"><div class="card empty" style="grid-column:1/-1">Loading…</div></div>
+  </section>
+
+  <section id="services">
+    <div class="toolbar"><h2>Services</h2><span class="sub">LAW's dashboard (Homepage): every service with its live status</span>
+      <span class="spacer"></span><a class="btn" id="svc-open" target="_blank" rel="noopener" style="text-decoration:none">Open in a new tab ↗</a></div>
+    <iframe id="svc-frame" title="LAW services" style="width:100%;height:calc(100vh - 170px);min-height:480px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel)"></iframe>
   </section>
 
   <section id="jobs">
@@ -283,6 +290,7 @@ document.querySelectorAll("nav button").forEach((b) => b.onclick = () => {
   if (b.dataset.tab === "settings") loadSettings();
   if (b.dataset.tab === "agents") refreshAgents();
   if (b.dataset.tab === "projects") loadProjects();
+  if (b.dataset.tab === "services") loadServices();
   if (b.dataset.tab === "storage") loadStorage();
 });
 
@@ -350,6 +358,16 @@ async function refreshAgents() {
 }
 $("#agent-q").oninput = () => refreshAgents();
 setInterval(() => { if ($("#agents").classList.contains("active")) refreshAgents(); }, 4000);
+
+// ---- services (Homepage, embedded) ----
+async function loadServices() {
+  const frame = $("#svc-frame");
+  if (frame.src) return;  // load once; Homepage refreshes its own status
+  let port = 3010;
+  try { port = (await api("/console/config")).homepage_port; } catch (e) { /* keep the default */ }
+  const url = `${location.protocol}//${location.hostname}:${port}/`;
+  $("#svc-open").href = url; frame.src = url;
+}
 
 // ---- projects (board) ----
 const KIND = {dev: "dev", qa: "QA", bugfix: "bug fix", proposal: "proposal", docs: "docs", approval: "approval", setup: "setup"};

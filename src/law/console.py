@@ -172,6 +172,12 @@ def mount(app: Any, llm_internal: str, paths: LawPaths) -> None:
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
 
+    @router.get("/console/config")
+    def console_config() -> dict[str, int]:
+        """Ports of the pages the Console embeds (opened on the host the browser used, so it works from the LAN)."""
+        reg = registry.load(paths.registry_file)
+        return {"homepage_port": reg.ports.homepage}
+
     @router.get("/system")
     def system() -> dict[str, Any]:
         return system_stats(llm_internal)

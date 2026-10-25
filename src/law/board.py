@@ -27,6 +27,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from law import bugs
 from law.paths import LawPaths
 from law.projects import Project, Projects
 from law.queue.jobs import Job, Status, new_id
@@ -145,6 +146,13 @@ def _stage_group(spec: dict[str, Any], phase: str, version: int, qa_round: list[
         return f"approve-{gate}-{v}", title, "approval"
     if kind == "code_plan":
         return f"plan-{v}", f"Write the plan {v}", "proposal"
+    if phase == "bugfix":  # a /bugfix pipeline: fix, then QA retests, for the bugs it names
+        which = str(p.get("bugs") or "reported bugs")
+        if kind == "task_fix":
+            return f"fix-{which}", f"Fix {which}", "bugfix"
+        if kind == "task_review":
+            return f"retest-{which}", f"QA retest of {which}", "qa"
+        return "", "", ""
     if phase == "proposal":
         if kind in {"task_review", "task_fix"}:
             return f"proposal-{v}-qa", f"Review proposal {v} (QA) and apply fixes", "qa"
@@ -169,6 +177,8 @@ def _phase(root: Job) -> tuple[str, int]:
     version = next((int(s["payload"]["version"]) for s in specs if "version" in s.get("payload", {})), 1)
     if "project.dev" in refs:
         return "develop", version
+    if any(s["kind"] == "project_bug_report" for s in specs):
+        return "bugfix", version
     if any(s["kind"] == "code_plan" for s in specs) or "proposal.write" in refs:
         return "proposal", version
     return "", version
@@ -446,6 +456,19 @@ def _active_at(tickets: dict[str, Ticket], t: float) -> Ticket | None:
     return max(hits, key=lambda k: (k.kind == "dev", k.started or 0), default=None)
 
 
+BUG_COLUMN: dict[str, tuple[Column, str]] = {"open": ("todo", "open"), "reopened": ("todo", "reopened"),
+                                             "fixed": ("progress", "fixed, awaiting QA retest"),
+                                             "verified": ("done", "verified by QA")}
+
+
+def _bug_tickets(project: Project, tickets: dict[str, Ticket]) -> None:
+    """A ticket per bug in `.law/BUGS.md`: written by the QA agent and the owner (`/bugfix`), never by hand here."""
+    for n, bug in enumerate(bugs.load(Path(project.dir))):
+        t = tickets[bug.id] = Ticket(bug.id, bug.title, "bug", "Bugs", 10**9 + n)
+        t.column, t.state = BUG_COLUMN.get(bug.status, ("todo", bug.status))
+        t.details = f"Reported by {bug.reporter} on {bug.when}.\n\n{bug.body}".strip()
+
+
 async def build(paths: LawPaths, store: JobStore, pid: str) -> dict[str, Any]:
     project = Projects(paths).get(pid)
     roots = sorted([j for j in await store.history(1000) if j.parent is None and _belongs(j, project.id)],
@@ -455,6 +478,7 @@ async def build(paths: LawPaths, store: JobStore, pid: str) -> dict[str, Any]:
     dev_order: dict[int, float] = {}
     await _stage_tickets(store, project, roots, tickets, dev_jobs, dev_order)
     await _plan_tickets(store, project, tickets, dev_jobs, dev_order)
+    _bug_tickets(project, tickets)
     general = _attach_notes(paths, project, tickets)
     ordered = sorted(tickets.values(), key=lambda k: k.order)
     return {

@@ -17,7 +17,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from law import specs
+from law import bugs, specs
 from law.handlers.base import Runtime, run_cmd
 from law.handlers.core import answer
 from law.handlers.proposal import proposal_stages
@@ -30,6 +30,7 @@ OUT = "docs/proposal"
 HANDOVER_OUT = "docs/handover"
 MILESTONE_STAGES = 12  # unused stages finish at once when every milestone is ticked
 REVIEW_ROUNDS = 3
+BUGFIX_ROUNDS = 3  # /bugfix: fix -> QA retest, at most this many times
 
 # What each stack needs on this Mac and how it is built, tested and shown (ADR-0016). Shared by the stages below.
 ENV_PLATFORMS = """Per platform (only what the project's stack needs):
@@ -241,14 +242,18 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
     def _first_phase(project: Project) -> list[dict[str, Any]]:
         return _plan(project) if project.mode == "code" else _proposal(project)
 
-    def _develop(project: Project) -> list[dict[str, Any]]:
+    def _base(project: Project) -> dict[str, Any]:
         v = project.version
         args = {"out": OUT, "version": v, "name": project.name,
                 "key": re.sub(r"[^A-Z]", "", project.name.title())[:4] or "PRJ"}  # ticket prefix: "Lan Chat" -> LC
         if project.mode == "code":
             args["spec_file"] = ".law/PROMPT.md (the agreed plan)"
-        base: dict[str, Any] = {"prompt": project.request(), "dir": project.dir, "role": "coder", "version": v,
-                                "effort": project.effort, "project": project.id, "spec_args": args}
+        return {"prompt": project.request(), "dir": project.dir, "role": "coder", "version": v,
+                "effort": project.effort, "project": project.id, "spec_args": args}
+
+    def _develop(project: Project) -> list[dict[str, Any]]:
+        v = project.version
+        base = _base(project)
         review = {**base, "spec_ref": "project.fix", "rubric_ref": "project.review"}
         stages: list[dict[str, Any]] = [
             {"kind": "task_work", "payload": {**base, "spec_ref": "project.env", "stall_min": 45}}]
@@ -350,6 +355,32 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         await ctx.progress(f"📧 emailing {pdf.name}")
         return Stages([{"kind": "proposal_mail", "payload": payload}], carry={"pdf": str(pdf)})
 
+    async def project_bugfix(ctx: Context) -> Outcome:
+        """`/bugfix`: the coder fixes the unresolved bugs in .law/BUGS.md, then QA retests the product (and finds
+        what else broke), up to BUGFIX_ROUNDS times; the owner gets the result in the chat."""
+        project = store.get(str(ctx.job.payload["project"]))
+        found = bugs.unresolved(Path(project.dir))
+        if not found:
+            return Done({"answer": f"✅ **{project.name}**: no open bugs in `.law/BUGS.md`."})
+        names = ", ".join(b.id for b in found)
+        review = {**_base(project), "spec_ref": "project.fix", "rubric_ref": "project.review", "bugs": names}
+        stages: list[dict[str, Any]] = [{"kind": "task_fix", "payload": {**review, "issues": bugs.as_issues(found)}}]
+        for _ in range(BUGFIX_ROUNDS - 1):
+            stages += [{"kind": "task_review", "payload": review}, {"kind": "task_fix", "payload": review}]
+        stages += [{"kind": "task_review", "payload": review},
+                   {"kind": "project_bug_report", "payload": {"project": project.id, "bugs": names}}]
+        await ctx.progress(f"🐞 fixing {names}; QA retests after each fix")
+        return Stages(stages)
+
+    async def project_bug_report(ctx: Context) -> Outcome:
+        project = store.get(str(ctx.job.payload["project"]))
+        named = {x.strip() for x in str(ctx.job.payload.get("bugs", "")).split(",") if x.strip()}
+        mine = [b for b in bugs.load(Path(project.dir)) if b.id in named or b.reporter.lower() == "qa"]
+        lines = [f"- {b.id} {b.status}: {b.title}" for b in mine if b.id in named or b.status in bugs.UNRESOLVED]
+        open_count = sum(1 for b in mine if b.status in bugs.UNRESOLVED)
+        head = "✅ fixed and verified by QA" if open_count == 0 else f"⚠️ {open_count} still open"
+        return Done({"answer": f"🐞 **{project.name}** bug fix: {head}.\n" + "\n".join(lines)})
+
     async def project_gate(ctx: Context) -> Outcome:
         p = ctx.job.payload
         carry = p.get("_carry") or {}
@@ -393,4 +424,4 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         return Done({"answer": text, "gate": {"project": project.id, "actions": actions}})
 
     return {"project_new": project_new, "project_step": project_step, "project_gate": project_gate,
-            "code_plan": code_plan}
+            "code_plan": code_plan, "project_bugfix": project_bugfix, "project_bug_report": project_bug_report}

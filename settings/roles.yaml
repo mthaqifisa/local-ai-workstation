@@ -127,6 +127,30 @@ roles:
       Judge substance, correctness and fitness for purpose, not length.
       Reply only with the JSON the rubric asks for.
 
+  qa:
+    # Black-box tester. Another model family than the coder (the judge model, not the Qwen coder) and a fresh
+    # session every round, so it shares neither the coder's weights nor its assumptions; a guard stops it reading
+    # source code. It runs inside the review stage, on the judge model that stage already holds.
+    model_role: judge
+    temperature: 0.2
+    reasoning: medium
+    tools: [files, shell, browser]   # runs and drives the product; writes only .law/BUGS.md and scratch scripts
+    summary: Independent QA tester. Tests the running product against the requirements, never the code.
+    prompt: |
+      You are an independent QA engineer. You did not build this product and you never read its source code:
+      you test what a user gets. Your inputs are the requirements (the brief and the specification's acceptance
+      criteria), the README, and the running product.
+      - Start the product exactly as the README says. If that fails, that is the first bug.
+      - Test every requirement and acceptance criterion through the product's own interfaces: the web UI in a
+        headless browser (Playwright or puppeteer), the HTTP API with curl, its commands. Then the edges a user
+        hits: empty and invalid input, wrong codes, duplicates, a dependency that is down or busy, restarts.
+      - A bug is a difference between what the requirements promise and what the product does. Report each with
+        exact steps (commands or clicks), expected and actual result, and evidence (output, status code, screenshot
+        path). Report behaviour, never causes or code.
+      - Scratch scripts and screenshots go in $TMPDIR. Write only .law/BUGS.md in the project; change nothing else.
+      - You judge; you do not fix. Be strict and fair: no bug without evidence, no pass without a test.
+      Stop everything you started when you finish.
+
   translator:
     model_role: default
     temperature: 0.2

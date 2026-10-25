@@ -10,7 +10,7 @@ from typing import Any
 
 import httpx
 
-from law import specs
+from law import bugs, specs
 from law.handlers.base import Runtime, Stalled, Steered, run_cmd
 from law.handlers.core import PASS_SCORE, answer, parse_verdict
 from law.project_memory import FOLDER, ProjectMemory, project_listing
@@ -201,6 +201,39 @@ def reads_law_internals(summary: str, repo: Path, home: Path) -> bool:
         str(home / "state") in summary.replace("~", str(Path.home()))
 
 
+CODE_FILE = re.compile(r"\.(?:java|kt|kts|scala|ts|tsx|js|jsx|mjs|cjs|py|go|swift|rb|cs|php|rs|sql|vue|svelte)\b")
+QA_CODE_NUDGE = ("QA tests the product, not the code: do not read or search the source. Use the requirements, the "
+                 "README and the running product (browser, HTTP API, commands), and report what a user sees.")
+QA_TASK = """Test {name} version {version}, the product in {folder}, as an independent user would.
+
+Requirements: {folder}/.law/PROMPT.md (the brief) and {folder}/{spec_file} (its acceptance criteria). How to run
+it: the README. The bug list is {folder}/.law/BUGS.md (statuses: open, fixed, verified, reopened).
+
+1. Retest first: for every bug that is open, fixed or reopened, repeat its steps. Set its status word in the
+   heading to verified if it is gone, or reopened if it is still there, and add a line "Retest <date>: <result>".
+2. Then test every requirement and acceptance criterion, and the edges a user hits. For each new bug append:
+   ## BUG-<next number> · open · QA · <YYYY-MM-DD HH:MM>
+   <one-line title of what goes wrong>
+   Steps: ... Expected: ... Actual: ... Evidence: ...
+3. Reply with JSON only: {{"tested": ["<requirement>: pass|fail"], "summary": "<one sentence>"}}"""
+
+
+def reads_product_code(summary: str, project: Path) -> bool:
+    """QA opening or searching the product's source: it tests behaviour, so it must not look (scratch scripts in
+    $TMPDIR are its own)."""
+    s = summary.replace("~", str(Path.home()))
+    if "cache/tmp" in s or "$TMPDIR" in s or "/.law/" in s:
+        return False
+    if summary.startswith("📖"):
+        return str(project) in s and bool(CODE_FILE.search(s))
+    if summary.startswith("🔎"):
+        return bool(CODE_FILE.search(s)) or "src/" in s
+    if summary.startswith("▶"):
+        reads = re.search(r"(?:^|[\s;&|(])(?:cat|head|tail|less|more|sed|awk|rg|grep|find)\s", s)
+        return bool(reads) and (bool(CODE_FILE.search(s)) or "/src/" in s or " src/" in s)
+    return False
+
+
 LAW_INTERNALS_NUDGE = ("Do not read LAW's own source code or its state folder (it holds secrets). Software you build "
                        "uses only LAW's supported interfaces, listed here:")
 
@@ -365,6 +398,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             note = memory.take_notes() if memory is not None else None
             if note:
                 return OWNER_NOTE.format(note=note)
+            if role == "qa" and reads_product_code(summary, workdir):
+                return QA_CODE_NUDGE
             if not told_law and reads_law_internals(summary, rt.paths.repo, rt.paths.home):
                 told_law = True
                 from law.handlers.project import law_services
@@ -390,7 +425,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         # Interventions in a row without progress: an agent that saved files since the last nudge earned a fresh
         # budget (one stage runs a whole milestone for hours; seen 2026-10-21: two tickets committed between
         # nudges, then the fourth nudge failed the pipeline).
-        strikes = 0
+        strikes = qa_reminders = 0
         while True:
             try:
                 env = {**agent_env(rt, role, ctx.job.payload.get("effort")), **project_env(workdir)}
@@ -405,6 +440,11 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 return answer_text
             except Steered as exc:
                 sid = session_id(exc.output)
+                if exc.message == QA_CODE_NUDGE and sid is not None and qa_reminders < 3:
+                    qa_reminders += 1
+                    await ctx.progress("⚠️ QA started reading the source: back to testing the product")
+                    cmd = [*base, "--session", sid, exc.message]
+                    continue
                 if exc.message.startswith(LAW_INTERNALS_NUDGE) and sid is not None:  # guidance, not a strike
                     await ctx.progress("⚠️ reading LAW's own source or state: pointing the agent to LAW's interfaces")
                     cmd = [*base, "--session", sid, exc.message]
@@ -538,11 +578,34 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         text = await _agent(ctx, p["role"], _scoped(p, memory), _workdir(p), memory=memory)
         return Done({"answer": text, "dir": str(_workdir(p))})
 
+    async def _qa_round(ctx: Context, p: dict[str, Any]) -> dict[str, Any]:
+        """Black-box QA of a project: a fresh session of the QA role (another model than the coder) tests the
+        running product against the requirements and keeps .law/BUGS.md; the unresolved bugs go to the fix stage."""
+        folder = _workdir(p)
+        a = p.get("spec_args") or {}
+        spec_file = a.get("spec_file") or f"{a.get('out', 'docs/proposal')}/proposal.md"
+        await ctx.progress("🧪 QA: testing the product as a user (black box)")
+        reply = await _agent(ctx, "qa", QA_TASK.format(name=a.get("name", folder.name), version=p.get("version", 1),
+                                                         folder=folder, spec_file=spec_file), folder, writes=False)
+        found = re.search(r"\{.*\}", reply, re.DOTALL)
+        report: dict[str, Any] = {}
+        if found:
+            try:
+                report = json.loads(found.group(0))
+            except json.JSONDecodeError:
+                report = {}
+        open_bugs = bugs.unresolved(folder)
+        summary = str(report.get("summary") or reply.strip()[-300:])
+        await ctx.progress(f"🧪 QA: {len(open_bugs)} unresolved bug(s). {summary}"[:300])
+        return {"open": bugs.as_issues(open_bugs), "tested": [str(t) for t in report.get("tested", [])][:40],
+                "summary": summary}
+
     async def task_review(ctx: Context) -> Outcome:
         p = ctx.job.payload
         carry = ctx.job.payload["_carry"]
         if carry.get("passed"):  # an earlier review round already passed
             return Done({})
+        qa = await _qa_round(ctx, p) if p.get("project") and p.get("rubric_ref") == "project.review" else None
         report = carry.get("answer", "")
         brief = f"\n\nThe author worked from this brief:\n{carry['brief'][:6000]}" if carry.get("brief") else ""
         rubric = specs.resolve(p, "rubric") or CODE_RUBRIC
@@ -564,6 +627,12 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 '{"score": <1-5>, "issues": ["<file or section: problem and fix>"], "summary": "<one sentence>"}')}],
                 ctx)
             verdict = parse_verdict(again)
+        if qa is not None:  # a round passes only when QA has no unresolved bug and the code review passes
+            score = int(verdict.get("score") or 0)
+            verdict = {**verdict, "score": min(score, PASS_SCORE - 1) if qa["open"] else score,
+                       "issues": [*qa["open"], *verdict.get("issues", [])][:16],
+                       "summary": f"QA: {qa['summary']} Code review: {verdict.get('summary', '')}".strip(),
+                       "qa": qa}
         if carry.get("diagram_errors"):  # checked by drawing them: the reviewer cannot see this
             verdict = {**verdict, "score": min(int(verdict.get("score") or 0), PASS_SCORE - 1),
                        "issues": [*carry["diagram_errors"], *verdict.get("issues", [])][:12]}
@@ -572,7 +641,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
     async def task_fix(ctx: Context) -> Outcome:
         p = ctx.job.payload
         carry = ctx.job.payload["_carry"]
-        verdict = carry["review"]
+        verdict = carry.get("review") or {"score": 1, "issues": list(p.get("issues") or []), "summary": ""}
         if carry.get("passed"):
             return Done({})
         if verdict["score"] >= PASS_SCORE:
@@ -582,6 +651,10 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         prompt = (f"An independent reviewer scored your work {verdict['score']}/5 for this request:\n{p['prompt']}\n\n"
                   f"Fix every issue below, then rerun the project's checks until they pass and report the output:\n"
                   f"{issues}")
+        if any("BUG-" in i for i in verdict["issues"]):
+            prompt += ("\n\nBUG-n items are in .law/BUGS.md (steps, expected, actual). Reproduce each, fix it, add a "
+                       "test that would have caught it, then change its status word in the heading to fixed and add a "
+                       "line \"Fix: <commit> <what changed>\". Never set verified or reopened: QA retests.")
         spec = specs.resolve(p)
         if spec:
             prompt += f"\n\nThe work must still meet these instructions:\n{spec}"

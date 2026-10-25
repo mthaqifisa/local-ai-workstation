@@ -39,7 +39,7 @@ RESUME = ("Your previous session in this project was interrupted. Read {folder}/
 
 # An allow-list: only LAW's memory files are committed, so an agent's scratch file (seen: a private-key keystore
 # in .law/ during an HTTPS step, 2026-10-25) never reaches git through `git add .law/`.
-COMMITTED = ("PLAN.md", "PROGRESS.md", "RESEARCH.md", "REQUESTS.md", "PROMPT.md", "ENVIRONMENT.md", "env.sh",
+COMMITTED = ("PLAN.md", "PROGRESS.md", "RESEARCH.md", "REQUESTS.md", "PROMPT.md", "ENVIRONMENT.md", "env.sh", "BUGS.md",
              "project.json")
 GITIGNORE = "*\n!.gitignore\n" + "".join(f"!{name}\n" for name in COMMITTED)
 
