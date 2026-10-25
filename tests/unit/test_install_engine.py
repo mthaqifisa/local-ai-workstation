@@ -539,3 +539,37 @@ def test_portainer_gets_its_port_and_generated_password_and_a_tile(ctx: Ctx):
     assert f":{ctx.reg.ports.portainer}" in Compose(ctx).homepage_files()["services.yaml"]
     compose = (REPO / "compose.yaml").read_text()
     assert "environment: PORTAINER_ADMIN_PASSWORD" in compose and "2375" not in compose  # secret file, no TCP socket
+
+
+
+def test_colima_step_repairs_the_docker_context(ctx: Ctx):
+    import json as _json
+
+    from law.install.steps import Colima
+
+    sock = f"unix://{ctx.paths.home / 'colima' / 'default' / 'docker.sock'}"
+
+    class ContextSys(FakeSys):
+        def __init__(self) -> None:
+            super().__init__()
+            self.host = ""
+
+        def run(self, cmd, *, env=None, timeout=1800, cwd=None):  # type: ignore[no-untyped-def,override]
+            self.calls.append(cmd)
+            if cmd[:3] == ["docker", "context", "inspect"]:
+                return Result(0 if self.host else 1, self.host)
+            if cmd[:3] in (["docker", "context", "create"], ["docker", "context", "update"]):
+                self.host = cmd[-1].removeprefix("host=")
+            if cmd[:3] == ["docker", "context", "use"]:
+                cfg = ctx.paths.user_home / ".docker" / "config.json"
+                cfg.parent.mkdir(parents=True, exist_ok=True)
+                cfg.write_text(_json.dumps({"currentContext": cmd[3]}))
+            return Result(0, "")
+
+    fake = ContextSys()
+    ctx.sys = fake
+    step = Colima(ctx)
+    assert not step._context_ok()  # deleted context (as after `colima stop` on another instance)
+    step._fix_context()
+    assert ["docker", "context", "create", "colima", "--docker", f"host={sock}"] in fake.calls
+    assert step._context_ok() and step.verify() == []

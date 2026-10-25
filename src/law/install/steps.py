@@ -753,13 +753,34 @@ class Colima:
         sock = self.c.paths.home / "colima" / "default" / "docker.sock"
         return {"DOCKER_HOST": f"unix://{sock}", "COLIMA_HOME": str(self.c.paths.home / "colima")}
 
+    def _sock(self) -> str:
+        return self._env()["DOCKER_HOST"]
+
+    def _context_ok(self) -> bool:
+        """The docker CLI's current context is `colima`, pointing at LAW's VM. `colima stop` on another Colima
+        instance deletes this shared context (seen 2026-10-25), and then a plain `docker ...` fails."""
+        try:
+            current = json.loads((self.c.paths.user_home / ".docker" / "config.json").read_text()).get("currentContext")
+        except (OSError, json.JSONDecodeError):
+            current = None
+        host = self.c.sys.run(["docker", "context", "inspect", "colima", "--format", "{{.Endpoints.docker.Host}}"],
+                              timeout=20)
+        return current == "colima" and host.ok and host.out.strip() == self._sock()
+
+    def _fix_context(self) -> None:
+        verb = "update" if self.c.sys.run(["docker", "context", "inspect", "colima"], timeout=20).ok else "create"
+        self.c.sys.run(["docker", "context", verb, "colima", "--docker", f"host={self._sock()}"], timeout=20)
+        self.c.sys.run(["docker", "context", "use", "colima"], timeout=20)
+
     def plan(self) -> list[str]:
         a = self.agent()
         if launchd.needs_update(self.c.paths, a, self.c.stamp):
             return [f"install launchd agent {a.label}"]
         if not self.c.sys.launchd_loaded(a.label):
             return [f"load launchd agent {a.label}"]
-        return [] if self._docker_ok() else ["wait for Docker VM"]
+        if not self._docker_ok():
+            return ["wait for Docker VM"]
+        return [] if self._context_ok() else ["point the docker CLI at LAW's VM (context colima)"]
 
     def apply(self) -> None:
         a = self.agent()
@@ -768,9 +789,13 @@ class Colima:
         deadline = time.time() + 300
         while time.time() < deadline and not self._docker_ok():
             time.sleep(3)
+        if not self._context_ok():
+            self._fix_context()
 
     def verify(self) -> list[str]:
-        return [] if self._docker_ok() else ["Docker VM not reachable"]
+        if not self._docker_ok():
+            return ["Docker VM not reachable"]
+        return [] if self._context_ok() else ["docker context colima does not point at LAW's VM"]
 
 
 class Compose:
