@@ -11,8 +11,8 @@ is a different model family from the writer, so the system never grades its own 
 
 | Use it from | How |
 |---|---|
-| **Telegram** (main channel) | Message your bot: text, voice notes, photos; `/help` lists every command (`/image`, `/video`, `/music`, `/code`, `/agent`, …). Replies show live thinking |
-| **Terminal** | `law ask "…"`, `law code "…"`, `law image "…"`, `law tts "…"`, `law stt file.wav`, `law music "…"`, `law jobs`, `law api <Class>` |
+| **Telegram** (main channel) | Message your bot: text, voice notes, photos; `/help` lists every command (`/image`, `/video`, `/music`, `/code`, `/project`, `/bugfix`, `/qa`, `/note`, …). Replies show live thinking |
+| **Terminal** | `law ask "…"`, `law code "…"`, `law image "…"`, `law tts "…"`, `law stt file.wav`, `law music "…"`, `law jobs`, `law api <Class>`, `law qa <project>`, `law bugfix <project> [bug]`, `law board show <project>`, `law send <file>` |
 | **Browser** (any device) | Open WebUI chat `http://<mac>.local:3000` · LAW Console `http://<mac>.local:8100` (live stats, agents, project boards, services, jobs, personas, settings) · dashboard `http://<mac>.local:3010` · Docker (Portainer, user `admin`, password `PORTAINER_ADMIN_PASSWORD` in `~/LAW/state/.env`) `http://<mac>.local:9000` |
 | **Any OpenAI/Anthropic client** | `http://<mac>.local:8000/v1` |
 
@@ -99,12 +99,24 @@ sequenceDiagram
 *(Static image: [docs/images/request-flow.png](docs/images/request-flow.png))*
 
 Coding tasks follow the same idea at project scale: **translate** (the request becomes a precise brief: goal,
-requirements, acceptance criteria, assumptions) → **work** (coder agent) → **review** (Gemma agent reads the code and
-runs the project's checks) → **fix** if the review scores below 4/5.
+requirements, acceptance criteria, assumptions) → **work** (coder agent) → **review** → **fix** if the review fails.
+For projects, every review round has two independent checks, both on Gemma (another model family than the Qwen
+coder):
+
+1. **Black-box QA** tests the *product*, never the code. In a fresh session it starts the app as the README says,
+   runs its regression pack (`<project>/qa/`), then checks every requirement and acceptance criterion through the
+   app itself (headless browser, HTTP API, commands) and the edges a user hits. A guard stops it reading source
+   files. Bugs go to `<project>/.law/BUGS.md` with steps, expected and actual result, evidence and a severity
+   (blocker, major, minor); only QA can close a bug, after retesting it.
+2. **Code review** reads the code against the spec and runs the project's checks.
+
+A round passes only when no blocker or major bug is open and the code review passes (ADR-0018).
 
 Every project keeps its working memory in **`<project>/.law/`** (like `.claude/` for Claude Code): `PROMPT.md` (the
-brief), `REQUESTS.md` (every request), `RESEARCH.md`, `PLAN.md` (steps with checkboxes and gates) and `PROGRESS.md`
-(done, gate output, next step). The agent keeps them current and continues from them, so a session that dies
+brief), `REQUESTS.md` (every request and every note you sent the agent), `RESEARCH.md`, `PLAN.md` (steps with
+checkboxes and gates), `PROGRESS.md` (done, gate output, next step), `BUGS.md` (QA's and your bug reports) and
+`ENVIRONMENT.md` / `env.sh` (the tools the stack needs). `.law/.gitignore` is an allow-list: only these files are
+ever committed, so a scratch file or a key an agent drops there cannot reach git. The agent keeps them current and continues from them, so a session that dies
 halfway picks up where it stopped; a restarted job resumes its own agent session (`.law/session.json`, git-ignored).
 With no folder given, the translator names the project folder (an existing one only when you name that project) and
 LAW creates it directly under `~/SourceCode/`.
@@ -147,13 +159,23 @@ Exact repos and pinned revisions: `settings/registry.yaml`. Decisions and trade-
 - **Independent judge**: a different model family scores every answer against a rubric; weak drafts are revised.
 - **No mental arithmetic**: roles that handle numbers must use the `run_python` calculator; the judge recomputes figures.
 - **Bounded reasoning**: each role has a reasoning effort, so the model can't think itself out of an answer.
-- **Agent work is reviewed**: code and documents get a read-and-run review by the judge and a fix pass.
+- **Agent work is reviewed**: code and documents get a read-and-run review by the judge and a fix pass; projects
+  also get black-box QA of the running product every round (above).
+- **Reviews are real**: the judge keeps most of its context for reading (output capped at 6K tokens), and a review
+  that ends without findings runs again instead of being turned into a score.
 - **Stuck agents are caught**: a writing agent that saves nothing for 25 minutes is stopped and resumed in the same
   session with a nudge (coders: build and fix the first error; writers: save the next section), up to 3 times. A
   long single generation gets up to 45 minutes; an agent busy reading without saving does not.
 - **Nothing is lost when a step dies**: agents keep a to-do list and progress in `.law/`, write big files section by
   section, and LAW records a step in `.law/PROGRESS.md` itself when the agent did not. Instructions are looked up
   when each step runs, so retries and long projects always use the current rules.
+- **Agents are kept on track**: an agent that keeps looking up APIs without writing code (`law api` research
+  budget), reads library internals (jars, `node_modules`, a library's source on GitHub), or reads LAW's own source or
+  state (secrets) is stopped and pointed to the supported way. Coders print the exact data when a test fails on data,
+  and search an unfamiliar error's text before guessing.
+- **You can steer a running agent**: `/note <project> <text>` reaches it at its next action.
+- **Measured claims**: agents that benchmark LAW itself run with no other request on the model and check
+  `~/LAW/logs/omlx.log`; documents are checked as a reader sees them (text extraction and page images).
 - **Safe updates**: `law install` never restarts the worker mid-step; it restarts between steps.
 - **House standard** in every role: answer first, sourced claims, no invented facts, units or currencies.
 - **Measured**: `law eval` runs a verified golden set through the real product; `scripts/test_report.py` writes `docs/TEST-REPORT.md`.
@@ -213,7 +235,7 @@ law install
 
 | Message | What happens |
 |---|---|
-| Any text | Answered with the full quality loop (draft → independent review → revise) |
+| Any text | Answered on the fast model, remembering the conversation ("continue", "yes" carry on); long answers go through the quality loop (draft → independent review → revise). Work that needs files, commands or documents (a report, a PDF, building or fixing software, research) is handed to the right agent, which reports back in the same chat |
 | Voice note | Transcribed, then answered |
 | Photo (optionally with a caption) | Described or answered about, using the vision model |
 | `/project init` | Start a **full project (SDLC)**: Tony sends a template (name, repo, repo URL, stack, thinking level, proposal depth `brief`/`full`, summary, details). Send it back filled in, and Tony researches and emails a proposal (PDF, also posted in Telegram), asks **Go / No go**, sets up the tools the stack needs, builds in milestones (a ticket board in `.law/PLAN.md`), tests and fixes until an independent review passes, writes a **system handover document** with real screenshots (emailed), then asks you to **verify**. **Needs changes** brings an enhanced proposal (v2, v3, …) and the loop repeats until **All good**. Decide with the buttons or `/go`, `/nogo`, `/changes`, `/allgood`; `/projects` shows where each one is; `/email <project>` resends its latest document |
@@ -227,6 +249,10 @@ law install
 | `/agent <role> <task>` | Runs a role, e.g. `/agent architect design a payments API` or `/agent operator play jazz on Spotify` |
 | `/jobs [project or keyword]` | What's running and its health: 🟢 working, 🔵 thinking, 🟠 stalled/stuck, 🔴 failed. With a keyword: the step, last action, to-do progress and model activity, with **Retry / Skip / Restart / Cancel** buttons |
 | `/retry <job>` | Run a failed job again from the step that failed (earlier work is kept). Every failed job also asks you **Retry / Skip** with buttons |
+| `/note <project> <text>` | Tells the agent working on a project something while it works; it gets the note at its next action (also on the project's board) |
+| `/bugfix <project> <what goes wrong>` | Reports a bug (in `.law/BUGS.md` and on the board). While the project builds, the working agent fixes it after its current step and QA retests it; otherwise the coder fixes it and QA retests the product, up to 3 rounds, and you get the result. `/bugfix <project>` alone fixes every open bug |
+| `/qa <project>` | QA tests the running product now (black box, including the regression pack) and lists open bugs by severity. QA never runs on a schedule: only when you ask or inside a build you started. A new blocker is sent to you at once with its steps and screenshot |
+| `/new` · `/hardreset` | Start a new conversation (Tony forgets the chat) · wipe all jobs, history and caches (asks first; keeps models, settings and projects) |
 
 A status message updates live while the job runs. Messages from accounts that aren't on your list are ignored.
 
@@ -323,6 +349,18 @@ OpenCode is the recommended client offline: it is open source and the setup abov
   `uv tool install --python 3.12 <path-to-v6>` while online.
 - No login is needed on the LAN (owner's choice); don't run LAW on untrusted networks.
 
+## Software the agents build can use LAW
+
+Apps the agents build may call LAW at runtime (the development rules tell them how; ADR-0018 and the dev spec):
+
+- **LLM**: `http://<host>:8000/v1` (OpenAI-compatible) with LAW's fast model; from a Docker container the Mac is
+  `host.docker.internal`. HTTP 507 means another model holds LAW's memory (e.g. an agent is working): busy, not an
+  answer. The first call after idle loads the model (~10 s).
+- **Web search**: SearXNG on port 8888.
+- **Message the owner**: `law send --message "…"` on the Mac, or from a container
+  `POST http://host.docker.internal:8100/send` with `{"text": "…"}` (Telegram, allow-listed chats only; no bot token
+  in the project).
+
 ## Where things live
 
 | Location | What | Survives a format? |
@@ -330,7 +368,9 @@ OpenCode is the recommended client offline: it is open source and the setup abov
 | `v6/` (git) | Code, `settings/` (models, ports, roles), `knowledge/`, `trained/`, docs | Yes, via git |
 | `~/LAW/` | Models, caches, containers, generated media, logs, secrets (`state/.env`) | No, and that's fine |
 | LAW Console → **Agents** | Live health of every running job (working / thinking / stalled / stuck / failed), its step, last actions, to-do progress and the model's activity, with Retry / Skip / Restart / Cancel | — |
-| `<project>/.law/` | A project's brief, requests, research, plan and progress (commit it with the project) | With the project |
+| `<project>/.law/` | A project's brief, requests, research, plan, progress and bug list (commit it with the project) | With the project |
+| `<project>/qa/` | QA's regression pack: black-box checks of the product, re-run every QA round (written by QA only) | With the project |
+| LAW Console → **Projects** | A Jira-style board per project, built from what the agents record (stages and their logs, the coder's `PLAN.md` tickets and commits, `BUGS.md`): proposal, QA, development, bug fixes, your approvals, with notes | — |
 | `<project>/docs/proposal/` or `~/LAW/outputs/docs/` | `/proposal` research, Markdown source, diagrams, wireframes, PDF | With the project |
 
 Disk use is bounded: the LLM's SSD prompt cache is capped by `machine.llm_ssd_cache_gb` in

@@ -82,7 +82,18 @@ Approve it in System Settings → Privacy & Security.
    caption), `/music` (add `lyrics:` for your own words, and a duration like `90s`), `/say`, `/code`, `/agent`, `/search`,
    `/jobs`, `/cancel`. While Tony works, its status message shows live thinking.
 
-## 7. Use it from another computer
+## 7. Build a project end to end
+
+1. Send `/project init`, fill in the template Tony returns (name, stack, what it must do) and send it back.
+2. Tony researches and emails a proposal PDF; press **Go** to build (or **No go** with what to change).
+3. The agents set up the tools, build milestone by milestone, then run review rounds: black-box **QA** tests the
+   running product against your requirements and files bugs, the coder fixes them, QA retests. Follow it on the
+   Console's **Projects** board.
+4. While it builds: `/note <project> <text>` tells the agent something; `/bugfix <project> <what goes wrong>` reports a
+   bug; `/qa <project>` re-tests the product whenever you want (QA never runs on a schedule).
+5. You get a handover document (with a "check on your phone" list) and verify: **All good** or **Needs changes**.
+
+## 8. Use it from another computer
 
 ```bash
 export LAW_SERVER=http://<mac-name>.local:8100
