@@ -104,3 +104,27 @@ async def test_healthz_reports_queue_depth(client):
     await http.post("/jobs", json={"kind": "ask"})
     body = (await http.get("/healthz")).json()
     assert body["ok"] is True and body["valkey"] is True and body["queued"] == 1
+
+
+
+async def test_send_messages_the_owner_and_reports_delivery_errors(client, monkeypatch):
+    from law import deliver
+
+    c, _ = client
+    sent: list[str] = []
+
+    def fake(env_file, files, message, transport=None):  # type: ignore[no-untyped-def]
+        sent.append(message)
+        return 1
+
+    monkeypatch.setattr(deliver, "to_telegram", fake)
+    r = await c.post("/send", json={"text": "2 items expire today"})
+    assert r.status_code == 200 and r.json() == {"chats": 1} and sent == ["2 items expire today"]
+    assert (await c.post("/send", json={"text": ""})).status_code == 422
+
+    def broken(*a, **k):  # type: ignore[no-untyped-def]
+        raise deliver.DeliveryError("Telegram is not set up")
+
+    monkeypatch.setattr(deliver, "to_telegram", broken)
+    r = await c.post("/send", json={"text": "x"})
+    assert r.status_code == 503 and "not set up" in r.json()["detail"]

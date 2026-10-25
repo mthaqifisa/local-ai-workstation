@@ -32,7 +32,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
-from law import registry
+from law import deliver, registry
 from law.handlers.base import Runtime
 from law.paths import LawPaths
 from law.queue.jobs import Job, Priority, Status
@@ -100,6 +100,10 @@ async def _require(store: JobStore, job_id: str) -> Job:
     return job
 
 
+class SendRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=4096)
+
+
 def create_app(
     paths: LawPaths | None = None,
     *,
@@ -137,6 +141,17 @@ def create_app(
     from law import console
 
     console.mount(app, f"http://{reg.network.loopback}:{reg.ports.llm_internal}", paths)
+
+    # ---- messages to the owner -------------------------------------------
+    @app.post("/send")
+    async def send_message(req: SendRequest) -> dict[str, int]:
+        """A text message to the owner's allow-listed Telegram chats: `law send --message` over HTTP, for software
+        the agents build that runs in a container and cannot run the Mac's `law` (e.g. a daily reminder)."""
+        try:
+            chats = await asyncio.to_thread(deliver.to_telegram, paths.env_file, [], req.text)
+        except deliver.DeliveryError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return {"chats": chats}
 
     # ---- submit & inspect -------------------------------------------------
     @app.post("/jobs", response_model=Job, status_code=201)

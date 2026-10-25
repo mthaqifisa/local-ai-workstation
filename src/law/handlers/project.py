@@ -187,7 +187,10 @@ def law_services() -> str:
         "Mac itself use 127.0.0.1. Make the base URLs settings, with the container value set in docker-compose.yml.\n"
         "- LAW can be busy or unloaded: set a timeout, treat LAW as optional, and degrade gracefully. HTTP 507 means "
         "another model holds LAW's memory (e.g. an agent is working): tell the user LAW is busy and to try again "
-        "later; it is not an answer. The first call after idle loads the model (~10 s)."
+        "later; it is not an answer. The first call after idle loads the model (~10 s).\n"
+        "- To message the owner (a reminder, an alert): `law send --message '...'` on the Mac; from a container "
+        f"POST http://host.docker.internal:{reg.ports.law_api}/send with JSON {{\"text\": \"...\"}} (Telegram, "
+        "the owner's chats only). A container cannot run the Mac's `law`. Never store a bot token in the project."
     )
 
 
