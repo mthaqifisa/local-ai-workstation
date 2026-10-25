@@ -96,6 +96,26 @@ class ProjectMemory:
             f.write(entry)
         return True
 
+    def add_note(self, text: str) -> None:
+        """An owner's note for the agent working here (`/note` in Telegram); delivered at its next action."""
+        self.dir.mkdir(exist_ok=True)
+        with (self.dir / "NOTES.md").open("a") as f:
+            f.write(f"{text.strip()}\n\n")
+
+    def take_notes(self) -> str | None:
+        """Pending owner notes, once: they move to REQUESTS.md (the committed record) when the agent gets them."""
+        path = self.dir / "NOTES.md"
+        try:
+            text = path.read_text().strip()
+        except OSError:
+            return None
+        path.unlink(missing_ok=True)
+        if not text:
+            return None
+        with (self.dir / "REQUESTS.md").open("a") as f:
+            f.write(f"\n## {time.strftime('%Y-%m-%d %H:%M')} · owner note to the agent\n\n{text}\n")
+        return text
+
     def session_for(self, job_id: str) -> str | None:
         """The OpenCode session this job already started, if it was interrupted."""
         data = self._session()

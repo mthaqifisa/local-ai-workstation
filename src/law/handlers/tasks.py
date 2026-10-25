@@ -173,6 +173,9 @@ BOILERPLATE_PREFIX = re.compile(r"^(?:(?:source \S*env\.sh|cd \S+)\s*(?:&&|;)\s*
 # It is stopped and its session resumed with a nudge to build and fix, at most STALL_NUDGES times.
 STALL_MINUTES = 25
 EMPTY_REVIEW_CHARS = 400  # a review shorter than this has no findings to state a verdict from
+OWNER_NOTE_HEAD = "A note from the owner"
+OWNER_NOTE = (OWNER_NOTE_HEAD + " while you work (from Telegram):\n\n{note}\n\nTake it into account, then carry on "
+              "with the current step.")
 STALL_NUDGES = 3
 NUDGE = ("You have not changed any file for {minutes} minutes. Stop reading and exploring. If the plan or the "
          "project does not exist yet, write it now: the build section of .law/PLAN.md, then the first ticket's "
@@ -343,6 +346,11 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
 
         def steer(summary: str) -> str | None:
             nonlocal digs, lookups
+            note = memory.take_notes() if memory is not None else None
+            if note:
+                return OWNER_NOTE.format(note=note)
+            if role != "coder":
+                return None
             if summary.startswith("✏️"):
                 digs = lookups = 0
                 return None
@@ -369,13 +377,17 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                                     timeout_s=float(ctx.job.payload.get("timeout_s", 4 * 3600)),
                                     stall_s=stall_min * 60 if writes and stall_min > 0 else None,
                                     is_work=is_file_change, alive=model_generating,
-                                    steer=steer if role == "coder" else None)
+                                    steer=steer)
                 answer_text = parse_opencode_events(out)
                 if memory is not None and writes and memory.ensure_progress(started, role, answer_text, edits):
                     await ctx.progress("📝 recorded this step in .law/PROGRESS.md (the agent had not)")
                 return answer_text
             except Steered as exc:
                 sid = session_id(exc.output)
+                if exc.message.startswith(OWNER_NOTE_HEAD) and sid is not None:  # the owner's word, not a strike
+                    await ctx.progress("📨 passing the owner's note to the agent")
+                    cmd = [*base, "--session", sid, exc.message]
+                    continue
                 strikes = 1 if made_progress(exc.output) else strikes + 1
                 if sid is None or strikes > STALL_NUDGES:
                     raise Fatal(f"{role} agent kept researching without writing code") from exc
