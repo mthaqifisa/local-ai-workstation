@@ -296,3 +296,11 @@ def test_email_resends_the_latest_document_and_unsent_gates_offer_it(tmp_path: P
     gate = _run(rt, "project_gate", {"project": "office-chat", "gate": "proposal",
                                      "_carry": {"pdf": str(docs / "proposal-v2.pdf"), "emailed": None}})
     assert gate.result["gate"]["actions"] == ["go", "nogo", "email"]
+
+
+
+def test_dev_and_fix_stages_say_how_apps_call_law():
+    from law.handlers.project import law_services
+
+    note = law_services()
+    assert "host.docker.internal" in note and "fast model `" in note and "timeout" in note

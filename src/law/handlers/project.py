@@ -170,16 +170,36 @@ def env_spec(a: dict[str, Any]) -> str:
     return ENV_SPEC.format(spec_file=spec_file(a))
 
 
+def law_services() -> str:
+    """How software the agents build calls LAW itself, from the registry (seen 2026-10-25: an app defaulted to the
+    agents' 27B model, ~15-60 s a call and competing with the agents, and to 127.0.0.1 inside its container)."""
+    from law import registry
+    from law.paths import LawPaths
+
+    reg = registry.load(LawPaths.from_env().registry_file)
+    fast = next((m.id for m in reg.llm_models if "fast" in m.roles), "")
+    return (
+        "\n\nSoftware that calls LAW itself (its OpenAI-compatible LLM API on port "
+        f"{reg.ports.llm_public}, SearXNG on port {reg.ports.searxng}):\n"
+        f"- In-app calls use LAW's fast model `{fast}` (seconds per answer); the large model the agents use is slow "
+        "and shared with them. Keep the model id a setting.\n"
+        "- From a Docker container the Mac is `host.docker.internal` (127.0.0.1 is the container itself); from the "
+        "Mac itself use 127.0.0.1. Make the base URLs settings, with the container value set in docker-compose.yml.\n"
+        "- LAW can be busy or unloaded: set a timeout, treat LAW as optional, and degrade gracefully."
+    )
+
+
 @specs.register("project.dev")
 def dev_spec(a: dict[str, Any]) -> str:
     v = int(a["version"])
     scope = "" if v == 1 or a.get("spec_file") else f', including its section "What changed in version {v}"'
-    return DEV_SPEC.format(name=a["name"], version=v, spec_file=spec_file(a), scope=scope, key=a["key"])
+    spec = DEV_SPEC.format(name=a["name"], version=v, spec_file=spec_file(a), scope=scope, key=a["key"])
+    return spec + law_services()
 
 
 @specs.register("project.fix")
 def fix_spec(a: dict[str, Any]) -> str:
-    return FIX_SPEC.format(spec_file=spec_file(a), version=a["version"])
+    return FIX_SPEC.format(spec_file=spec_file(a), version=a["version"]) + law_services()
 
 
 @specs.register("project.handover")
