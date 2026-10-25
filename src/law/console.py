@@ -14,7 +14,7 @@ import psutil
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 
-from law import client_setup, registry
+from law import board, client_setup, registry
 from law import console_edit as edit
 from law.paths import LawPaths
 
@@ -124,6 +124,53 @@ def mount(app: Any, llm_internal: str, paths: LawPaths) -> None:
         model = agent_status.model_activity(llm_internal, paths.logs / "omlx.log")
         jobs = await agent_status.statuses(request.app.state.store, model, q)
         return {"model": model, "jobs": jobs}
+
+    @router.get("/board")
+    def board_projects() -> list[dict[str, Any]]:
+        return board.summaries(paths)
+
+    @router.get("/board/{pid}")
+    async def board_get(request: Request, pid: str) -> dict[str, Any]:
+        """One project's tickets by column, each with its details, steps, logs and notes."""
+        try:
+            return await board.build(paths, request.app.state.store, pid)
+        except KeyError as exc:
+            raise HTTPException(404, str(exc).strip("'\"")) from exc
+
+    @router.post("/board/{pid}/notes")
+    def board_note(pid: str, body: board.NoteIn) -> dict[str, Any]:
+        """A note on a ticket (none: the ticket in progress); `to_agent` also hands it to the working agent."""
+        from law.project_memory import ProjectMemory
+        from law.projects import Projects
+
+        try:
+            project = Projects(paths).get(pid)
+            saved = board.add_note(paths, project.id, body.text, ticket=body.ticket, author=body.author, at=body.at)
+        except KeyError as exc:
+            raise HTTPException(404, str(exc).strip("'\"")) from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        if body.to_agent:
+            ProjectMemory(Path(project.dir)).add_note(body.text)
+        return saved.model_dump()
+
+    @router.delete("/board/{pid}/notes/{note_id}")
+    def board_note_delete(pid: str, note_id: str) -> dict[str, str]:
+        try:
+            board.delete_note(paths, pid, note_id)
+        except KeyError as exc:
+            raise HTTPException(404, f"no note {note_id}") from exc
+        return {"deleted": note_id}
+
+    @router.delete("/board/{pid}")
+    async def board_delete(request: Request, pid: str, code: bool = False) -> dict[str, Any]:
+        """Delete a project's board: notes, jobs and their logs, its LAW record; `code=true` also trashes the folder."""
+        try:
+            return await board.delete_project(paths, request.app.state.store, pid, code=code)
+        except KeyError as exc:
+            raise HTTPException(404, str(exc).strip("'\"")) from exc
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
 
     @router.get("/system")
     def system() -> dict[str, Any]:

@@ -22,7 +22,9 @@ app = typer.Typer(no_args_is_help=True, add_completion=False, help="LAW v6 — l
 svc = typer.Typer(no_args_is_help=True, help="start/stop/restart/logs for services")
 models_cli = typer.Typer(no_args_is_help=True, help="list/pull/verify models")
 app.add_typer(svc, name="services")
+board_cli = typer.Typer(no_args_is_help=True, help="project boards (the Console's Projects tab)")
 app.add_typer(models_cli, name="models")
+app.add_typer(board_cli, name="board")
 con = Console()
 err = Console(stderr=True)
 
@@ -239,6 +241,41 @@ def retry(job_id: str) -> None:
         con.print(f"[red]{r.json().get('detail', r.text)}[/red]")
         raise typer.Exit(1)
     con.print(f"retrying {job_id} from stage {int(r.json()['stage']) + 1}: {r.json()['kind']}")
+
+
+@board_cli.command("show")
+def board_show(project: str) -> None:
+    """A project's tickets by column."""
+    r = httpx.get(f"{_server()}/board/{project}", timeout=30)
+    if r.status_code != 200:
+        err.print(f"[red]{r.json().get('detail', r.text)}[/red]")
+        raise typer.Exit(1)
+    data = r.json()
+    for col in data["columns"]:
+        rows = [t for t in data["tickets"] if t["column"] == col["id"]]
+        con.print(f"[bold]{col['label']}[/bold] ({len(rows)})")
+        for t in rows:
+            con.print(f"  {t['id']:<22} {t['title'][:80]}" + (f"  [dim]{t['state']}[/dim]" if t["state"] else ""))
+
+
+@board_cli.command("note")
+def board_note(project: str, text: Annotated[list[str], typer.Argument()],
+               ticket: Annotated[str | None, typer.Option(help="e.g. P-17 (default: the ticket in progress)")] = None,
+               author: Annotated[str, typer.Option(help="who wrote it")] = "owner",
+               at: Annotated[str | None, typer.Option(help="when it was written, 'YYYY-MM-DD HH:MM' (default: now)")]
+               = None,
+               to_agent: Annotated[bool, typer.Option("--to-agent", help="also tell the agent working on it")]
+               = False) -> None:
+    """Add a note to a ticket on a project's board."""
+    import datetime as dt
+
+    when = dt.datetime.strptime(at, "%Y-%m-%d %H:%M").timestamp() if at else None
+    body = {"text": " ".join(text), "ticket": ticket, "author": author, "at": when, "to_agent": to_agent}
+    r = httpx.post(f"{_server()}/board/{project}/notes", json=body, timeout=30)
+    if r.status_code != 200:
+        err.print(f"[red]{r.json().get('detail', r.text)}[/red]")
+        raise typer.Exit(1)
+    con.print(f"noted on {project} {ticket or '(the ticket in progress)'}: {r.json()['id']}")
 
 
 @app.command("api")

@@ -1,20 +1,24 @@
 {
   "stage": "C-user-requests",
-  "task": "Pantry: proposal v1 awaiting owner go/no-go; review + render fixes shipped",
-  "status": "waiting_owner",
-  "next_step": "Owner decides Go / No go in Telegram. Keep 10-min monitor; on Go watch env + milestones; on No go watch v2 with a real review.",
-  "timestamp": "2026-10-25T08:15+08:00",
+  "task": "Console: Agents collapsibles fix + Projects board",
+  "status": "done",
+  "next_step": "Post Pantry progress to the board with `law board note pantry ... --ticket P-n` as well as the owner email; keep monitoring Pantry M4.",
+  "timestamp": "2026-10-26T07:10+08:00",
   "files_touched": [
-    "src/law/handlers/proposal.py",
-    "src/law/handlers/tasks.py",
-    "src/law/install/steps.py",
-    "settings/roles.yaml",
-    "tests/unit/test_proposal.py",
-    "tests/unit/test_install_engine.py"
+    "src/law/board.py",
+    "src/law/console.py",
+    "src/law/static/console.html",
+    "src/law/cli.py",
+    "src/law/telegram_bot.py",
+    "src/law/projects.py",
+    "src/law/queue/store.py",
+    "tests/unit/test_board.py",
+    "docs/RUNBOOK.md"
   ],
   "commands": [
-    "./install.sh (re-run 0 changes)",
-    "uv run pytest tests/unit (380 passed)",
-    "ruff + mypy clean"
+    "uv run pytest tests/unit (396 passed)",
+    "ruff + mypy clean",
+    "law services restart api/telegram",
+    "./install.sh (re-run 0 changes)"
   ]
 }
