@@ -31,7 +31,7 @@ Everything is declared in `settings/` (git):
 
 - `settings/registry.yaml`: models, memory budget, ports, media tools, pinned versions
 - `settings/roles.yaml`: personas and their tools
-- `compose.yaml`: Open WebUI, SearXNG, Homepage
+- `compose.yaml`: Open WebUI, SearXNG, Homepage, Portainer (ADR-0019)
 - `Brewfile`: system packages
 
 Edit, commit, then run `./install.sh` (or `law install`). It applies only the difference:

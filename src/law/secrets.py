@@ -6,7 +6,7 @@ import os
 import secrets as _secrets
 from pathlib import Path
 
-GENERATED = ("LAW_SERVICE_KEY", "WEBUI_SECRET_KEY", "SEARXNG_SECRET")
+GENERATED = ("LAW_SERVICE_KEY", "WEBUI_SECRET_KEY", "SEARXNG_SECRET", "PORTAINER_ADMIN_PASSWORD")
 # LAW_REPORT_EMAIL is personal rather than secret, but it must stay out of the public repo too.
 USER_PROVIDED = ("LAW_TELEGRAM_TOKEN", "LAW_TELEGRAM_USER_IDS", "HF_TOKEN", "LAW_REPORT_EMAIL")
 

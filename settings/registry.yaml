@@ -32,6 +32,7 @@ ports:
   law_api: 8100         # law job API (CLI, Telegram, dashboards)
   open_webui: 3000
   homepage: 3010
+  portainer: 9000      # Docker management (its own admin login)
   searxng: 8888
   comfyui: 8188
   valkey: 6379          # loopback only (internal plumbing)
@@ -52,6 +53,7 @@ services:
   open_webui: {kind: compose}
   searxng:   {kind: compose}
   homepage:  {kind: compose}
+  portainer: {kind: compose}
 
 # Language / vision / embedding models served by oMLX from ~/LAW/models/llm/<id>.
 # lane: heavy = at most one resident; light = may co-reside with a heavy model.

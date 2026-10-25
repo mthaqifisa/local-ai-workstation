@@ -47,3 +47,19 @@ services:
     volumes: ["${LAW_HOME}/config/homepage:/app/config"]
     environment:
       HOMEPAGE_ALLOWED_HOSTS: "*"
+
+  # Docker images, containers and volumes (ADR-0019). The socket is the Colima VM's, mounted into this container
+  # only (never over TCP). Portainer CE always has a login: the admin password is generated into ~/LAW/state/.env.
+  portainer:
+    image: portainer/portainer-ce:2.45.3
+    restart: unless-stopped
+    command: ["--admin-password-file", "/run/secrets/portainer_admin", "--no-analytics"]
+    ports: ["0.0.0.0:${PORTAINER_PORT:-9000}:9000"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${LAW_HOME}/docker/portainer:/data
+    secrets: [portainer_admin]
+
+secrets:
+  portainer_admin:
+    environment: PORTAINER_ADMIN_PASSWORD

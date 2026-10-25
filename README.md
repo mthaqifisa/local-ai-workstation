@@ -13,7 +13,7 @@ is a different model family from the writer, so the system never grades its own 
 |---|---|
 | **Telegram** (main channel) | Message your bot: text, voice notes, photos; `/help` lists every command (`/image`, `/video`, `/music`, `/code`, `/agent`, …). Replies show live thinking |
 | **Terminal** | `law ask "…"`, `law code "…"`, `law image "…"`, `law tts "…"`, `law stt file.wav`, `law music "…"`, `law jobs`, `law api <Class>` |
-| **Browser** (any device) | Open WebUI chat `http://<mac>.local:3000` · LAW Console `http://<mac>.local:8100` (live stats, jobs, personas, settings) · dashboard `http://<mac>.local:3010` |
+| **Browser** (any device) | Open WebUI chat `http://<mac>.local:3000` · LAW Console `http://<mac>.local:8100` (live stats, agents, project boards, services, jobs, personas, settings) · dashboard `http://<mac>.local:3010` · Docker (Portainer, user `admin`, password `PORTAINER_ADMIN_PASSWORD` in `~/LAW/state/.env`) `http://<mac>.local:9000` |
 | **Any OpenAI/Anthropic client** | `http://<mac>.local:8000/v1` |
 
 Every request goes through one durable job queue with a scheduler that knows how much memory each model needs.
@@ -34,6 +34,7 @@ flowchart TB
     OWUI[Open WebUI :3000<br/>chat · RAG · voice]
     SX[SearXNG :8888<br/>web search]
     HP[Homepage :3010]
+    PT[Portainer :9000<br/>Docker management]
   end
 
   subgraph Mac["Native on Apple Silicon (Metal)"]

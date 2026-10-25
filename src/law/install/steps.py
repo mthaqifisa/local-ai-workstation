@@ -774,7 +774,7 @@ class Colima:
 
 
 class Compose:
-    """Open WebUI, SearXNG and Homepage containers from compose.yaml."""
+    """Open WebUI, SearXNG, Homepage and Portainer containers from compose.yaml."""
 
     name = "compose"
 
@@ -789,7 +789,8 @@ class Compose:
                 "OPEN_WEBUI_PORT": str(reg.ports.open_webui), "SEARXNG_PORT": str(reg.ports.searxng),
                 "HOMEPAGE_PORT": str(reg.ports.homepage), "LLM_PORT": str(reg.ports.llm_public),
                 "COMFYUI_PORT": str(reg.ports.comfyui), "WEBUI_SECRET_KEY": values.get("WEBUI_SECRET_KEY", ""),
-                "SEARXNG_SECRET": values.get("SEARXNG_SECRET", "")}
+                "SEARXNG_SECRET": values.get("SEARXNG_SECRET", ""), "PORTAINER_PORT": str(reg.ports.portainer),
+                "PORTAINER_ADMIN_PASSWORD": values.get("PORTAINER_ADMIN_PASSWORD", "")}
 
     def homepage_files(self) -> dict[str, str]:
         reg, host = self.c.reg, lan_hostname(self.c.sys)
@@ -821,9 +822,14 @@ class Compose:
         href: http://{host}:{reg.ports.law_api}/jobs
         description: Queue used by Telegram and the law CLI
         siteMonitor: http://host.lima.internal:{reg.ports.law_api}/healthz
+    - Docker (Portainer):
+        href: http://{host}:{reg.ports.portainer}
+        description: Images, containers, volumes and logs (user admin; password in ~/LAW/state/.env)
+        icon: portainer.png
+        siteMonitor: http://host.lima.internal:{reg.ports.portainer}
 """
         settings = ("title: LAW\ntheme: dark\ncolor: slate\nheaderStyle: clean\nlayout:\n"
-                    "  AI: {style: row, columns: 4}\n  Engine: {style: row, columns: 2}\n")
+                    "  AI: {style: row, columns: 4}\n  Engine: {style: row, columns: 3}\n")
         # No `resources` widget: Homepage runs inside the Docker VM and would report the VM, not the Mac.
         widgets = "- datetime:\n    format: {timeStyle: short}\n"
         return {"services.yaml": services, "settings.yaml": settings, "widgets.yaml": widgets,
@@ -832,7 +838,7 @@ class Compose:
     def _containers_running(self) -> bool:
         res = self.c.sys.run(["docker-compose", "-f", str(self.c.paths.repo / "compose.yaml"), "ps",
                               "--status", "running", "--format", "{{.Service}}"], env=self.env(), timeout=30)
-        return res.ok and {"open-webui", "searxng", "homepage"} <= set(res.out.split())
+        return res.ok and {"open-webui", "searxng", "homepage", "portainer"} <= set(res.out.split())
 
     def plan(self) -> list[str]:
         out = []
@@ -852,7 +858,8 @@ class Compose:
         hp.mkdir(parents=True, exist_ok=True)
         for name, body in self.homepage_files().items():
             (hp / name).write_text(body)
-        (self.c.paths.home / "docker" / "open-webui").mkdir(parents=True, exist_ok=True)
+        for folder in ("open-webui", "portainer"):
+            (self.c.paths.home / "docker" / folder).mkdir(parents=True, exist_ok=True)
         self._pull_sequentially()
         res = self.c.sys.run(["docker-compose", "-f", str(self.c.paths.repo / "compose.yaml"), "up", "-d",
                               "--remove-orphans"], env=self.env(), timeout=3600)
@@ -881,7 +888,7 @@ class Compose:
         reg = self.c.reg
         problems = [] if self._containers_running() else ["containers not all running"]
         for name, port in (("open-webui", reg.ports.open_webui), ("searxng", reg.ports.searxng),
-                           ("homepage", reg.ports.homepage)):
+                           ("homepage", reg.ports.homepage), ("portainer", reg.ports.portainer)):
             if not wait_port(port, 180):
                 problems.append(f"{name} not listening on :{port}")
         return problems
