@@ -22,3 +22,5 @@ Homepage), so the owner found :9000 dead. The owner asked for it back to browse 
   projects and LAW's own containers, which is equivalent to the machine access the runtime agents already have.
 - The admin password applies only when Portainer's data folder is empty. A password changed in Portainer's UI is
   kept in `~/LAW/docker/portainer`. To reset it, stop the container and empty that folder.
+- Owner decision (2026-10-26): login `admin` / `admin`. Portainer's minimum password length (Settings ›
+  Authentication) was lowered from 12 to 1 to allow it, and `PORTAINER_ADMIN_PASSWORD=admin` is in `.env`.
