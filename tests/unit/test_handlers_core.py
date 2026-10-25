@@ -660,3 +660,30 @@ async def test_a_coder_that_only_looks_up_apis_is_told_to_write_code(setup, sand
                                                               "review": False, "translate": False})))
     await w.drain()
     assert cmds[1][cmds[1].index("--session") + 1] == "ses_look" and "looked up enough" in cmds[1][-1]
+
+
+async def test_an_owner_note_reaches_the_working_agent_once(setup, sandbox, monkeypatch):
+    from law.handlers import tasks
+    from law.handlers.base import Steered
+    from law.project_memory import ProjectMemory
+
+    rt, store, w = setup
+    cmds: list[list[str]] = []
+
+    async def fake_run_cmd(ctx, cmd, **kw):  # type: ignore[no-untyped-def]
+        cmds.append(cmd)
+        steer = kw["steer"]
+        if len(cmds) == 1:
+            assert steer("▶ running mvn -q test") is None
+            ProjectMemory(sandbox).add_note("Spring Boot reads PEM files directly")
+            message = steer("▶ running docker compose up -d")
+            raise Steered(_tool_event("bash", "docker", "ses_note"), message)
+        assert steer("▶ running mvn -q test") is None  # delivered once
+        return _opencode_json("P-4 committed")
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    await store.submit(resolver(rt)(Job(kind="task", payload={"prompt": "build", "role": "coder", "dir": str(sandbox),
+                                                              "review": False, "translate": False})))
+    await w.drain()
+    assert cmds[1][cmds[1].index("--session") + 1] == "ses_note" and "PEM files directly" in cmds[1][-1]
+    assert "A note from the owner" in cmds[1][-1]

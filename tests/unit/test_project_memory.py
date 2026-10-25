@@ -64,3 +64,15 @@ def test_law_records_a_step_the_agent_did_not(tmp_path: Path) -> None:
     text = progress.read_text()
     assert "writer step" in text and "Wrote sections 1-3." in text and text.count("proposal.md") == 1
     assert not mem.ensure_progress(started, "writer", "again", [])  # the file is now newer than the step start
+
+
+def test_owner_notes_are_delivered_once_and_recorded(tmp_path: Path) -> None:
+    mem = ProjectMemory(tmp_path)
+    mem.prepare("j", "x", None)
+    assert mem.take_notes() is None
+    mem.add_note("Spring Boot reads PEM files directly")
+    mem.add_note("keep the p12 out of .law")
+    note = mem.take_notes()
+    assert note is not None and "PEM files" in note and "p12" in note
+    assert mem.take_notes() is None  # once
+    assert "owner note to the agent" in (tmp_path / FOLDER / "REQUESTS.md").read_text()

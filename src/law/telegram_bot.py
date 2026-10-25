@@ -21,6 +21,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from law import projects, registry, secrets
 from law.paths import LawPaths
+from law.project_memory import ProjectMemory
 from law.tg_format import to_telegram_html
 
 log = logging.getLogger("law.telegram")
@@ -80,6 +81,22 @@ class LawBot:
 
         for name in ("go", "nogo", "changes", "allgood", "resume", "push", "email"):
             self._wire_decision(name)
+
+        @dp.message(Command("note"))
+        async def note(message: Message, command: CommandObject) -> None:
+            if not self._ok(message):
+                return
+            pid, _, text = (command.args or "").strip().partition(" ")
+            if not pid or not text.strip():
+                await self._send(message.chat.id, "Usage: `/note <project> <what the agent should know>`")
+                return
+            try:
+                project = projects.Projects(LawPaths.from_env()).get(pid)
+            except KeyError as exc:
+                await self._send(message.chat.id, str(exc))
+                return
+            ProjectMemory(Path(project.dir)).add_note(text)
+            await self._send(message.chat.id, f"📨 Noted for **{project.name}**: the agent gets it at its next action.")
 
         @dp.message(Command("projects"))
         async def projects_(message: Message) -> None:
@@ -708,6 +725,7 @@ COMMANDS: list[tuple[str, str, str]] = [
      "/changes office-chat add file sharing"),
     ("allgood", "Accept the build: the project is done", "/allgood office-chat"),
     ("email", "Email a project's latest document (proposal or handover) again", "/email office-chat"),
+    ("note", "Tell the agent building a project something while it works", "/note office-chat use the PEM files"),
     ("proposal", "Consultant-grade proposal: research, full document (design, architecture, flows, "
      "wireframes, plan, cost), reviewed, PDF emailed to you; start with a project folder to use it as the prototype",
      "/proposal ~/SourceCode/my-app Propose this as a product for small offices"),
