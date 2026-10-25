@@ -146,7 +146,7 @@ def _stage_group(spec: dict[str, Any], phase: str, version: int, qa_round: list[
         return f"approve-{gate}-{v}", title, "approval"
     if kind == "code_plan":
         return f"plan-{v}", f"Write the plan {v}", "proposal"
-    if phase == "bugfix":  # a /bugfix pipeline (fix, then QA retests) or a QA run (/qa, nightly)
+    if phase == "bugfix":  # a /bugfix pipeline (fix, then QA retests) or a QA run (/qa)
         if p.get("qa_run"):
             run = str(p["qa_run"])
             return (f"qarun-{run[7:].replace(' ', '-')}", run, "qa") if kind == "task_review" else ("", "", "")
