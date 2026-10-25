@@ -19,7 +19,8 @@ bug on the fly.
   strike.
 - `.law/BUGS.md` is the single bug list (`## BUG-n · status · reporter · time`). QA files bugs and retests them
   (`verified` or `reopened`); the coder fixes them, adds a test, and marks them `fixed`; only QA closes a bug. A
-  round passes only when no bug is open, fixed-but-unretested or reopened, and the code review passes.
+  round passes only when no blocker or major bug is open, fixed-but-unretested or reopened, and the code review
+  passes.
 - `/bugfix <project> <what goes wrong>` in Telegram adds an owner bug. While a build of the project runs, the
   working agent gets it as a note (fix after the current step) and the next QA round retests it. Otherwise a
   `project_bugfix` pipeline runs: fix, then QA retest plus code review, up to three times, then a report in the chat.
@@ -40,6 +41,6 @@ bug on the fly.
 ## Consequences
 - Pantry and every running project get QA without changing their pipelines: their review rounds already exist.
 - A review round takes longer (the product is started and exercised), and a project cannot reach the owner's
-  verification with a bug QA can reproduce.
+  verification with a blocker or major bug QA can reproduce.
 - QA's independence rests on a different model, a fresh session and the guard; it still reads the README and the
   brief, which the developer wrote from, so a requirement missing from the brief is missed by both.
