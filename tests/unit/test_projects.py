@@ -303,4 +303,4 @@ def test_dev_and_fix_stages_say_how_apps_call_law():
     from law.handlers.project import law_services
 
     note = law_services()
-    assert "host.docker.internal" in note and "fast model `" in note and "timeout" in note
+    assert "host.docker.internal" in note and "fast model `" in note and "timeout" in note and "507" in note

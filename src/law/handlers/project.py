@@ -185,7 +185,9 @@ def law_services() -> str:
         "and shared with them. Keep the model id a setting.\n"
         "- From a Docker container the Mac is `host.docker.internal` (127.0.0.1 is the container itself); from the "
         "Mac itself use 127.0.0.1. Make the base URLs settings, with the container value set in docker-compose.yml.\n"
-        "- LAW can be busy or unloaded: set a timeout, treat LAW as optional, and degrade gracefully."
+        "- LAW can be busy or unloaded: set a timeout, treat LAW as optional, and degrade gracefully. HTTP 507 means "
+        "another model holds LAW's memory (e.g. an agent is working): tell the user LAW is busy and to try again "
+        "later; it is not an answer. The first call after idle loads the model (~10 s)."
     )
 
 
