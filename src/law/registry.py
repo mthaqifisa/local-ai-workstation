@@ -46,6 +46,7 @@ class Ports(_Strict):
     law_api: int
     open_webui: int
     homepage: int
+    portainer: int
     searxng: int
     comfyui: int
     valkey: int

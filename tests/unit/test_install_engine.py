@@ -526,3 +526,16 @@ def test_agent_reply_limit_is_half_the_context_capped_at_32k():
 
     assert output_limit(98304) == 32768 and output_limit(32768) == 16384 and output_limit(None) == 16384
     assert output_limit(32768, writes=False) == 6144  # a judge's context goes to reading
+
+
+def test_portainer_gets_its_port_and_generated_password_and_a_tile(ctx: Ctx):
+    from law.install.steps import Compose
+
+    engine.run(ctx.paths, file_steps(ctx), dry_run=False)
+    env = Compose(ctx).env()
+    assert env["PORTAINER_PORT"] == str(ctx.reg.ports.portainer) == "9000"
+    assert len(env["PORTAINER_ADMIN_PASSWORD"]) >= 32
+    assert env["PORTAINER_ADMIN_PASSWORD"] == secrets.read(ctx.paths.env_file)["PORTAINER_ADMIN_PASSWORD"]
+    assert f":{ctx.reg.ports.portainer}" in Compose(ctx).homepage_files()["services.yaml"]
+    compose = (REPO / "compose.yaml").read_text()
+    assert "environment: PORTAINER_ADMIN_PASSWORD" in compose and "2375" not in compose  # secret file, no TCP socket

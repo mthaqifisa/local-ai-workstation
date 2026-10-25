@@ -55,10 +55,11 @@ def run_doctor(paths: LawPaths, con: Console) -> bool:
     checks = [("valkey", reg.ports.valkey), ("oMLX (internal)", reg.ports.llm_internal),
               ("LLM endpoint", reg.ports.llm_public), ("job API", reg.ports.law_api),
               ("Open WebUI", reg.ports.open_webui), ("SearXNG", reg.ports.searxng),
-              ("Homepage", reg.ports.homepage), ("ComfyUI", reg.ports.comfyui)]
+              ("Homepage", reg.ports.homepage), ("Portainer", reg.ports.portainer),
+              ("ComfyUI", reg.ports.comfyui)]
     for name, port in checks:
         up = _port_up(port)
-        ok = ok and (up or name in {"ComfyUI", "Homepage"})
+        ok = ok and (up or name in {"ComfyUI", "Homepage", "Portainer"})
         table.add_row(name, "[green]up[/]" if up else "[red]down[/]", f":{port}")
 
     present = sum((paths.llm_models / m.id / ".law-complete").exists() for m in reg.llm_models)
@@ -90,6 +91,7 @@ def run_doctor(paths: LawPaths, con: Console) -> bool:
     con.print(f"  Chat / Open WebUI : http://{ip}:{reg.ports.open_webui}")
     con.print(f"  LLM API           : http://{ip}:{reg.ports.llm_public}/v1")
     con.print(f"  Dashboard         : http://{ip}:{reg.ports.homepage}")
+    con.print(f"  Docker (Portainer): http://{ip}:{reg.ports.portainer}  (admin; PORTAINER_ADMIN_PASSWORD in .env)")
     con.print(f"  law CLI elsewhere : export LAW_SERVER=http://{ip}:{reg.ports.law_api}")
     con.print(f"\n{'[green]all healthy[/]' if ok else '[yellow]some checks failed[/]'}")
     return ok
