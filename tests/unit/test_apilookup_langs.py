@@ -31,6 +31,18 @@ def test_the_innermost_project_marker_picks_the_language(tmp_path: Path):
         apilookup.lookup("X", start=tmp_path, lang="cobol")
 
 
+def test_a_repo_root_answers_from_the_project_below_it(tmp_path: Path):
+    (tmp_path / "api").mkdir()
+    (tmp_path / "api" / "pom.xml").write_text("<project/>")
+    assert apilookup.locate(tmp_path) == ("java", (tmp_path / "api").resolve())
+    (tmp_path / "ui").mkdir()
+    (tmp_path / "ui" / "package.json").write_text("{}")
+    with pytest.raises(ApiLookupError, match=r"several projects.*api/ \(java\).*ui/ \(ts\)"):
+        apilookup.locate(tmp_path)
+    assert apilookup.locate(tmp_path, "ts") == ("ts", (tmp_path / "ui").resolve())
+    assert apilookup.locate(tmp_path / "api", "java") == ("java", tmp_path / "api")  # at a project: unchanged
+
+
 def test_close_names_and_member_filter():
     assert close_names("Clinet", ["Client", "ClientConn", "Server"])[:2] == ["Client", "ClientConn"]
     assert filter_lines("class A {\n  get()\n  post()\n}", "POST") == "class A {\n  post()"
