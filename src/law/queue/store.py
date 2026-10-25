@@ -214,6 +214,15 @@ class JobStore:
             deleted += 1
         return deleted
 
+    async def delete(self, job_id: str) -> None:
+        """Remove a job and its progress log everywhere (a deleted project's history)."""
+        async with self.r.pipeline(transaction=True) as pipe:
+            pipe.delete(f"{P}job:{job_id}", f"{P}events:{job_id}")
+            for zset in ("history", "dead", "queued", "running"):
+                pipe.zrem(f"{P}{zset}", job_id)
+            pipe.srem(f"{P}waiting", job_id)
+            await pipe.execute()
+
     async def children(self, root_id: str) -> list[Job]:
         out = []
         for job in await self.history(limit=1000):

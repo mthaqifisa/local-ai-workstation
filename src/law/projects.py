@@ -179,6 +179,13 @@ class Projects:
         self.index_file.parent.mkdir(parents=True, exist_ok=True)
         self.index_file.write_text(json.dumps(index, indent=2, sort_keys=True) + "\n")
 
+    def forget(self, pid: str) -> None:
+        """Drop a project from the index (its folder is left alone)."""
+        index = self._index()
+        if index.pop(pid, None) is None:
+            raise KeyError(pid)
+        self.index_file.write_text(json.dumps(index, indent=2, sort_keys=True) + "\n")
+
     def create(self, fields: dict[str, str], chat: int | None, mode: Mode = "project") -> Project:
         folder = self.paths.projects / fields["repo"]
         if fields["repo"] in self._index():

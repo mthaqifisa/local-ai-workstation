@@ -50,6 +50,31 @@ Keep every heavy model's `mem_gb` within `machine.model_budget_gb` (48 GB); the 
 Edit a role's instructions, temperature, reasoning effort or tools in the Console (Personas tab) or in
 `settings/roles.yaml`. Saving in the Console validates the change, keeps the file's comments and re-applies the agents.
 
+## Project boards
+
+The Console's Projects tab shows one board per project (pick it in the dropdown), with the columns To do, In
+progress, Waiting for approval, Completed and Failed / cancelled. The board is built from what LAW already records,
+so it never needs updating by hand:
+
+- proposal writing, its review (QA) and delivery; the environment stage; each QA review round and the fix round
+  for the bugs it reported; the handover document: from the project's pipeline stages and their logs;
+- go / no go and verification gates: Waiting for approval until the owner decides in Telegram;
+- development tickets: `.law/PLAN.md` (`- [ ] P-6 ...` under `### M2 ...`), with their commits (`P-6: ...`),
+  `.law/PROGRESS.md` entries and the agent's actions while the ticket was open.
+
+Click a ticket for its details, steps, notes and logs. Notes are stored in `~/LAW/state/boards/<project>.json`. A note
+names its ticket, or is pinned to the ticket in progress when it was written (Telegram `/note` works this way):
+
+```bash
+law board show pantry
+law board note pantry "P-17: container apps use POST /send" --ticket P-17 --author "Claude (build session)"
+law board note pantry "use the PEM files" --to-agent      # the ticket in progress; the agent gets it too
+```
+
+Delete project (Console) removes its board notes, its jobs with their logs and its LAW record; the code folder stays
+unless you tick the box, which moves it to `~/LAW/trash` (deleted after the trash retention). It is refused while
+one of the project's jobs runs.
+
 ## Secrets
 
 Secrets live only in `~/LAW/state/.env` (mode 600) and never in git.

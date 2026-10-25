@@ -19,7 +19,7 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from law import projects, registry, secrets
+from law import board, projects, registry, secrets
 from law.paths import LawPaths
 from law.project_memory import ProjectMemory
 from law.tg_format import to_telegram_html
@@ -96,6 +96,7 @@ class LawBot:
                 await self._send(message.chat.id, str(exc))
                 return
             ProjectMemory(Path(project.dir)).add_note(text)
+            board.add_note(LawPaths.from_env(), project.id, text, author="owner (Telegram)")  # the ticket in progress
             await self._send(message.chat.id, f"📨 Noted for **{project.name}**: the agent gets it at its next action.")
 
         @dp.message(Command("projects"))
