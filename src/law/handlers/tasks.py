@@ -279,7 +279,10 @@ def agent_env(rt: Runtime, role: str, effort: str | None = None) -> dict[str, st
             # build-tool caches the agents fill (measured: ~/.m2 and ~/.npm grew during one Java/Angular build)
             "npm_config_cache": str(cache / "npm"), "MAVEN_OPTS": f"-Dmaven.repo.local={cache / 'm2'}",
             "GRADLE_USER_HOME": str(cache / "gradle"), "PIP_CACHE_DIR": str(cache / "pip"),
-            "UV_CACHE_DIR": str(cache / "uv")}
+            "UV_CACHE_DIR": str(cache / "uv"),
+            # LAW's one Colima VM; agent shells skip the login profile, so `colima start` made a second VM in
+            # ~/.colima (2026-10-25, Pantry environment stage)
+            "COLIMA_HOME": str(rt.paths.home / "colima")}
 
 
 def make_handlers(rt: Runtime) -> dict[str, Any]:
