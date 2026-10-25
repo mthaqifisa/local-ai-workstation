@@ -19,7 +19,7 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from law import board, projects, registry, secrets
+from law import board, bugs, projects, registry, secrets
 from law.paths import LawPaths
 from law.project_memory import ProjectMemory
 from law.tg_format import to_telegram_html
@@ -98,6 +98,32 @@ class LawBot:
             ProjectMemory(Path(project.dir)).add_note(text)
             board.add_note(LawPaths.from_env(), project.id, text, author="owner (Telegram)")  # the ticket in progress
             await self._send(message.chat.id, f"📨 Noted for **{project.name}**: the agent gets it at its next action.")
+
+        @dp.message(Command("bugfix"))
+        async def bugfix(message: Message, command: CommandObject) -> None:
+            if not self._ok(message):
+                return
+            pid, _, text = (command.args or "").strip().partition(" ")
+            if not pid or not text.strip():
+                await self._send(message.chat.id, "Usage: `/bugfix <project> <what goes wrong, and what you expected>`")
+                return
+            try:
+                project = projects.Projects(LawPaths.from_env()).get(pid)
+            except KeyError as exc:
+                await self._send(message.chat.id, str(exc))
+                return
+            title, _, details = text.strip().partition("\n")
+            bug = bugs.add(Path(project.dir), title, details, reporter="owner")
+            if await self._project_busy(project.id):  # a build is running: the agent at work takes it now
+                ProjectMemory(Path(project.dir)).add_note(
+                    f"The owner reported {bug.id} (in .law/BUGS.md): {bug.title}. Finish your current step, then fix "
+                    f"it with a test, set its status to fixed, and carry on. QA retests it in the next QA round.")
+                await self._send(message.chat.id, f"🐞 **{bug.id}** logged for **{project.name}**. A build is running: "
+                                                  "the agent fixes it after its current step, and QA retests it.")
+                return
+            await self._send(message.chat.id, f"🐞 **{bug.id}** logged for **{project.name}**: fixing it now; QA "
+                                              "retests the product after the fix.")
+            await self._submit(message.chat.id, "project_bugfix", {"project": project.id})
 
         @dp.message(Command("projects"))
         async def projects_(message: Message) -> None:
@@ -385,6 +411,13 @@ class LawBot:
         if ahead:
             await self._edit(reply, f"⏳ queued: {ahead} job{'s' if ahead > 1 else ''} ahead")
         await self._deliver(job_id, reply)
+
+    async def _project_busy(self, pid: str) -> bool:
+        """A pipeline of this project is queued or running."""
+        async with httpx.AsyncClient(timeout=30) as client:
+            data = (await client.get(f"{self.api}/jobs", params={"limit": 200})).json()
+        return any(j.get("parent") is None and j.get("status") in {"queued", "running", "waiting"}
+                   and (j.get("payload") or {}).get("project") == pid for j in data)
 
     async def _ahead_of(self, job_id: str) -> int:
         """Top-level jobs already running or waiting that this one queues behind."""
@@ -727,6 +760,8 @@ COMMANDS: list[tuple[str, str, str]] = [
     ("allgood", "Accept the build: the project is done", "/allgood office-chat"),
     ("email", "Email a project's latest document (proposal or handover) again", "/email office-chat"),
     ("note", "Tell the agent building a project something while it works", "/note office-chat use the PEM files"),
+    ("bugfix", "Report a bug: the agent fixes it and QA retests the product",
+     "/bugfix office-chat the send button does nothing"),
     ("proposal", "Consultant-grade proposal: research, full document (design, architecture, flows, "
      "wireframes, plan, cost), reviewed, PDF emailed to you; start with a project folder to use it as the prototype",
      "/proposal ~/SourceCode/my-app Propose this as a product for small offices"),

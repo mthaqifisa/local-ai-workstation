@@ -170,3 +170,9 @@ def test_clearing_caches_skips_busy_items_while_jobs_run(setup):
     client.portal.call(store.submit, Job(kind="ask", payload={}))  # a queued job: the Mac is busy
     r = client.post("/storage/clear", json={"ids": ["npm"]}).json()
     assert r["skipped_busy"] == ["npm"] and (npm / "pkg" / "a.tgz").exists()
+
+
+def test_console_config_gives_the_embedded_homepage_port(setup):
+    client, _, _ = setup
+    assert client.get("/console/config").json() == {"homepage_port": 3010}
+    assert 'data-tab="services"' in client.get("/console").text

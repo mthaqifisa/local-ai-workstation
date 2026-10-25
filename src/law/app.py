@@ -12,7 +12,7 @@ from law.queue.worker import Handler
 
 # Job kinds that need no model at all.
 NO_MODEL = {"search", "song", "film", "film_join", "proposal", "proposal_check", "proposal_render", "proposal_mail",
-            "project_new", "project_step", "project_gate"}
+            "project_new", "project_step", "project_gate", "project_bugfix", "project_bug_report"}
 # Text answers that may run beside an agent step on the language model already loaded (ADR-0017). Not the judge:
 # it must be another model family than the one that wrote the answer.
 SHAREABLE = {"ask", "draft", "revise"}
