@@ -36,6 +36,13 @@ RESUME = ("Your previous session in this project was interrupted. Read {folder}/
           "them, and write large files one section at a time (at most about 1,500 words per write).")
 
 
+
+# An allow-list: only LAW's memory files are committed, so an agent's scratch file (seen: a private-key keystore
+# in .law/ during an HTTPS step, 2026-10-25) never reaches git through `git add .law/`.
+COMMITTED = ("PLAN.md", "PROGRESS.md", "RESEARCH.md", "REQUESTS.md", "PROMPT.md", "ENVIRONMENT.md", "env.sh",
+             "project.json")
+GITIGNORE = "*\n!.gitignore\n" + "".join(f"!{name}\n" for name in COMMITTED)
+
 class ProjectMemory:
     def __init__(self, project: Path) -> None:
         self.dir = project / FOLDER
@@ -47,7 +54,7 @@ class ProjectMemory:
             path = self.dir / name
             if not path.exists():
                 path.write_text(text)
-        (self.dir / ".gitignore").write_text("session.json\n")
+        (self.dir / ".gitignore").write_text(GITIGNORE)
         stamp = time.strftime("%Y-%m-%d %H:%M")
         log = self.dir / "REQUESTS.md"
         if f"· job {job_id}\n" not in (log.read_text() if log.exists() else ""):  # once per job, not per stage
