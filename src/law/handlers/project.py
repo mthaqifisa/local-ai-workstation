@@ -13,11 +13,14 @@ independent review and fix rounds, then the verification gate.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import re
+import time
 from pathlib import Path
 from typing import Any
 
-from law import bugs, specs
+from law import bugs, deliver, specs
 from law.handlers.base import Runtime, run_cmd
 from law.handlers.core import answer
 from law.handlers.proposal import proposal_stages
@@ -134,7 +137,10 @@ date: <today>
    the latest results) · Known limitations and next steps.
 3. Every command and path in the document must work as written: run them to check. Write the file section by
    section (at most about 1,500 words per write) and tick each section in .law/PLAN.md under
-   "## Handover v{version} sections"."""
+   "## Handover v{version} sections".
+Include a section "Check on your phone" (or the device the product targets): the steps only a person holding the
+real device can do, taken from the requirements (e.g. trust the certificate, the camera scan, a notification
+arriving), each with what should happen. QA tested everything else in a browser; say so."""
 
 CODE_PLAN = """Plan this coding work for the owner to approve in a chat message. Plain Markdown, at most about 350
 words, no preamble, with exactly these parts:
@@ -372,8 +378,31 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         await ctx.progress(f"🐞 fixing {names}; QA retests after each fix")
         return Stages(stages)
 
+    async def project_qa(ctx: Context) -> Outcome:
+        """`/qa`, `law qa` and the nightly run: QA tests the product (no code review, no fixes) and reports."""
+        p = ctx.job.payload
+        project = store.get(str(p["project"]))
+        run = f"QA run {time.strftime('%Y-%m-%d %H:%M')}"
+        review = {**_base(project), "spec_ref": "project.fix", "rubric_ref": "project.review", "qa_only": True,
+                  "qa_run": run}
+        await ctx.progress(f"🧪 {run}: testing {project.name}")
+        return Stages([{"kind": "task_review", "payload": review},
+                       {"kind": "project_bug_report", "payload": {"project": project.id, "qa_run": run,
+                                                                  "nightly": bool(p.get("nightly"))}}])
+
     async def project_bug_report(ctx: Context) -> Outcome:
         project = store.get(str(ctx.job.payload["project"]))
+        if ctx.job.payload.get("qa_run"):
+            found = bugs.unresolved(Path(project.dir))
+            hold = [b for b in found if b.severity in bugs.BLOCKING]
+            listing = "\n".join(f"- {b.id} {b.severity}, {b.status}: {b.title}" for b in found)
+            text = (f"🧪 **{project.name}**: QA found no open bugs." if not found else
+                    f"🧪 **{project.name}**: {len(hold)} blocking and {len(found) - len(hold)} minor open bug(s).\n"
+                    f"{listing}\n\nSend `/bugfix {project.id}` to fix them all.")
+            if ctx.job.payload.get("nightly") and hold:  # nightly runs speak up only when something is wrong
+                with contextlib.suppress(deliver.DeliveryError):
+                    await asyncio.to_thread(deliver.to_telegram, rt.paths.env_file, [], text.replace("**", ""))
+            return Done({"answer": text})
         named = {x.strip() for x in str(ctx.job.payload.get("bugs", "")).split(",") if x.strip()}
         mine = [b for b in bugs.load(Path(project.dir)) if b.id in named or b.reporter.lower() == "qa"]
         lines = [f"- {b.id} {b.status}: {b.title}" for b in mine if b.id in named or b.status in bugs.UNRESOLVED]
@@ -424,4 +453,5 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         return Done({"answer": text, "gate": {"project": project.id, "actions": actions}})
 
     return {"project_new": project_new, "project_step": project_step, "project_gate": project_gate,
-            "code_plan": code_plan, "project_bugfix": project_bugfix, "project_bug_report": project_bug_report}
+            "code_plan": code_plan, "project_bugfix": project_bugfix, "project_bug_report": project_bug_report,
+            "project_qa": project_qa}

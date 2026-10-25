@@ -129,6 +129,24 @@ def agent(role: str, task: Annotated[list[str], typer.Argument()],
 
 
 @app.command()
+def qa(project: str, quiet: bool = False) -> None:
+    """QA tests a project's running product now (black box, ADR-0018) and lists the open bugs."""
+    _run_job("project_qa", {"project": project}, quiet=quiet)
+
+
+@app.command()
+def bugfix(project: str, bug: Annotated[list[str] | None, typer.Argument()] = None, quiet: bool = False) -> None:
+    """Report a bug (or, with no text, take every open one): the coder fixes it and QA retests the product."""
+    from law import bugs, projects
+
+    found = projects.Projects(LawPaths.from_env()).get(project)
+    if bug:
+        logged = bugs.add(Path(found.dir), " ".join(bug), reporter="owner")
+        err.print(f"[dim]{logged.id} logged in {found.dir}/.law/BUGS.md[/]")
+    _run_job("project_bugfix", {"project": found.id}, quiet=quiet)
+
+
+@app.command()
 def code(task: Annotated[list[str], typer.Argument()],
          directory: Annotated[str | None, typer.Option("--dir")] = None, quiet: bool = False) -> None:
     """Shortcut for `law agent coder`."""

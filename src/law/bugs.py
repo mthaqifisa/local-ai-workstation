@@ -6,7 +6,11 @@ report:
 
     ## BUG-3 · open · owner · 2026-10-26 07:10
     Scanning a known barcode twice shows no "already at home" alert
+    Severity: major
     Steps: ... Expected: ... Actual: ...
+
+Severity (a `Severity:` line; `major` when missing): `blocker` (a core requirement fails), `major` (a requirement
+works wrongly), `minor` (cosmetic or an edge with a workaround). Only blocker and major bugs hold a round back.
 
 Statuses: `open` (reported), `fixed` (the coder says so; QA has not retested), `verified` (QA retested: gone),
 `reopened` (QA retested: still there). Only QA moves a bug to `verified` or `reopened`.
@@ -24,6 +28,10 @@ from pydantic import BaseModel
 Status = Literal["open", "fixed", "verified", "reopened"]
 STATUSES: tuple[Status, ...] = ("open", "fixed", "verified", "reopened")
 UNRESOLVED: frozenset[str] = frozenset({"open", "fixed", "reopened"})  # a fixed bug counts until QA verifies it
+SEVERITIES = ("blocker", "major", "minor")
+BLOCKING: frozenset[str] = frozenset({"blocker", "major"})
+SEVERITY = re.compile(r"^\s*Severity:\s*(blocker|major|minor)\b", re.IGNORECASE | re.MULTILINE)
+SHOT = re.compile(r"(\S+\.(?:png|jpe?g))\b")
 HEADING = re.compile(r"^##\s+(BUG-\d+)\s*·\s*([a-z]+)\s*·\s*([^·]+?)\s*·\s*(.+?)\s*$")
 FILE = "BUGS.md"
 HEADER = ("# Bugs\n\nFound by QA (testing the product, not the code) and reported by the owner. "
@@ -37,6 +45,17 @@ class Bug(BaseModel):
     when: str
     title: str
     body: str = ""
+
+    @property
+    def severity(self) -> str:
+        m = SEVERITY.search(self.body)
+        return m.group(1).lower() if m else "major"
+
+    @property
+    def screenshots(self) -> list[Path]:
+        """Evidence images the report names that exist on this Mac."""
+        found = [Path(m).expanduser() for m in SHOT.findall(self.body)]
+        return [f for f in found if f.is_file()]
 
 
 def path(project: Path) -> Path:
@@ -78,7 +97,12 @@ def unresolved(project: Path) -> list[Bug]:
     return [b for b in load(project) if b.status in UNRESOLVED]
 
 
-def add(project: Path, title: str, details: str = "", *, reporter: str = "owner") -> Bug:
+def blocking(project: Path) -> list[Bug]:
+    """Unresolved blocker and major bugs: what keeps a round from passing."""
+    return [b for b in unresolved(project) if b.severity in BLOCKING]
+
+
+def add(project: Path, title: str, details: str = "", *, reporter: str = "owner", severity: str = "major") -> Bug:
     """Append a new open bug and return it (ids are never reused)."""
     if not title.strip():
         raise ValueError("describe the bug")
@@ -87,7 +111,8 @@ def add(project: Path, title: str, details: str = "", *, reporter: str = "owner"
     text = file.read_text() if file.exists() else HEADER
     numbers = [int(n) for n in re.findall(r"^##\s+BUG-(\d+)", text, re.MULTILINE)]
     bug = Bug(id=f"BUG-{max(numbers, default=0) + 1}", status="open", reporter=reporter.strip() or "owner",
-              when=time.strftime("%Y-%m-%d %H:%M"), title=title.strip().splitlines()[0], body=details.strip())
+              when=time.strftime("%Y-%m-%d %H:%M"), title=title.strip().splitlines()[0],
+              body=details.strip() if SEVERITY.search(details) else f"Severity: {severity}\n{details.strip()}".strip())
     entry = f"\n## {bug.id} · open · {bug.reporter} · {bug.when}\n{bug.title}\n" + (f"{bug.body}\n" if bug.body else "")
     file.write_text(text.rstrip("\n") + "\n" + entry)
     return bug
@@ -95,4 +120,5 @@ def add(project: Path, title: str, details: str = "", *, reporter: str = "owner"
 
 def as_issues(bugs: list[Bug]) -> list[str]:
     """Bugs in the shape the fix stage takes."""
-    return [f"{b.id} ({b.status}, found by {b.reporter}): {b.title} (details in .law/BUGS.md)" for b in bugs]
+    return [f"{b.id} ({b.status}, {b.severity}, found by {b.reporter}): {b.title} (details in .law/BUGS.md)"
+            for b in bugs]

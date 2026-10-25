@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 import re
 import time
@@ -10,7 +12,7 @@ from typing import Any
 
 import httpx
 
-from law import bugs, specs
+from law import bugs, deliver, specs
 from law.handlers.base import Runtime, Stalled, Steered, run_cmd
 from law.handlers.core import PASS_SCORE, answer, parse_verdict
 from law.project_memory import FOLDER, ProjectMemory, project_listing
@@ -209,21 +211,28 @@ QA_TASK = """Test {name} version {version}, the product in {folder}, as an indep
 Requirements: {folder}/.law/PROMPT.md (the brief) and {folder}/{spec_file} (its acceptance criteria). How to run
 it: the README. The bug list is {folder}/.law/BUGS.md (statuses: open, fixed, verified, reopened).
 
-1. Retest first: for every bug that is open, fixed or reopened, repeat its steps. Set its status word in the
-   heading to verified if it is gone, or reopened if it is still there, and add a line "Retest <date>: <result>".
+0. Run the regression pack first: every check in {folder}/qa/ (how to run them is in {folder}/qa/README.md). A
+   check that fails is a bug: reopen its bug, or file a new one.
+1. Retest: for every bug that is open, fixed or reopened, repeat its steps. Set its status word in the heading to
+   verified if it is gone, or reopened if it is still there, and add a line "Retest <date>: <result>".
 2. Then test every requirement and acceptance criterion, and the edges a user hits. For each new bug append:
    ## BUG-<next number> · open · QA · <YYYY-MM-DD HH:MM>
    <one-line title of what goes wrong>
-   Steps: ... Expected: ... Actual: ... Evidence: ...
-3. Reply with JSON only: {{"tested": ["<requirement>: pass|fail"], "summary": "<one sentence>"}}"""
+   Severity: blocker (a core requirement fails) | major (a requirement works wrongly) | minor (cosmetic, or an edge
+   with a workaround)
+   Steps: ... Expected: ... Actual: ... Evidence: <output, status code, or a screenshot path under $TMPDIR>
+3. Keep the pack: save every check you ran as a script in {folder}/qa/ (named after the requirement or the bug it
+   covers) and keep {folder}/qa/README.md saying how to run them all with one command. Checks drive the running
+   product only (browser, HTTP, commands), never the source.
+4. Reply with JSON only: {{"tested": ["<requirement>: pass|fail"], "summary": "<one sentence>"}}"""
 
 
 def reads_product_code(summary: str, project: Path) -> bool:
     """QA opening or searching the product's source: it tests behaviour, so it must not look (scratch scripts in
     $TMPDIR are its own)."""
     s = summary.replace("~", str(Path.home()))
-    if "cache/tmp" in s or "$TMPDIR" in s or "/.law/" in s:
-        return False
+    if "cache/tmp" in s or "$TMPDIR" in s or "/.law/" in s or f"{project}/qa/" in s or re.search(r"(?:^|\s)qa/", s):
+        return False  # its scratch files, the bug list and its own regression pack
     if summary.startswith("📖"):
         return str(project) in s and bool(CODE_FILE.search(s))
     if summary.startswith("🔎"):
@@ -584,6 +593,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         folder = _workdir(p)
         a = p.get("spec_args") or {}
         spec_file = a.get("spec_file") or f"{a.get('out', 'docs/proposal')}/proposal.md"
+        before = {b.id for b in bugs.load(folder)}
         await ctx.progress("🧪 QA: testing the product as a user (black box)")
         reply = await _agent(ctx, "qa", QA_TASK.format(name=a.get("name", folder.name), version=p.get("version", 1),
                                                          folder=folder, spec_file=spec_file), folder, writes=False)
@@ -595,10 +605,21 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             except json.JSONDecodeError:
                 report = {}
         open_bugs = bugs.unresolved(folder)
+        blocking = [b for b in open_bugs if b.severity in bugs.BLOCKING]
         summary = str(report.get("summary") or reply.strip()[-300:])
-        await ctx.progress(f"🧪 QA: {len(open_bugs)} unresolved bug(s). {summary}"[:300])
-        return {"open": bugs.as_issues(open_bugs), "tested": [str(t) for t in report.get("tested", [])][:40],
-                "summary": summary}
+        await ctx.progress(f"🧪 QA: {len(blocking)} blocking, {len(open_bugs) - len(blocking)} minor. {summary}"[:300])
+        new_blockers = [b for b in blocking if b.id not in before and b.severity == "blocker"]
+        if new_blockers:
+            await _alert_owner(a.get("name", folder.name), new_blockers)
+        return {"open": bugs.as_issues(blocking), "minor": bugs.as_issues([b for b in open_bugs if b not in blocking]),
+                "tested": [str(t) for t in report.get("tested", [])][:40], "summary": summary}
+
+    async def _alert_owner(name: str, found: list[bugs.Bug]) -> None:
+        """A new blocker reaches the owner at once, with its steps and screenshot, not only at the next gate."""
+        for bug in found:
+            text = f"🚨 QA found a blocker in {name}: {bug.id} {bug.title}\n\n{bug.body}"[:1000]
+            with contextlib.suppress(deliver.DeliveryError):  # not set up: it is still on the board and at the gate
+                await asyncio.to_thread(deliver.to_telegram, rt.paths.env_file, bug.screenshots[:1], text)
 
     async def task_review(ctx: Context) -> Outcome:
         p = ctx.job.payload
@@ -606,6 +627,11 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         if carry.get("passed"):  # an earlier review round already passed
             return Done({})
         qa = await _qa_round(ctx, p) if p.get("project") and p.get("rubric_ref") == "project.review" else None
+        if qa is not None and p.get("qa_only"):  # /qa and the nightly run: the product only, no code review
+            only: dict[str, Any] = {"score": PASS_SCORE - 1 if qa["open"] else 5,
+                                    "issues": [*qa["open"], *qa["minor"]][:16], "summary": f"QA: {qa['summary']}",
+                                    "qa": qa}
+            return Done({"review": only})
         report = carry.get("answer", "")
         brief = f"\n\nThe author worked from this brief:\n{carry['brief'][:6000]}" if carry.get("brief") else ""
         rubric = specs.resolve(p, "rubric") or CODE_RUBRIC
@@ -654,7 +680,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         if any("BUG-" in i for i in verdict["issues"]):
             prompt += ("\n\nBUG-n items are in .law/BUGS.md (steps, expected, actual). Reproduce each, fix it, add a "
                        "test that would have caught it, then change its status word in the heading to fixed and add a "
-                       "line \"Fix: <commit> <what changed>\". Never set verified or reopened: QA retests.")
+                       "line \"Fix: <commit> <what changed>\". Never set verified or reopened: QA retests. Do not "
+                       "edit qa/: those are QA's regression checks.")
         spec = specs.resolve(p)
         if spec:
             prompt += f"\n\nThe work must still meet these instructions:\n{spec}"

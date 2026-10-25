@@ -146,7 +146,10 @@ def _stage_group(spec: dict[str, Any], phase: str, version: int, qa_round: list[
         return f"approve-{gate}-{v}", title, "approval"
     if kind == "code_plan":
         return f"plan-{v}", f"Write the plan {v}", "proposal"
-    if phase == "bugfix":  # a /bugfix pipeline: fix, then QA retests, for the bugs it names
+    if phase == "bugfix":  # a /bugfix pipeline (fix, then QA retests) or a QA run (/qa, nightly)
+        if p.get("qa_run"):
+            run = str(p["qa_run"])
+            return (f"qarun-{run[7:].replace(' ', '-')}", run, "qa") if kind == "task_review" else ("", "", "")
         which = str(p.get("bugs") or "reported bugs")
         if kind == "task_fix":
             return f"fix-{which}", f"Fix {which}", "bugfix"
@@ -465,7 +468,8 @@ def _bug_tickets(project: Project, tickets: dict[str, Ticket]) -> None:
     """A ticket per bug in `.law/BUGS.md`: written by the QA agent and the owner (`/bugfix`), never by hand here."""
     for n, bug in enumerate(bugs.load(Path(project.dir))):
         t = tickets[bug.id] = Ticket(bug.id, bug.title, "bug", "Bugs", 10**9 + n)
-        t.column, t.state = BUG_COLUMN.get(bug.status, ("todo", bug.status))
+        column, state = BUG_COLUMN.get(bug.status, ("todo", bug.status))
+        t.column, t.state = column, f"{bug.severity} · {state}"
         t.details = f"Reported by {bug.reporter} on {bug.when}.\n\n{bug.body}".strip()
 
 
