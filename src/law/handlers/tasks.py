@@ -210,9 +210,13 @@ def is_library_dig(command: str) -> bool:
                           r"\.build/checkouts/", c)
     if reads and internals and not re.search(r"node_modules/\.bin/", c):
         return True
+    # Fetching a library's source from its repository (seen: an hour in Tomcat's SSLUtilBase.java, 2026-10-25).
+    if re.search(r"raw\.githubusercontent\.com/|api\.github\.com/repos/|github\.com/[^\s/]+/[^\s/]+/blob/", c):
+        return True
     in_cache = any(k in c for k in (".m2/", "cache/m2", "m2/repository", ".gradle/caches", "cache/gradle"))
     return in_cache and any(k in c for k in (".jar", ".ja\"", "unzip", "find ", "ls ", "javap"))
-LIB_NUDGE = ("Stop reading library internals (jars, node_modules, the Go module cache, the Xcode SDK). To learn a "
+LIB_NUDGE = ("Stop reading library internals (jars, library source, node_modules, the Go module cache, the Xcode SDK). "
+             "When a library rejects your config, first check what it supports in its reference docs. To learn a "
              "library or SDK API run `law api <name> [member]` in the project (Java, Go, TypeScript/JavaScript, "
              "Swift, Monkey C): it prints the real signatures, or the closest real names when the one you used "
              "does not exist. Use only what it shows, compile, and let the test output guide you. Check "

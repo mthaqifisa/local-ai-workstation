@@ -584,6 +584,9 @@ async def test_a_stalled_writer_is_told_to_save_sections_not_to_build(setup, san
     ("▶ running npx ng build 2>&1 | tail -30", False),
     ("▶ running source .law/env.sh && mvn -q -B test 2>&1 | grep -E 'Tests run|ERROR'", False),
     ("▶ running source .law/env.sh && mvn -B dependency:tree", False),
+    ("▶ running curl -fsSL https://raw.githubusercontent.com/apache/tomcat/10.1.55/java/org/apache/tomcat/util/net/S", True),
+    ('▶ running curl -fsSL "https://api.github.com/repos/apache/tomcat/git/refs/tags?per_page=100"', True),
+    ("▶ running curl -fsS https://world.openfoodfacts.org/api/v2/product/3017620422003.json", False),
 ])
 def test_library_digging_is_recognised(command, dig):
     from law.handlers.tasks import is_library_dig
