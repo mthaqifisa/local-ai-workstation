@@ -56,6 +56,10 @@ DEV_PLATFORMS = """Build and test per platform:
   Native; gate: `npx tsc --noEmit` and Jest with React Native Testing Library; run it with `npx expo run:ios`.
 - Angular / React web: the framework CLI's build, lint and unit tests (e.g. `npx ng test --watch=false`), plus an
   end-to-end check against the running app.
+- Java / Spring Boot (Maven): Spotless (google-java-format) and Checkstyle bound to `verify`, JaCoCo with a
+  check of at least 80% line coverage, integration tests on Testcontainers; gate `mvn verify` (all of them).
+  Credentials come from environment variables or an uncommitted .env (commit .env.example); databases and
+  other internal services publish ports on 127.0.0.1 only, the app itself on 0.0.0.0.
 - Go: gate `gofmt -l .` (empty), `go vet ./...` and `go test ./...`.
 - Garmin Connect IQ (Monkey C): manifest.xml, monkey.jungle, source/, resources/. Gate: `monkeyc -d <device> -f
   monkey.jungle -o bin/<app>.prg -y "$CIQ_DEVELOPER_KEY" -w` for every target device, and the (:test) unit tests:
