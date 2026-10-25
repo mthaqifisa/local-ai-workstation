@@ -33,8 +33,8 @@ bug on the fly.
   The coder must not edit `qa/`.
 - A new blocker reaches the owner in Telegram at once, with its steps and screenshot.
 - On demand: `/qa <project>` (Telegram) and `law qa <project>` run QA only (no code review, no fixes) and report;
-  `/bugfix <project>` with no text fixes every open bug. Nightly at 03:00 the worker QA's every finished project
-  that has nothing running, and speaks up in Telegram only when it finds a blocker or major bug.
+  `/bugfix <project>` with no text fixes every open bug. QA never runs on a schedule: the owner does not keep the
+  Mac on all day, and hidden jobs would slow down the projects being built (owner, 2026-10-26).
 - The handover document lists what only a person with the real device can check (certificate, camera,
   notifications), since QA tests in a headless browser.
 

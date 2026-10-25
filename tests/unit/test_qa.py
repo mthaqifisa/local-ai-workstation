@@ -193,33 +193,3 @@ async def test_a_minor_bug_alone_does_not_fail_the_round(tmp_path: Path, monkeyp
                "_carry": {}}
     done = await tasks.make_handlers(_review_rt(tmp_path))["task_review"](_ctx(payload))
     assert done.result["review"]["score"] == 5 and done.result["review"]["qa"]["minor"]
-
-
-def test_nightly_qa_waits_for_the_next_three_oclock() -> None:
-    from datetime import datetime
-
-    from law.worker_main import seconds_until
-
-    two_am = datetime(2026, 10, 26, 2, 0).timestamp()
-    four_am = datetime(2026, 10, 26, 4, 0).timestamp()
-    assert seconds_until(3, two_am) == 3600 and seconds_until(3, four_am) == 23 * 3600
-
-
-async def test_nightly_qa_tests_finished_idle_projects_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    import fakeredis
-
-    from law import worker_main
-    from law.queue.jobs import Job
-    from law.queue.store import JobStore
-
-    store = JobStore(fakeredis.FakeAsyncRedis(decode_responses=True))
-    rows = [SimpleNamespace(id="done-app", state="done"), SimpleNamespace(id="busy-app", state="done"),
-            SimpleNamespace(id="wip-app", state="developing")]
-    monkeypatch.setattr("law.projects.Projects", lambda paths: SimpleNamespace(all=lambda: rows))
-    monkeypatch.setattr(worker_main, "resolver", lambda rt: (lambda job: job))
-    monkeypatch.setattr(worker_main.Runtime, "load", staticmethod(lambda paths: None))
-    await store.submit(Job(kind="project_bugfix", payload={"project": "busy-app"}))
-    started = await worker_main.nightly_qa_once(SimpleNamespace(), store)  # type: ignore[arg-type]
-    assert started == ["done-app"]
-    queued = [j for j in await store.history(10) if j.kind == "project_qa"]
-    assert queued[0].payload == {"project": "done-app", "nightly": True} and queued[0].source == "nightly"

@@ -57,61 +57,16 @@ async def _prune_forever(paths: LawPaths, store: JobStore) -> None:
         await asyncio.sleep(PRUNE_EVERY_S)
 
 
-NIGHTLY_QA_HOUR = 3  # local time: finished projects are QA'd while nobody uses the Mac (ADR-0018)
-LIVE_STATES = {"queued", "running", "waiting"}
-
-
-def seconds_until(hour: int, now: float | None = None) -> float:
-    """Seconds from `now` to the next `hour`:00 local time."""
-    import time
-    from datetime import datetime, timedelta
-
-    current = datetime.fromtimestamp(now if now is not None else time.time())
-    target = current.replace(hour=hour, minute=0, second=0, microsecond=0)
-    if target <= current:
-        target += timedelta(days=1)
-    return (target - current).total_seconds()
-
-
-async def nightly_qa_once(paths: LawPaths, store: JobStore) -> list[str]:
-    """QA every finished project (done, or awaiting the owner's verification) that has nothing running. The run
-    reports to Telegram only when it finds a blocker or major bug. Returns the projects started."""
-    from law import projects
-    from law.queue.jobs import Job
-
-    busy = {j.payload.get("project") for j in await store.history(500)
-            if j.parent is None and j.status.value in LIVE_STATES}
-    resolve = resolver(Runtime.load(paths))
-    started = []
-    for project in projects.Projects(paths).all():
-        if project.state in {"done", "awaiting_verification"} and project.id not in busy:
-            await store.submit(resolve(Job(kind="project_qa", payload={"project": project.id, "nightly": True},
-                                           source="nightly")))
-            started.append(project.id)
-    return started
-
-
-async def _nightly_qa_forever(paths: LawPaths, store: JobStore) -> None:
-    while True:
-        await asyncio.sleep(seconds_until(NIGHTLY_QA_HOUR))
-        try:
-            log.info("nightly QA: %s", ", ".join(await nightly_qa_once(paths, store)) or "nothing to test")
-        except Exception:  # never let housekeeping take the worker down
-            log.exception("nightly QA failed to start")
-
-
 async def _run(paths: LawPaths) -> None:
     worker, store = build_worker(paths)
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, worker.stop)
     pruner = asyncio.create_task(_prune_forever(paths, store))
-    nightly = asyncio.create_task(_nightly_qa_forever(paths, store))
     try:
         await worker.run()
     finally:
         pruner.cancel()
-        nightly.cancel()
         await store.close()
 
 

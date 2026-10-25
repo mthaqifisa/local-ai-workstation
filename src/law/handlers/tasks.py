@@ -627,7 +627,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         if carry.get("passed"):  # an earlier review round already passed
             return Done({})
         qa = await _qa_round(ctx, p) if p.get("project") and p.get("rubric_ref") == "project.review" else None
-        if qa is not None and p.get("qa_only"):  # /qa and the nightly run: the product only, no code review
+        if qa is not None and p.get("qa_only"):  # /qa: the product only, no code review
             only: dict[str, Any] = {"score": PASS_SCORE - 1 if qa["open"] else 5,
                                     "issues": [*qa["open"], *qa["minor"]][:16], "summary": f"QA: {qa['summary']}",
                                     "qa": qa}

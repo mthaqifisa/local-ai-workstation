@@ -13,14 +13,12 @@ independent review and fix rounds, then the verification gate.
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import re
 import time
 from pathlib import Path
 from typing import Any
 
-from law import bugs, deliver, specs
+from law import bugs, specs
 from law.handlers.base import Runtime, run_cmd
 from law.handlers.core import answer
 from law.handlers.proposal import proposal_stages
@@ -379,7 +377,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         return Stages(stages)
 
     async def project_qa(ctx: Context) -> Outcome:
-        """`/qa`, `law qa` and the nightly run: QA tests the product (no code review, no fixes) and reports."""
+        """`/qa` and `law qa`: QA tests the product (no code review, no fixes) and reports. Only ever on request."""
         p = ctx.job.payload
         project = store.get(str(p["project"]))
         run = f"QA run {time.strftime('%Y-%m-%d %H:%M')}"
@@ -387,8 +385,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                   "qa_run": run}
         await ctx.progress(f"🧪 {run}: testing {project.name}")
         return Stages([{"kind": "task_review", "payload": review},
-                       {"kind": "project_bug_report", "payload": {"project": project.id, "qa_run": run,
-                                                                  "nightly": bool(p.get("nightly"))}}])
+                       {"kind": "project_bug_report", "payload": {"project": project.id, "qa_run": run}}])
 
     async def project_bug_report(ctx: Context) -> Outcome:
         project = store.get(str(ctx.job.payload["project"]))
@@ -399,9 +396,6 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             text = (f"🧪 **{project.name}**: QA found no open bugs." if not found else
                     f"🧪 **{project.name}**: {len(hold)} blocking and {len(found) - len(hold)} minor open bug(s).\n"
                     f"{listing}\n\nSend `/bugfix {project.id}` to fix them all.")
-            if ctx.job.payload.get("nightly") and hold:  # nightly runs speak up only when something is wrong
-                with contextlib.suppress(deliver.DeliveryError):
-                    await asyncio.to_thread(deliver.to_telegram, rt.paths.env_file, [], text.replace("**", ""))
             return Done({"answer": text})
         named = {x.strip() for x in str(ctx.job.payload.get("bugs", "")).split(",") if x.strip()}
         mine = [b for b in bugs.load(Path(project.dir)) if b.id in named or b.reporter.lower() == "qa"]
