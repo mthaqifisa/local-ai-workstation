@@ -203,6 +203,12 @@ def reads_law_internals(summary: str, repo: Path, home: Path) -> bool:
         str(home / "state") in summary.replace("~", str(Path.home()))
 
 
+BLIND_EDIT_LIMIT = 15  # saved files in a row without a build or test run (seen: 1.5 h of test edits, none run)
+RUNS_CHECKS = re.compile(r"\b(?:npm (?:run )?(?:test|build)|npx (?:vitest|tsc|playwright)|vitest|tsc\b|mvn\b|gradle|"
+                         r"pytest|go (?:test|build|vet)|cargo (?:test|build)|xcodebuild|swift (?:test|build)|monkeyc|"
+                         r"just check|make\b)")
+RUN_CHECKS_NUDGE = ("You have changed many files without running the build or tests. Run them now (the project's "
+                    "build, type check and tests) and let the output guide your next change.")
 CODE_FILE = re.compile(r"\.(?:java|kt|kts|scala|ts|tsx|js|jsx|mjs|cjs|py|go|swift|rb|cs|php|rs|sql|vue|svelte)\b")
 QA_CODE_NUDGE = ("QA tests the product, not the code: do not read or search the source. Use the requirements, the "
                  "README and the running product (browser, HTTP API, commands), and report what a user sees.")
@@ -399,11 +405,11 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 edits.append(summary.split(" ", 2)[-1])
             return summary
 
-        digs = lookups = 0
+        digs = lookups = blind_edits = 0
         told_law = False
 
         def steer(summary: str) -> str | None:
-            nonlocal digs, lookups, told_law
+            nonlocal digs, lookups, blind_edits, told_law
             note = memory.take_notes() if memory is not None else None
             if note:
                 return OWNER_NOTE.format(note=note)
@@ -416,7 +422,13 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 return LAW_INTERNALS_NUDGE + law_services()
             if role != "coder":
                 return None
+            if summary.startswith("▶") and RUNS_CHECKS.search(summary):
+                blind_edits = 0
             if summary.startswith("✏️"):
+                blind_edits += 1
+                if blind_edits >= BLIND_EDIT_LIMIT:
+                    blind_edits = 0
+                    return RUN_CHECKS_NUDGE
                 digs = lookups = 0
                 return None
             if summary.startswith("▶") and is_library_dig(summary):
@@ -465,8 +477,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 strikes = 1 if made_progress(exc.output) else strikes + 1
                 if sid is None or strikes > STALL_NUDGES:
                     raise Fatal(f"{role} agent kept researching without writing code") from exc
-                why = ("looked up enough APIs: telling the agent to write the code" if exc.message == LOOKUP_NUDGE
-                       else "reading library internals: redirecting the agent to compile and test instead")
+                why = {LOOKUP_NUDGE: "looked up enough APIs: telling the agent to write the code",
+                       RUN_CHECKS_NUDGE: "many edits without a build or test run: telling the agent to run them"}.get(
+                    exc.message, "reading library internals: redirecting the agent to compile and test instead")
                 await ctx.progress(f"⚠️ {why}")
                 cmd = [*base, "--session", sid, exc.message]
                 continue
