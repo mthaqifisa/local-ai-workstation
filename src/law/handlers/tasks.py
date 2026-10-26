@@ -7,6 +7,7 @@ import contextlib
 import json
 import re
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -136,6 +137,14 @@ MILESTONE_HEAD = re.compile(r"^#{3,}\s+(.+?)\s*$")
 OPEN_TICKET = re.compile(r"^- \[ \]\s*(.+?)\s*$")  # top level only: indented checkboxes are a ticket's details
 
 
+def uncommitted(project: Path) -> list[str]:
+    """Product files with uncommitted changes (LAW's own `.law/` excluded)."""
+    import subprocess
+
+    out = subprocess.run(["git", "status", "--porcelain"], cwd=project, capture_output=True, text=True, timeout=30)
+    return [ln[3:] for ln in out.stdout.splitlines() if ln[3:] and not ln[3:].startswith(f"{FOLDER}/")]
+
+
 def next_ticket(project: Path, version: int) -> tuple[str, str] | None:
     """The first unticked ticket of this version's build: (its milestone heading, the ticket line), or None."""
     milestone = ""
@@ -167,6 +176,9 @@ FIRST_TICKET = ("This session: .law/PLAN.md has no build section for this versio
                 "above, then do its first ticket the same way (code and tests, passing, commit, tick, progress line) "
                 "and stop.")
 ALL_TICKED = "Every ticket is ticked: fix the problem above, commit, and stop."
+# OpenCode continues a session on its own after it compacts one (seen 2026-10-27: P-22.4's session went on to
+# P-22.5, so LAW never checked P-22.4). LAW ends a session once its ticket is ticked and committed.
+TICKET_DONE = "ticket done"
 GATE_FAILED = ("LAW checked the last ticket and it is not done:\n\n{problem}\n\nFix this first (open only the files "
                "the output names), run .law/check.sh until it passes, and commit the fix with the ticket's ID. Then "
                "carry on with the ticket below.\n\n")
@@ -414,7 +426,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             return False
 
     async def _agent(ctx: Context, role: str, prompt: str, workdir: Path, *, writes: bool = True,
-                     memory: ProjectMemory | None = None, timeout_s: float | None = None) -> str:
+                     memory: ProjectMemory | None = None, timeout_s: float | None = None,
+                     finished: Callable[[], bool] | None = None) -> str:
         """Run one OpenCode agent. A writing agent that stalls (no file change for STALL_MINUTES) is stopped and
         its session resumed with a nudge to build and fix. With project memory, the session is recorded in
         `.law/session.json`, and a job that restarts (e.g. after a worker restart) resumes that session."""
@@ -453,6 +466,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
 
         def steer(summary: str) -> str | None:
             nonlocal digs, lookups, blind_edits, reads, told_law
+            if finished is not None and finished():
+                return TICKET_DONE
             note = memory.take_notes() if memory is not None else None
             if note:
                 return OWNER_NOTE.format(note=note)
@@ -510,6 +525,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 return answer_text
             except Steered as exc:
                 sid = session_id(exc.output)
+                if exc.message == TICKET_DONE:  # its ticket is ticked and committed: LAW checks it next
+                    await ctx.progress("✅ ticket done: ending the session so LAW checks it")
+                    return parse_opencode_events(exc.output)
                 if exc.message == QA_CODE_NUDGE and sid is not None and qa_reminders < 3:
                     qa_reminders += 1
                     await ctx.progress("⚠️ QA started reading the source: back to testing the product")
@@ -698,9 +716,13 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             task = TICKET_SESSION.format(ticket=ticket[1], milestone=ticket[0] or "-") if ticket else \
                 ALL_TICKED if build_section(folder, version) is not None else FIRST_TICKET
             prompt = f"{_scoped(p, memory)}\n\n{GATE_FAILED.format(problem=problem) if problem else ''}{task}"
+            def ticket_done(current: tuple[str, str] | None = ticket) -> bool:
+                return current is not None and next_ticket(folder, version) != current and not uncommitted(folder)
+
             try:
                 text = await _agent(ctx, p["role"], prompt, folder, memory=memory,
-                                    timeout_s=min(left, float(p.get("timeout_s", 4 * 3600))))
+                                    timeout_s=min(left, float(p.get("timeout_s", 4 * 3600))),
+                                    finished=ticket_done)
             except TimeoutError:
                 if memory is not None:
                     memory.end_session(ctx.job.id)
