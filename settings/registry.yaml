@@ -71,6 +71,9 @@ llm_models:
     # 48 GB ceiling (it recovered each time). 96K keeps headroom (2026-10-20).
     context: 98304
     roles: [reasoner, writer, analyst, architect, designer, coder, default]
+    sampling:  # huggingface.co/Qwen/Qwen3.8-27B (2026-10-26); its benchmark scores use the thinking set
+      thinking: {temperature: 1.0, top_p: 0.95, top_k: 20, min_p: 0.0, presence_penalty: 0.0}
+      instruct: {temperature: 0.7, top_p: 0.8, top_k: 20, min_p: 0.0, presence_penalty: 1.5}
   - id: qwen3-coder-next-4bit
     repo: lmstudio-community/Qwen3-Coder-Next-MLX-4bit
     revision: 03cba26036330b7553d252c1f3fb899f16cc5ea5
@@ -93,6 +96,9 @@ llm_models:
     vision: true
     context: 65536
     roles: [fast, router, operator, summarizer]
+    sampling:  # huggingface.co/Qwen/Qwen3.6-35B-A3B (2026-10-26), general tasks
+      thinking: {temperature: 1.0, top_p: 0.95, top_k: 20, min_p: 0.0, presence_penalty: 1.5}
+      instruct: {temperature: 0.7, top_p: 0.8, top_k: 20, min_p: 0.0, presence_penalty: 1.5}
   - id: gemma-4-31b-8bit
     repo: lmstudio-community/gemma-4-31B-it-MLX-8bit
     revision: 9b06d48739ea5f39e5b66880a6e90405a2cb1751
@@ -103,6 +109,8 @@ llm_models:
     vision: false
     context: 32768
     roles: [judge]
+    sampling:  # huggingface.co/google/gemma-4-31b-it (2026-10-26): one set for every use
+      thinking: {temperature: 1.0, top_p: 0.95, top_k: 64}
   - id: qwen3-embedding-4b
     repo: mlx-community/Qwen3-Embedding-4B-4bit-DWQ
     revision: b5d88f1fe49b50d2ac01b4692ca2d387f14f9c72

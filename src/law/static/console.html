@@ -593,7 +593,7 @@ function showRole() {
     <label>Summary</label><input id="r-summary" value="${esc(r.summary)}">
     <label>Instructions</label><textarea id="r-prompt">${esc(r.prompt)}</textarea>
     <div class="grid" style="grid-template-columns:repeat(3,1fr)">
-      <div><label>Temperature (0–1)</label><input id="r-temp" type="number" min="0" max="1" step="0.05" value="${r.temperature}"></div>
+      <div><label title="Used only for a model without recommended sampling in registry.yaml; the model card's values apply otherwise">Temperature (0–1, models without card sampling)</label><input id="r-temp" type="number" min="0" max="1" step="0.05" value="${r.temperature}"></div>
       <div><label>Reasoning</label><select id="r-reason">${["off", "low", "medium", "xhigh"].map((x) => `<option ${x === r.reasoning ? "selected" : ""}>${x}</option>`).join("")}</select></div>
       <div><label>Tools</label><input id="r-tools" value="${esc(r.tools.join(", "))}"></div>
     </div>

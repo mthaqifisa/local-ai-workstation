@@ -2,6 +2,8 @@
 # Used by `law agent <role>`, the Telegram /agent menu, OpenCode agents and Open WebUI presets.
 # Tool access per role is set in `tools:` and enforced by the agent configuration, not by prompt text.
 # reasoning: thinking effort for models that support it (low | medium | xhigh); bounds latency.
+# temperature: used only with a model that has no `sampling` in registry.yaml; a model card's recommended
+#   sampling replaces it (low temperatures make thinking models loop; their scores use the card's values).
 # tools: read (view files only) | files (read + write) | shell | search | browser | vision | docs | mac
 #        python (run_python calculator inside answers: computed, never mental arithmetic)
 #        agents (start_agent inside chat answers: hands work that needs files, commands or documents to an agent)

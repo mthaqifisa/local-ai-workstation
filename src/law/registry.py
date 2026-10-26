@@ -65,6 +65,20 @@ class Service(_Strict):
     requires_secret: str | None = None
 
 
+class Sampling(_Strict):
+    """A model's sampling as its model card recommends: the setting its published scores were measured at.
+    Too low a temperature makes thinking models loop and repeat (the Qwen and Gemma cards say so)."""
+    temperature: float = Field(ge=0, le=2)
+    top_p: float = Field(gt=0, le=1)
+    top_k: int = Field(ge=0)
+    min_p: float = 0.0
+    presence_penalty: float = 0.0
+
+    def body(self) -> dict[str, float | int]:
+        """The request fields (OpenAI-compatible names, as oMLX reads them)."""
+        return self.model_dump()
+
+
 class LlmModel(_Strict):
     id: str
     repo: str
@@ -76,6 +90,15 @@ class LlmModel(_Strict):
     vision: bool = False
     context: int | None = None
     roles: list[str]
+    # the vendor's sampling with thinking on, and with it off ("instruct"); a role's own temperature applies only
+    # to a model without them
+    sampling: dict[Literal["thinking", "instruct"], Sampling] = Field(default_factory=dict)
+
+    def sampling_for(self, effort: str | None) -> Sampling | None:
+        """The recommended sampling at a thinking level ("off" is the instruct mode)."""
+        if effort == "off" and "instruct" in self.sampling:
+            return self.sampling["instruct"]
+        return self.sampling.get("thinking")
 
 
 class FastVideo(_Strict):

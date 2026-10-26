@@ -148,11 +148,14 @@ def test_role_configs_carry_the_roles_reasoning_effort(ctx: Ctx):
     engine.run(ctx.paths, file_steps(ctx), dry_run=False)
     coder = json.loads((ctx.paths.config / "opencode-coder.json").read_text())
     model = coder["model"].removeprefix("law/")
-    assert coder["provider"]["law"]["models"][model]["options"] == {"reasoningEffort": "low"}
+    assert coder["provider"]["law"]["models"][model]["options"] == {
+        "reasoningEffort": "low", "top_p": 0.95, "top_k": 20, "min_p": 0.0, "presence_penalty": 0.0}
+    assert coder["agent"]["coder"]["temperature"] == 1.0  # the model card's, not the role's 0.3
+    assert coder["provider"]["law"]["models"][model]["temperature"] is True  # else OpenCode sends none
     architect = json.loads((ctx.paths.config / "opencode-architect.json").read_text())
     effort = roles.load(REPO / "settings" / "roles.yaml").get("architect").reasoning
-    assert architect["provider"]["law"]["models"][architect["model"].removeprefix("law/")]["options"] == {
-        "reasoningEffort": effort}
+    assert architect["provider"]["law"]["models"][architect["model"].removeprefix("law/")]["options"][
+        "reasoningEffort"] == effort
 
 
 def test_registry_rejects_over_budget_model():
@@ -375,7 +378,7 @@ def test_each_role_config_uses_one_model_only(ctx: Ctx):
     roles = len(json.loads(files[ctx.paths.config / "opencode.json"])["agent"])
     assert len(files) == 1 + roles * 5  # the role's default plus one file per thinking level (off..xhigh)
     high = json.loads(files[ctx.paths.config / "opencode-coder-xhigh.json"])
-    assert high["provider"]["law"]["models"]["qwen3.8-27b-8bit"]["options"] == {"reasoningEffort": "xhigh"}
+    assert high["provider"]["law"]["models"]["qwen3.8-27b-8bit"]["options"]["reasoningEffort"] == "xhigh"
     assert high["model"] == high["small_model"] == coder["model"]
 
 
@@ -496,7 +499,11 @@ def test_thinking_off_turns_the_chat_template_switch(ctx: Ctx):
     assert model_options("low") == {"reasoningEffort": "low"}
     off = json.loads(OpenCodeConfig(ctx).files()[ctx.paths.config / "opencode-writer-off.json"])
     assert off["provider"]["law"]["models"]["qwen3.8-27b-8bit"]["options"] == {
-        "chat_template_kwargs": {"enable_thinking": False}}
+        "chat_template_kwargs": {"enable_thinking": False},
+        "top_p": 0.8, "top_k": 20, "min_p": 0.0, "presence_penalty": 1.5}  # the card's instruct-mode sampling
+    assert off["agent"]["writer"]["temperature"] == 0.7
+    judge = json.loads(OpenCodeConfig(ctx).files()[ctx.paths.config / "opencode-reviewer-off.json"])
+    assert judge["agent"]["reviewer"]["temperature"] == 1.0  # Gemma: one set for thinking on and off
 
 
 def test_api_tools_installs_the_pinned_typescript_once(ctx: Ctx):

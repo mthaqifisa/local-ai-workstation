@@ -18,7 +18,7 @@ from law import secrets
 from law.install import launchd
 from law.install.engine import Step, record_owned
 from law.paths import LawPaths
-from law.registry import Registry, digest
+from law.registry import Registry, Sampling, digest
 from law.sysapi import SysAPI
 
 ZPROFILE_MARK = "# >>> LAW v6 >>>"
@@ -616,13 +616,15 @@ class MediaModels:
         return self.plan()
 
 
-def model_options(effort: str) -> dict[str, Any]:
+def model_options(effort: str, sampling: Sampling | None = None) -> dict[str, Any]:
     """What OpenCode sends the model for a thinking level. "off" turns the Qwen chat template's thinking off
     (checked on the wire: OpenCode passes chat_template_kwargs through); reasoning_effort cannot (measured:
-    'none' still thinks)."""
+    'none' still thinks). With the model card's sampling, its top_p, top_k, min_p and presence penalty go along
+    (the temperature is the agent's own field)."""
+    extra = {k: v for k, v in sampling.body().items() if k != "temperature"} if sampling else {}
     if effort == "off":
-        return {"chat_template_kwargs": {"enable_thinking": False}}
-    return {"reasoningEffort": effort}
+        return {"chat_template_kwargs": {"enable_thinking": False}, **extra}
+    return {"reasoningEffort": effort, **extra}
 
 
 class OpenCodeConfig:
@@ -637,8 +639,11 @@ class OpenCodeConfig:
     def render(self) -> str:
         reg = self.c.reg
         base = f"http://127.0.0.1:{reg.ports.llm_public}/v1"
+        # `temperature: true` makes OpenCode send the agent's temperature at all (checked on the wire, OpenCode
+        # 1.18.7: without it no temperature goes out and oMLX falls back to its own default)
         models = {m.id: {"name": m.id, "limit": {"context": m.context or 32768,
-                                                 "output": output_limit(m.context, writes=set(m.roles) != {"judge"})}}
+                                                 "output": output_limit(m.context, writes=set(m.roles) != {"judge"})},
+                         **({"temperature": True} if m.sampling else {})}
                   for m in reg.llm_models if m.lane == "heavy"}
         doc = {
             "$schema": "https://opencode.ai/config.json",
@@ -663,11 +668,13 @@ class OpenCodeConfig:
         agents: dict[str, Any] = {}
         for name, role in roles.roles.items():
             tools = set(role.tools)
+            model = self.c.reg.model_for_role(role.model_role)
+            sampling = model.sampling_for(role.reasoning)
             agents[name] = {
                 "description": role.summary,
                 "mode": "primary",
-                "model": f"law/{self.c.reg.model_for_role(role.model_role).id}",
-                "temperature": role.temperature,
+                "model": f"law/{model.id}",
+                "temperature": sampling.temperature if sampling else role.temperature,
                 "prompt": roles.system_prompt(name),
                 "tools": {
                     "write": "files" in tools, "edit": "files" in tools, "patch": "files" in tools,
@@ -697,8 +704,12 @@ class OpenCodeConfig:
             for effort, suffix in ((roles.get(name).reasoning, ""), ("off", "-off"), ("low", "-low"),
                                    ("medium", "-medium"), ("xhigh", "-xhigh")):
                 provider = json.loads(json.dumps(doc["provider"]))
-                provider["law"]["models"][model_id]["options"] = model_options(effort)
-                body = {**role_doc, "provider": provider}
+                sampling = self.c.reg.model(model_id).sampling_for(effort)
+                provider["law"]["models"][model_id]["options"] = model_options(effort, sampling)
+                level_agents = doc["agent"]
+                if sampling:  # thinking on and off have different recommended temperatures
+                    level_agents = {**doc["agent"], name: {**agent, "temperature": sampling.temperature}}
+                body = {**role_doc, "provider": provider, "agent": level_agents}
                 out[self.c.paths.config / f"opencode-{name}{suffix}.json"] = json.dumps(body, indent=2) + "\n"
         return out
 
