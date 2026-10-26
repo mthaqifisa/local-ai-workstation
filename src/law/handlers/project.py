@@ -97,6 +97,11 @@ Work like a team on a Jira board, in .law/PLAN.md:
   milestone. If you are interrupted, the next session continues from the first unticked ticket.
 - The last milestone includes a README that explains how to install, run and test the product, including from
   another device if it is a network service.
+- Nobody answers questions during a build session: never stop to ask the owner or wait for a reply. Decide on the
+  evidence you have. A check only the owner can do (a message arriving on their phone, a camera, a device) is
+  recorded in .law/PROGRESS.md as "owner to confirm: ..." and the ticket is ticked when its automated part passes;
+  the handover lists it for the owner. Clean up test data you created before you commit. The build is complete only
+  when every milestone in .law/PLAN.md is ticked.
 
 """ + DEV_PLATFORMS
 
