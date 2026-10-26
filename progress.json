@@ -1,24 +1,23 @@
 {
   "stage": "C-user-requests",
-  "task": "Console: Agents collapsibles fix + Projects board",
+  "task": "Agent improvements: per-ticket sessions + LAW-run gate (ADR-0019)",
   "status": "done",
-  "next_step": "Post Pantry progress to the board with `law board note pantry ... --ticket P-n` as well as the owner email; keep monitoring Pantry M4.",
-  "timestamp": "2026-10-26T07:10+08:00",
+  "next_step": "Watch Pantry P-22 in its fresh session: LAW should run .law/check.sh after it; confirm the agent creates check.sh and the gate passes.",
+  "timestamp": "2026-10-26T19:40+08:00",
   "files_touched": [
+    "src/law/handlers/tasks.py",
+    "src/law/handlers/project.py",
+    "src/law/project_memory.py",
     "src/law/board.py",
-    "src/law/console.py",
-    "src/law/static/console.html",
-    "src/law/cli.py",
-    "src/law/telegram_bot.py",
-    "src/law/projects.py",
-    "src/law/queue/store.py",
-    "tests/unit/test_board.py",
-    "docs/RUNBOOK.md"
+    "tests/unit/test_tickets.py",
+    "docs/adr/0019-one-session-per-ticket-and-law-gate.md",
+    "README.md",
+    "docs/QUICKSTART.md"
   ],
   "commands": [
-    "uv run pytest tests/unit (396 passed)",
+    "uv run pytest tests/unit (426 passed + 9 new)",
     "ruff + mypy clean",
-    "law services restart api/telegram",
-    "./install.sh (re-run 0 changes)"
+    "./install.sh (ok)",
+    "launchctl kickstart -k gui/$UID/com.law6.worker"
   ]
 }
