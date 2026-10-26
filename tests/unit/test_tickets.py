@@ -210,3 +210,33 @@ def test_missing_gate_tooling_becomes_its_own_ticket() -> None:
     from law.handlers.project import DEV_SPEC
 
     assert "do not add it inside the current ticket" in DEV_SPEC and "Add the missing gate tooling" in DEV_SPEC
+
+
+async def test_a_stage_keeps_within_one_job_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Seen 2026-10-26: a milestone stage ran past the worker's 6 h job limit and used up a retry."""
+    from law.handlers import project as _registers_project_specs  # noqa: F401
+    from law.handlers import tasks
+    from law.queue.worker import JOB_TIMEOUT_S
+
+    project = tmp_path / "pantry"
+    (project / ".law").mkdir(parents=True)
+    (project / ".law" / "PLAN.md").write_text(PLAN)
+    (project / ".law" / "check.sh").write_text("exit 0\n")
+    timeouts: list[float] = []
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        if cmd[0] == "opencode":
+            timeouts.append(kw["timeout_s"])
+            raise TimeoutError  # the session runs out of the stage's time
+        return ""
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    done = await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
+    assert done.result["dir"] == str(project)  # the stage ends cleanly; the next one continues the ticket
+    assert len(timeouts) == 1 and timeouts[0] <= JOB_TIMEOUT_S - tasks.CHECK_TIMEOUT_S
+    assert not (project / ".law" / "session.json").exists()
+
+    monkeypatch.setattr(tasks, "STAGE_BUDGET_S", 0)  # budget used: no new ticket starts
+    timeouts.clear()
+    await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
+    assert timeouts == []
