@@ -731,3 +731,32 @@ async def test_a_coder_editing_without_running_checks_is_told_to_run_them(setup,
                                                               "review": False, "translate": False})))
     await w.drain()
     assert cmds[1][cmds[1].index("--session") + 1] == "ses_blind" and "Run them now" in cmds[1][-1]
+
+
+
+async def test_a_coder_that_only_reads_is_told_to_write(setup, sandbox, monkeypatch):
+    from law.handlers import tasks
+    from law.handlers.base import Steered
+
+    rt, store, w = setup
+    cmds: list[list[str]] = []
+
+    async def fake_run_cmd(ctx, cmd, **kw):  # type: ignore[no-untyped-def]
+        cmds.append(cmd)
+        if len(cmds) == 1:
+            steer = kw["steer"]
+            for _ in range(tasks.READ_LIMIT - 1):
+                assert steer("📖 reading ~/p/src/A.java") is None
+            assert steer("✏️ writing ~/p/src/B.java") is None  # a save resets the budget
+            for _ in range(tasks.READ_LIMIT - 1):
+                assert steer("🔎 searching Batch") is None
+            message = steer("📖 reading ~/p/src/C.java")
+            assert message == tasks.READ_NUDGE
+            raise Steered(_tool_event("read", "C.java", "ses_read"), message)
+        return _opencode_json("P-22 committed")
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    await store.submit(resolver(rt)(Job(kind="task", payload={"prompt": "build", "role": "coder", "dir": str(sandbox),
+                                                              "review": False, "translate": False})))
+    await w.drain()
+    assert cmds[1][cmds[1].index("--session") + 1] == "ses_read" and "Write the change" in cmds[1][-1]
