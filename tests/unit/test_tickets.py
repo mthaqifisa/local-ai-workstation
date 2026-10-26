@@ -202,3 +202,11 @@ def test_the_board_reads_split_ticket_ids() -> None:
 
     items = board.plan_tickets("### M5 UI\n- [x] P-22.1 select batches\n- [ ] P-22.2 delete selected\n")
     assert [(t["id"], t["done"]) for t in items] == [("P-22.1", True), ("P-22.2", False)]
+
+
+def test_missing_gate_tooling_becomes_its_own_ticket() -> None:
+    """Seen 2026-10-26: a frontend ticket's session spent a 7.6K-token reply weighing whether to add Spotless,
+    Checkstyle and JaCoCo (missing from the project) inside that ticket."""
+    from law.handlers.project import DEV_SPEC
+
+    assert "do not add it inside the current ticket" in DEV_SPEC and "Add the missing gate tooling" in DEV_SPEC
