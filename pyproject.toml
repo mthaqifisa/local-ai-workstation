@@ -73,7 +73,9 @@ disallow_untyped_decorators = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers"
+# Plain `pytest` never touches the live stack (2026-10-26: it queued a 40 GB image job behind a running build);
+# run those suites by name, e.g. `pytest -m integration tests/integration`.
+addopts = "-ra --strict-markers -m 'not integration and not e2e and not rerun'"
 asyncio_mode = "auto"
 markers = [
   "integration: needs real services on this Mac",
