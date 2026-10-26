@@ -265,3 +265,4 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - 2026-10-26: Pantry P-22.1 committed (d24e094) after the owner's split note; remaining work is 15 small tickets.
 - 2026-10-26: Pantry stage error 23:04: old worker code could not read the new registry 'sampling' field (ADR-0020), costing a retry. Fixed a4489c8: milestone stages keep within the 6 h job limit (stage budget).
 - 2026-10-27: ADR-0019 verified on Pantry: after P-22.2 (74775c4) LAW's gate found .law/check.sh missing and handed it to the fresh P-22.3 session first.
+- 2026-10-27: Pantry: LAW-run check.sh passed after P-22.3 (3e43f71); stage budget ended stage 5 cleanly and stage 6 started fresh. ADR-0019 + a4489c8 verified end to end.
