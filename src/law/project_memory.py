@@ -40,7 +40,7 @@ RESUME = ("Your previous session in this project was interrupted. Read {folder}/
 # An allow-list: only LAW's memory files are committed, so an agent's scratch file (seen: a private-key keystore
 # in .law/ during an HTTPS step, 2026-10-25) never reaches git through `git add .law/`.
 COMMITTED = ("PLAN.md", "PROGRESS.md", "RESEARCH.md", "REQUESTS.md", "PROMPT.md", "ENVIRONMENT.md", "env.sh", "BUGS.md",
-             "project.json")
+             "project.json", "check.sh")
 GITIGNORE = "*\n!.gitignore\n" + "".join(f"!{name}\n" for name in COMMITTED)
 
 class ProjectMemory:
@@ -127,6 +127,11 @@ class ProjectMemory:
         self.dir.mkdir(exist_ok=True)
         doc = {"job": job_id, "role": role, "session": session, "started": time.strftime("%Y-%m-%dT%H:%M:%S")}
         (self.dir / "session.json").write_text(json.dumps(doc, indent=2) + "\n")
+
+    def end_session(self, job_id: str) -> None:
+        """Forget this job's finished session, so its next agent run starts fresh instead of resuming it."""
+        if self.session_for(job_id) is not None:
+            (self.dir / "session.json").unlink(missing_ok=True)
 
     def _session(self) -> dict[str, Any]:
         path = self.dir / "session.json"

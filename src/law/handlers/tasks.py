@@ -132,6 +132,40 @@ def plan_complete(project: Path, version: int) -> bool:
     return section is not None and "- [x]" in section.lower() and "- [ ]" not in section
 
 
+MILESTONE_HEAD = re.compile(r"^#{3,}\s+(.+?)\s*$")
+OPEN_TICKET = re.compile(r"^- \[ \]\s*(.+?)\s*$")  # top level only: indented checkboxes are a ticket's details
+
+
+def next_ticket(project: Path, version: int) -> tuple[str, str] | None:
+    """The first unticked ticket of this version's build: (its milestone heading, the ticket line), or None."""
+    milestone = ""
+    for line in (build_section(project, version) or "").splitlines():
+        if head := MILESTONE_HEAD.match(line):
+            milestone = head.group(1)
+        elif ticket := OPEN_TICKET.match(line):
+            return milestone, ticket.group(1)
+    return None
+
+
+# Development runs one fresh agent session per ticket (ADR-0019): measured on the 27B coder, replies grow with the
+# context (median 150 output tokens below a 15K prompt, 702 above 70K; p90 1.3K -> 6.6K), and a milestone-long
+# session reached 70K+ and was compacted. After each ticket LAW runs the project's gate itself.
+TICKETS_PER_STAGE = 20  # a stage still ends with its milestone; this only bounds a runaway loop
+IDLE_SESSIONS = 2  # sessions in a row that tick nothing and fix no failing gate end the stage, as before
+CHECK_SCRIPT = f"{FOLDER}/check.sh"
+CHECK_TIMEOUT_S = 30 * 60
+CHECK_TAIL = 3000
+TICKET_SESSION = ("This session: ticket {ticket} (milestone {milestone}). Do only this ticket: code and tests, the "
+                  "build and tests passing, commit, tick it in .law/PLAN.md, its line in .law/PROGRESS.md, then stop.")
+FIRST_TICKET = ("This session: .law/PLAN.md has no build section for this version yet. Write it as described "
+                "above, then do its first ticket the same way (code and tests, passing, commit, tick, progress line) "
+                "and stop.")
+ALL_TICKED = "Every ticket is ticked: fix the problem above, commit, and stop."
+GATE_FAILED = ("LAW checked the last ticket and it is not done:\n\n{problem}\n\nFix this first (open only the files "
+               "the output names), run .law/check.sh until it passes, and commit the fix with the ticket's ID. Then "
+               "carry on with the ticket below.\n\n")
+
+
 def describe_opencode_line(line: str) -> str | None:
     """Turn one `opencode run --format json` event into a short, readable progress line (or None to skip)."""
     if not line.startswith("{"):
@@ -607,8 +641,63 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             if doc.is_file() and section_written(doc.read_text(), section["heading"]):
                 return Done({"dir": str(_workdir(p))})  # this section is already in the document
         memory = _memory(ctx, p)
+        if p.get("milestone"):
+            return await _build_tickets(ctx, p, memory)
         text = await _agent(ctx, p["role"], _scoped(p, memory), _workdir(p), memory=memory)
         return Done({"answer": text, "dir": str(_workdir(p))})
+
+    async def _gate_problem(ctx: Context, folder: Path) -> str:
+        """What is wrong after a ticket, from LAW's own checks (not the agent's word): `.law/check.sh` fails, is
+        missing, or product files were left uncommitted. Empty when the ticket is really done."""
+        script = folder / CHECK_SCRIPT
+        if not script.is_file():
+            return f"{CHECK_SCRIPT} does not exist. Create it now (see the build rules above)."
+        await ctx.progress(f"🔍 LAW runs {CHECK_SCRIPT} (the project's whole gate)")
+        env = {**agent_env(rt, "coder"), **project_env(folder)}
+        try:
+            await run_cmd(ctx, ["bash", CHECK_SCRIPT], cwd=folder, env=env, timeout_s=CHECK_TIMEOUT_S,
+                          progress_every=10**9)  # the build log is not progress
+        except Fatal as exc:
+            await ctx.progress(f"❌ {CHECK_SCRIPT} failed: the next session fixes it first")
+            return f"{CHECK_SCRIPT} failed:\n{str(exc)[-CHECK_TAIL:]}"
+        except TimeoutError:
+            return f"{CHECK_SCRIPT} did not finish within {CHECK_TIMEOUT_S // 60} minutes."
+        status = await run_cmd(ctx, ["git", "status", "--porcelain"], cwd=folder, timeout_s=60)
+        left = [ln[3:] for ln in status.splitlines() if ln[3:] and not ln[3:].startswith(f"{FOLDER}/")]
+        if left:
+            return "Uncommitted changes were left behind: " + ", ".join(left[:20]) + \
+                ". Commit them with the ticket they belong to, or remove them."
+        await ctx.progress(f"✅ {CHECK_SCRIPT} passed and the work is committed")
+        return ""
+
+    async def _build_tickets(ctx: Context, p: dict[str, Any], memory: ProjectMemory | None) -> Outcome:
+        """One milestone, one fresh agent session per ticket (ADR-0019). LAW names each session's ticket, then
+        checks it itself; what fails goes to the next session to fix first. The stage ends when the milestone's
+        tickets are ticked and the gate passes, or after IDLE_SESSIONS sessions without progress."""
+        folder, version = _workdir(p), int(p.get("version", 1))
+        start = next_ticket(folder, version)
+        problem, idle, text = "", 0, ""
+        for _ in range(TICKETS_PER_STAGE):
+            ticket = next_ticket(folder, version)
+            if ticket is None and build_section(folder, version) is not None and not problem:
+                break
+            if start is not None and ticket is not None and ticket[0] != start[0] and not problem:
+                break  # this milestone is done; the next stage takes the next one
+            task = TICKET_SESSION.format(ticket=ticket[1], milestone=ticket[0] or "-") if ticket else \
+                ALL_TICKED if build_section(folder, version) is not None else FIRST_TICKET
+            prompt = f"{_scoped(p, memory)}\n\n{GATE_FAILED.format(problem=problem) if problem else ''}{task}"
+            text = await _agent(ctx, p["role"], prompt, folder, memory=memory)
+            if memory is not None:
+                memory.end_session(ctx.job.id)  # the next ticket starts a fresh session, not this one
+            had_problem = bool(problem)
+            problem = await _gate_problem(ctx, folder)
+            moved = next_ticket(folder, version) != ticket
+            idle = 0 if moved or (had_problem and not problem) else idle + 1
+            if start is None:
+                start = next_ticket(folder, version)
+            if idle >= IDLE_SESSIONS:
+                break
+        return Done({"answer": text, "dir": str(folder)})
 
     async def _qa_round(ctx: Context, p: dict[str, Any]) -> dict[str, Any]:
         """Black-box QA of a project: a fresh session of the QA role (another model than the coder) tests the
