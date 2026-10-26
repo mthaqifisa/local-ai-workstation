@@ -273,3 +273,33 @@ async def test_law_ends_a_session_once_its_ticket_is_ticked_and_committed(
     done = await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
     assert actions == [None, tasks.TICKET_DONE]
     assert done.result["answer"] == "P-2 done"
+
+
+async def test_a_nudged_session_keeps_one_deadline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Seen 2026-10-27: each resume after a nudge got the full session time again, so a stage overran its budget."""
+    from law.handlers import project as _registers_project_specs  # noqa: F401
+    from law.handlers import tasks
+    from law.handlers.base import Stalled
+
+    project = tmp_path / "pantry"
+    (project / ".law").mkdir(parents=True)
+    plan = project / ".law" / "PLAN.md"
+    plan.write_text(PLAN.replace("- [ ] P-3 batches\n", ""))
+    (project / ".law" / "check.sh").write_text("exit 0\n")
+    clock = [1000.0]
+    monkeypatch.setattr(tasks.time, "monotonic", lambda: clock[0])
+    timeouts: list[float] = []
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        if cmd[0] != "opencode":
+            return ""
+        timeouts.append(kw["timeout_s"])
+        clock[0] += 1800  # each run takes 30 min
+        if len(timeouts) == 1:
+            raise Stalled('{"type": "text", "sessionID": "ses_1", "part": {"type": "text", "text": "x"}}', 1500)
+        _tick(plan, "P-2")
+        return '{"type": "text", "part": {"type": "text", "text": "done"}}'
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
+    assert len(timeouts) == 2 and timeouts[1] == timeouts[0] - 1800  # the resume gets what is left, not a fresh cap

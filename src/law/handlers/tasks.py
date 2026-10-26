@@ -449,6 +449,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             cmd = [*base, prompt]
 
         started = time.time()
+        # one deadline for the whole session: a nudge resumes it in a new run, which must not restart the clock
+        deadline = time.monotonic() + (timeout_s or float(ctx.job.payload.get("timeout_s", 4 * 3600)))
         edits: list[str] = []
 
         def describe(line: str) -> str | None:
@@ -515,7 +517,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             try:
                 env = {**agent_env(rt, role, ctx.job.payload.get("effort")), **project_env(workdir)}
                 out = await run_cmd(ctx, cmd, cwd=workdir, env=env, describe=describe,
-                                    timeout_s=timeout_s or float(ctx.job.payload.get("timeout_s", 4 * 3600)),
+                                    timeout_s=max(1.0, deadline - time.monotonic()),
                                     stall_s=stall_min * 60 if writes and stall_min > 0 else None,
                                     is_work=is_file_change, alive=model_generating,
                                     steer=steer)
