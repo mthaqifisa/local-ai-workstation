@@ -760,3 +760,25 @@ async def test_a_coder_that_only_reads_is_told_to_write(setup, sandbox, monkeypa
                                                               "review": False, "translate": False})))
     await w.drain()
     assert cmds[1][cmds[1].index("--session") + 1] == "ses_read" and "Write the change" in cmds[1][-1]
+
+
+async def test_answers_use_the_model_cards_sampling_not_the_roles_temperature(setup, monkeypatch):
+    """Qwen3.8's card: thinking at temperature 1.0, top_p 0.95, top_k 20; thinking off at 0.7, 0.8, 20 and a
+    presence penalty of 1.5. A role's low temperature made the coder's thinking loop."""
+    from law.handlers.core import answer
+
+    rt, _store, _w = setup
+    bodies: list[dict] = []
+
+    async def fake_complete(body, on_thought=None):  # type: ignore[no-untyped-def]
+        bodies.append(body)
+        return {"message": {"content": "ok"}, "finish_reason": "stop"}
+
+    monkeypatch.setattr(rt.llm, "complete", fake_complete)
+    await answer(rt, "translator", [{"role": "user", "content": "hi"}])
+    model = rt.reg.model(bodies[-1]["model"])
+    expected = model.sampling_for(rt.roles.get("translator").reasoning)
+    assert expected is not None and bodies[-1]["temperature"] == expected.temperature
+    assert {k: bodies[-1][k] for k in ("top_p", "top_k", "presence_penalty")} == {
+        "top_p": expected.top_p, "top_k": expected.top_k, "presence_penalty": expected.presence_penalty}
+    assert rt.reg.model("qwen3.8-27b-8bit").sampling_for("off").presence_penalty == 1.5  # type: ignore[union-attr]

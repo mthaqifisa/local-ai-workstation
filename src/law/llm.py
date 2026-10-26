@@ -196,12 +196,13 @@ ToolRunner = Callable[[str, dict[str, Any]], Awaitable[str]]
 
 async def chat_with_tools(llm: LLM, model: str, messages: list[dict[str, Any]], tools: list[dict[str, Any]],
                           run_tool: ToolRunner, *, temperature: float, reasoning: str | None,
-                          max_calls: int = 6, on_thought: Thought | None = None) -> str:
+                          max_calls: int = 6, on_thought: Thought | None = None,
+                          extra: dict[str, Any] | None = None) -> str:
     """Chat loop that executes the model's tool calls (capped) and returns its final text answer."""
     history = list(messages)
     for _ in range(max_calls + 1):
         body: dict[str, Any] = {"model": model, "messages": history, "temperature": temperature,
-                                "max_tokens": 24576, "stream": False, "tools": tools}
+                                "max_tokens": 24576, "stream": False, "tools": tools, **(extra or {})}
         if reasoning:
             body["reasoning_effort"] = reasoning
         choice = await (llm.complete(body, on_thought=on_thought) if on_thought else llm.complete(body))
@@ -224,4 +225,5 @@ async def chat_with_tools(llm: LLM, model: str, messages: list[dict[str, Any]], 
                 result = f"error: {type(exc).__name__}: {exc}"
             history.append({"role": "tool", "tool_call_id": call.get("id", ""), "content": result[:6000]})
     history.append({"role": "user", "content": "Tool budget used up. Give your final answer now from what you have."})
-    return await llm.chat(model, history, temperature=temperature, reasoning=reasoning, on_thought=on_thought)
+    return await llm.chat(model, history, temperature=temperature, reasoning=reasoning, on_thought=on_thought,
+                          extra=extra)

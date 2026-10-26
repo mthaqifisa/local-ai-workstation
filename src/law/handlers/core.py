@@ -142,16 +142,27 @@ async def answer(rt: Runtime, role: str, messages: list[dict[str, Any]], ctx: Co
         return f"error: unknown tool {name}"
 
     async def ask_at(effort: str) -> str:
+        sampling = sampling_body(rt, model_id, effort)
         if tools:
-            return await chat_with_tools(rt.llm, model_id, messages, tools, run_tool,
-                                         temperature=r.temperature, reasoning=effort, on_thought=on_thought)
+            return await chat_with_tools(rt.llm, model_id, messages, tools, run_tool, temperature=r.temperature,
+                                         reasoning=effort, on_thought=on_thought, extra=sampling)
         return await rt.llm.chat(model_id, messages, temperature=r.temperature, reasoning=effort,
-                                 on_thought=on_thought)
+                                 on_thought=on_thought, extra=sampling)
 
     try:
         return await ask_at(r.reasoning)
     except TruncatedError:
         return await ask_at(LOWER[r.reasoning])
+
+
+def sampling_body(rt: Runtime, model_id: str, effort: str | None) -> dict[str, Any]:
+    """The model card's sampling for this model at this thinking level (it replaces the role's temperature), or
+    nothing for a model without one."""
+    try:
+        sampling = rt.reg.model(model_id).sampling_for(effort)
+    except KeyError:
+        return {}
+    return sampling.body() if sampling else {}
 
 
 def conversation_text(history: list[dict[str, Any]] | None, limit: int = HISTORY_CHARS) -> str:
