@@ -102,7 +102,10 @@ Work like a team on a Jira board, in .law/PLAN.md:
 - `.law/check.sh` is the project's whole gate: the build, formatting and lint, and every test (the platform's gate
   below), exiting non-zero on any failure. Create it with the first ticket (now, if it is missing), keep it
   complete as the project grows, and never weaken it to make it pass. LAW runs it after every ticket; a failure
-  goes to the next session to fix first.
+  goes to the next session to fix first. It runs the gates the project has. If the platform gate asks for
+  tooling the project lacks (e.g. Spotless, Checkstyle, JaCoCo), do not add it inside the current ticket and do
+  not weigh it up: add a ticket "{key}-<next n> Add the missing gate tooling" right after the current one in
+  .law/PLAN.md, and carry on.
 - The last milestone includes a README that explains how to install, run and test the product, including from
   another device if it is a network service.
 - Nobody answers questions during a build session: never stop to ask the owner or wait for a reply. Decide on the
