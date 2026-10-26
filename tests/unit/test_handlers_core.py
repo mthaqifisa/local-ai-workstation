@@ -702,3 +702,32 @@ def test_reading_law_internals_is_recognised():
     assert reads_law_internals("📖 reading ~/LAW/state/.env", repo, home)
     assert not reads_law_internals("▶ running mvn -f api/pom.xml verify", repo, home)
     assert not reads_law_internals("▶ running curl http://127.0.0.1:8100/healthz", repo, home)
+
+
+
+async def test_a_coder_editing_without_running_checks_is_told_to_run_them(setup, sandbox, monkeypatch):
+    from law.handlers import tasks
+    from law.handlers.base import Steered
+
+    rt, store, w = setup
+    cmds: list[list[str]] = []
+
+    async def fake_run_cmd(ctx, cmd, **kw):  # type: ignore[no-untyped-def]
+        cmds.append(cmd)
+        if len(cmds) == 1:
+            steer = kw["steer"]
+            for _ in range(tasks.BLIND_EDIT_LIMIT - 1):
+                assert steer("✏️ editing ~/p/ui/src/A.test.tsx") is None
+            assert steer("▶ running npm test -- --run src/A.test.tsx") is None  # a test run resets the count
+            for _ in range(tasks.BLIND_EDIT_LIMIT - 1):
+                assert steer("✏️ editing ~/p/ui/src/B.tsx") is None
+            message = steer("✏️ editing ~/p/ui/src/B.tsx")
+            assert message == tasks.RUN_CHECKS_NUDGE
+            raise Steered(_tool_event("edit", "B.tsx", "ses_blind"), message)
+        return _opencode_json("P-21 committed")
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    await store.submit(resolver(rt)(Job(kind="task", payload={"prompt": "build", "role": "coder", "dir": str(sandbox),
+                                                              "review": False, "translate": False})))
+    await w.drain()
+    assert cmds[1][cmds[1].index("--session") + 1] == "ses_blind" and "Run them now" in cmds[1][-1]
