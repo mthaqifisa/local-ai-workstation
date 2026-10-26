@@ -100,7 +100,10 @@ Work like a team on a Jira board, in .law/PLAN.md:
 - Nobody answers questions during a build session: never stop to ask the owner or wait for a reply. Decide on the
   evidence you have. A check only the owner can do (a message arriving on their phone, a camera, a device) is
   recorded in .law/PROGRESS.md as "owner to confirm: ..." and the ticket is ticked when its automated part passes;
-  the handover lists it for the owner. Clean up test data you created before you commit. The build is complete only
+  the handover lists it for the owner. Clean up test data you created before you commit.
+- Anything that reaches the owner for real (a Telegram message, an email, a notification) is sent at most once per
+  milestone, only to prove the live path; everything else is tested with fakes or a dry run. Keep the response of
+  that one call as the evidence instead of sending again. The build is complete only
   when every milestone in .law/PLAN.md is ticked.
 
 """ + DEV_PLATFORMS
