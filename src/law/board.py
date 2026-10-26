@@ -42,7 +42,7 @@ STOPPED = {Status.FAILED, Status.DEAD, Status.CANCELLED}
 DECISIONS = {"go": "Go", "nogo": "No go", "changes": "Needs changes", "allgood": "All good", "resume": "Resumed"}
 LOG_LIMIT = 300
 
-TICKET = re.compile(r"^(\s*)- \[([ xX])\]\s*([A-Z][A-Z0-9]*-\d+)\b[:.]?\s*(.*)$")
+TICKET = re.compile(r"^(\s*)- \[([ xX])\]\s*([A-Z][A-Z0-9]*-\d+(?:\.\d+)?)\b[:.]?\s*(.*)$")
 MILESTONE = re.compile(r"^#{3,}\s+(.+?)\s*$")
 STAMP = re.compile(r"(\d{4}-\d\d-\d\d)(?:[ T](\d\d:\d\d))?")
 

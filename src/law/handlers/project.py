@@ -7,7 +7,8 @@
 - `project_gate`: the last stage of each phase: records the new state and returns the question with its buttons.
 
 Development: an environment stage (install and select the tools the stack needs, recorded in .law/), then one
-agent session per milestone from .law/PLAN.md (fresh context each time, so it never fills up), then up to three
+stage per milestone from .law/PLAN.md, with a fresh agent session per ticket and LAW's run of `.law/check.sh` after
+each (ADR-0019), then up to three
 independent review and fix rounds, then the verification gate.
 """
 
@@ -91,10 +92,17 @@ Work like a team on a Jira board, in .law/PLAN.md:
   list small tickets as checkboxes with an ID and acceptance criteria, e.g.
   "- [ ] {key}-3 Join rejects a second username from the same device (acceptance: unit + integration test)".
   A ticket is one focused change and one commit; a milestone ends with a passing build and tests.
-- Then work on ONLY the first milestone that still has unticked tickets. Take its tickets in order: write the code
-  and tests, run the build and tests until they pass, commit as "{key}-<n>: <summary>", tick the ticket, and add a
-  line to .law/PROGRESS.md. When the milestone's tickets are all ticked, stop; the next session takes the next
-  milestone. If you are interrupted, the next session continues from the first unticked ticket.
+- Keep tickets small: one endpoint, one part of a screen or one script, a few files, at most about two hours of
+  work. A ticket that turns out bigger is split in .law/PLAN.md into "{key}-<n>.1", "{key}-<n>.2", ... (they
+  replace its line); then do the first part.
+- Each session does ONE ticket: the one LAW names at the end of this prompt (the first unticked one). Write its
+  code and tests, run the build and tests until they pass, commit as "{key}-<n>: <summary>", tick the ticket, add
+  its line to .law/PROGRESS.md, and stop. A fresh session takes the next ticket and knows only what is on disk:
+  note in .law/PROGRESS.md what it needs (decisions, gotchas, commands).
+- `.law/check.sh` is the project's whole gate: the build, formatting and lint, and every test (the platform's gate
+  below), exiting non-zero on any failure. Create it with the first ticket (now, if it is missing), keep it
+  complete as the project grows, and never weaken it to make it pass. LAW runs it after every ticket; a failure
+  goes to the next session to fix first.
 - The last milestone includes a README that explains how to install, run and test the product, including from
   another device if it is a network service.
 - Nobody answers questions during a build session: never stop to ask the owner or wait for a reply. Decide on the

@@ -86,7 +86,7 @@ Approve it in System Settings → Privacy & Security.
 
 1. Send `/project init`, fill in the template Tony returns (name, stack, what it must do) and send it back.
 2. Tony researches and emails a proposal PDF; press **Go** to build (or **No go** with what to change).
-3. The agents set up the tools, build milestone by milestone, then run review rounds: black-box **QA** tests the
+3. The agents set up the tools, build milestone by milestone (one fresh session per ticket, each checked by LAW's own run of `.law/check.sh`), then run review rounds: black-box **QA** tests the
    running product against your requirements and files bugs, the coder fixes them, QA retests. Follow it on the
    Console's **Projects** board.
 4. While it builds: `/note <project> <text>` tells the agent something; `/bugfix <project> <what goes wrong>` reports a
