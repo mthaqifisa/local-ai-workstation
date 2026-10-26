@@ -52,6 +52,8 @@ Keep every heavy model's `mem_gb` within `machine.model_budget_gb` (48 GB); the 
 
 Edit a role's instructions, temperature, reasoning effort or tools in the Console (Personas tab) or in
 `settings/roles.yaml`. Saving in the Console validates the change, keeps the file's comments and re-applies the agents.
+A role's temperature applies only to a model without `sampling` in `settings/registry.yaml`; the three LLMs run at
+their model cards' sampling (ADR-0020). A new model gets its card's values there.
 
 ## Project boards
 
