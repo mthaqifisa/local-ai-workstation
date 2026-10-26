@@ -240,3 +240,36 @@ async def test_a_stage_keeps_within_one_job_run(tmp_path: Path, monkeypatch: pyt
     timeouts.clear()
     await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
     assert timeouts == []
+
+
+async def test_law_ends_a_session_once_its_ticket_is_ticked_and_committed(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Seen 2026-10-27: OpenCode continued P-22.4's session into P-22.5, so LAW never checked P-22.4."""
+    from law.handlers import project as _registers_project_specs  # noqa: F401
+    from law.handlers import tasks
+    from law.handlers.base import Steered
+
+    project = tmp_path / "pantry"
+    (project / ".law").mkdir(parents=True)
+    plan = project / ".law" / "PLAN.md"
+    plan.write_text(PLAN.replace("- [ ] P-3 batches\n", ""))
+    (project / ".law" / "check.sh").write_text("exit 0\n")
+    dirty = ["ui/src/a.ts"]
+    monkeypatch.setattr(tasks, "uncommitted", lambda folder: list(dirty))
+    actions: list[str | None] = []
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        if cmd[0] != "opencode":
+            return ""
+        steer = kw["steer"]
+        _tick(plan, "P-2")
+        actions.append(steer("✏️ writing ui/src/a.ts"))  # ticked but not committed yet: keep going
+        dirty.clear()
+        message = steer("▶ running git commit -m 'P-2: products'")  # committed: LAW ends the session
+        actions.append(message)
+        raise Steered('{"type": "text", "part": {"type": "text", "text": "P-2 done"}}', message or "")
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    done = await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
+    assert actions == [None, tasks.TICKET_DONE]
+    assert done.result["answer"] == "P-2 done"
