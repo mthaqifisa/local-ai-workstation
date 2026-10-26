@@ -16,7 +16,7 @@ from law import bugs, deliver, specs
 from law.handlers.base import Runtime, Stalled, Steered, run_cmd
 from law.handlers.core import PASS_SCORE, answer, parse_verdict
 from law.project_memory import FOLDER, ProjectMemory, project_listing
-from law.queue.worker import Context, Done, Fatal, Outcome, Stages
+from law.queue.worker import JOB_TIMEOUT_S, Context, Done, Fatal, Outcome, Stages
 
 # Roles whose output is code or files get a translated brief, an independent review and one fix pass by default.
 REVIEWED_ROLES = {"coder", "writer", "designer", "architect", "analyst"}
@@ -152,6 +152,12 @@ def next_ticket(project: Path, version: int) -> tuple[str, str] | None:
 # session reached 70K+ and was compacted. After each ticket LAW runs the project's gate itself.
 TICKETS_PER_STAGE = 20  # a stage still ends with its milestone; this only bounds a runaway loop
 IDLE_SESSIONS = 2  # sessions in a row that tick nothing and fix no failing gate end the stage, as before
+# A stage is one job run, which the worker stops at JOB_TIMEOUT_S (seen 2026-10-26: a milestone stage failed at 6 h
+# and used up a retry). It starts no ticket after STAGE_BUDGET_S, caps each session to the time left, and ends cleanly
+# when one runs out: the next stage continues the milestone in a fresh job.
+STAGE_BUDGET_S = 4 * 3600
+STAGE_MARGIN_S = 10 * 60
+MIN_SESSION_S = 30 * 60
 CHECK_SCRIPT = f"{FOLDER}/check.sh"
 CHECK_TIMEOUT_S = 30 * 60
 CHECK_TAIL = 3000
@@ -408,7 +414,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             return False
 
     async def _agent(ctx: Context, role: str, prompt: str, workdir: Path, *, writes: bool = True,
-                     memory: ProjectMemory | None = None) -> str:
+                     memory: ProjectMemory | None = None, timeout_s: float | None = None) -> str:
         """Run one OpenCode agent. A writing agent that stalls (no file change for STALL_MINUTES) is stopped and
         its session resumed with a nudge to build and fix. With project memory, the session is recorded in
         `.law/session.json`, and a job that restarts (e.g. after a worker restart) resumes that session."""
@@ -494,7 +500,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             try:
                 env = {**agent_env(rt, role, ctx.job.payload.get("effort")), **project_env(workdir)}
                 out = await run_cmd(ctx, cmd, cwd=workdir, env=env, describe=describe,
-                                    timeout_s=float(ctx.job.payload.get("timeout_s", 4 * 3600)),
+                                    timeout_s=timeout_s or float(ctx.job.payload.get("timeout_s", 4 * 3600)),
                                     stall_s=stall_min * 60 if writes and stall_min > 0 else None,
                                     is_work=is_file_change, alive=model_generating,
                                     steer=steer)
@@ -677,7 +683,13 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         folder, version = _workdir(p), int(p.get("version", 1))
         start = next_ticket(folder, version)
         problem, idle, text = "", 0, ""
+        began = time.monotonic()
         for _ in range(TICKETS_PER_STAGE):
+            used = time.monotonic() - began
+            left = JOB_TIMEOUT_S - used - CHECK_TIMEOUT_S - STAGE_MARGIN_S
+            if used >= STAGE_BUDGET_S or left < MIN_SESSION_S:
+                await ctx.progress("⏱ this stage's time is used: the next stage continues the milestone")
+                break
             ticket = next_ticket(folder, version)
             if ticket is None and build_section(folder, version) is not None and not problem:
                 break
@@ -686,7 +698,14 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             task = TICKET_SESSION.format(ticket=ticket[1], milestone=ticket[0] or "-") if ticket else \
                 ALL_TICKED if build_section(folder, version) is not None else FIRST_TICKET
             prompt = f"{_scoped(p, memory)}\n\n{GATE_FAILED.format(problem=problem) if problem else ''}{task}"
-            text = await _agent(ctx, p["role"], prompt, folder, memory=memory)
+            try:
+                text = await _agent(ctx, p["role"], prompt, folder, memory=memory,
+                                    timeout_s=min(left, float(p.get("timeout_s", 4 * 3600))))
+            except TimeoutError:
+                if memory is not None:
+                    memory.end_session(ctx.job.id)
+                await ctx.progress("⏱ the session used this stage's time: the next stage continues the ticket")
+                break
             if memory is not None:
                 memory.end_session(ctx.job.id)  # the next ticket starts a fresh session, not this one
             had_problem = bool(problem)

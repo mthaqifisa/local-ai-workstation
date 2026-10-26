@@ -39,6 +39,9 @@ class Done:
     result: dict[str, Any]
 
 
+JOB_TIMEOUT_S = 6 * 3600  # one run of a job; a handler that loops (a milestone's tickets) keeps within it
+
+
 @dataclass
 class Stages:
     """Continue as a pipeline: run these job specs one after another, then finish the root."""
@@ -170,7 +173,7 @@ retry_pipeline = retry_job
 class Worker:
     def __init__(self, store: JobStore, handlers: dict[str, Handler], capacity: Capacity,
                  resolve: Resolver, models: ModelControl | None = None, tick_s: float = 0.5,
-                 job_timeout_s: float = 6 * 3600, restart_flag: Path | None = None,
+                 job_timeout_s: float = JOB_TIMEOUT_S, restart_flag: Path | None = None,
                  awake: KeepAwake | None = None) -> None:
         self.awake = awake or KeepAwake(None)  # holds a sleep assertion while any job runs
         self.restart_flag = restart_flag  # set by `law install` when new code waits for a pause between steps
