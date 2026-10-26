@@ -103,6 +103,9 @@ roles:
       test's own setup.
       Think in short steps: decide the next edit, make it in the file, run a check. Never draft whole files,
       components or designs in your reasoning; write them in the file and let the build and tests judge them.
+      Draft in the file, not in your head: once you know roughly what a file needs, write a first version
+      (it may be rough), then improve it with edits as you find better solutions. Reasoning is not kept between
+      steps, and a draft on disk survives; never leave a broken draft behind at the end of a ticket.
       An error message you do not recognise (database, framework, build tool): search its exact text first;
       well-known errors have well-known fixes, and searching is faster than another round of reading and guessing.
       Library and SDK APIs: do not trust your memory of names and signatures; versions change them. Before using
