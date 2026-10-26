@@ -267,3 +267,4 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - 2026-10-27: ADR-0019 verified on Pantry: after P-22.2 (74775c4) LAW's gate found .law/check.sh missing and handed it to the fresh P-22.3 session first.
 - 2026-10-27: Pantry: LAW-run check.sh passed after P-22.3 (3e43f71); stage budget ended stage 5 cleanly and stage 6 started fresh. ADR-0019 + a4489c8 verified end to end.
 - 2026-10-27: OpenCode auto-continued P-22.4's session into P-22.5 (no LAW gate between). Fix 9bd7dba: LAW ends a session once its ticket is ticked and committed.
+- 2026-10-27: Trial (owner OK): coder rule 'draft in the file, not in your head' (19ac529). Baseline first save 53-78 min, 2-4 nudges, 106-149 min per ticket; rollback if worse or broken drafts. Metrics script ~/LAW/cache/tmp/ticket-metrics.py.
