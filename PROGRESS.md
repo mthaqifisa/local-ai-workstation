@@ -256,3 +256,4 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - 2026-10-26 10:25 Pantry M4 done (P-17 75bebbd, owner-confirmed alert, test data cleaned); M5 started (P-18 5fd137f UI scaffold). Clean-clone verify: api 98/98, ui build + 7/7. Owner emailed.
 - 2026-10-26 15:58 Pantry P-21: 1.5 h of test/helper edits with no build or test run. Guard c7d098f: 15 saves without a check run -> run them (next session/worker restart). Sent /note via Telegram web: run build, tsc, tests now; queued in NOTES.md.
 - 2026-10-26 17:15 Read-budget guard (20 reads/searches since last save -> write) after P-19..P-22 each lost ~25 min to reading. 418 tests.
+- 2026-10-26 18:37 Pantry P-22: ~1.5 h, replies mostly reasoning (39K + 17K chars designing InventoryView). Rule 7cd80d0 (coder thinks in short steps). Screen locked + Chrome disconnected: planned worker restart so the resumed session loads the rule and the read-budget / blind-edit guards.
