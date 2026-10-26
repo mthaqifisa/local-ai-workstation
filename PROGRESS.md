@@ -262,3 +262,4 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - 2026-10-26: Pantry P-22 stall diagnosed: check.sh rule (ADR-0019) made the agent weigh adding missing Java gate tooling inside a frontend ticket (7.6K-token reply), then compaction at 62K context. Fix c0aead7: missing gate tooling becomes its own ticket.
 - 2026-10-26: Pantry P-22 second stall: a 16.8K-token reply (33.5 min) drafted a whole component in reasoning, lost at compaction; owner asked about a 12K coder thinking cap.
 - 2026-10-26: Owner declined a coder thinking cap (quality first); long reasoning replies stay.
+- 2026-10-26: Pantry P-22.1 committed (d24e094) after the owner's split note; remaining work is 15 small tickets.
