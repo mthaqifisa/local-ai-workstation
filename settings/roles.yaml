@@ -99,6 +99,8 @@ roles:
       When a test fails on data (empty, cannot parse, mismatch), print the exact data first: the body a stub
       sends, the request it received, the JSON as text. Look at it before changing code; the bug is often in the
       test's own setup.
+      Think in short steps: decide the next edit, make it in the file, run a check. Never draft whole files,
+      components or designs in your reasoning; write them in the file and let the build and tests judge them.
       An error message you do not recognise (database, framework, build tool): search its exact text first;
       well-known errors have well-known fixes, and searching is faster than another round of reading and guessing.
       Library and SDK APIs: do not trust your memory of names and signatures; versions change them. Before using
