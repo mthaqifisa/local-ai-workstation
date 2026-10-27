@@ -353,3 +353,16 @@ async def test_a_ticket_session_gets_the_project_map_and_works_targeted(
     await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
     assert "Scan, don't read" in prompts[0] and "    3 ui/App.tsx" in prompts[0]
     assert "package-lock.json" not in prompts[0] and ".law/PLAN.md" not in prompts[0].split("Project map")[1]
+
+
+def test_a_slightly_indented_milestone_is_still_read(tmp_path: Path) -> None:
+    """Seen 2026-10-27: an agent indented a new milestone and its tickets by one space; LAW skipped them all."""
+    from law import board
+
+    (tmp_path / ".law").mkdir()
+    plan = ("## Build version 1\n### M6 E2E\n- [x] P-25 perf\n\n ### M7 UX\n - [ ] P-27 layout fix\n"
+            "      Acceptance: no overflow.\n   - [ ] detail of P-27\n - [ ] P-28 no barcode\n")
+    (tmp_path / ".law" / "PLAN.md").write_text(plan)
+    assert next_ticket(tmp_path, 1) == ("M7 UX", "P-27 layout fix")
+    items = board.plan_tickets(plan.split("## Build version 1", 1)[1])
+    assert [(t["id"], t["milestone"]) for t in items] == [("P-25", "M6 E2E"), ("P-27", "M7 UX"), ("P-28", "M7 UX")]

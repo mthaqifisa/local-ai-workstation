@@ -43,7 +43,7 @@ DECISIONS = {"go": "Go", "nogo": "No go", "changes": "Needs changes", "allgood":
 LOG_LIMIT = 300
 
 TICKET = re.compile(r"^(\s*)- \[([ xX])\]\s*([A-Z][A-Z0-9]*-\d+(?:\.\d+)?)\b[:.]?\s*(.*)$")
-MILESTONE = re.compile(r"^#{3,}\s+(.+?)\s*$")
+MILESTONE = re.compile(r"^ {0,3}#{3,}\s+(.+?)\s*$")
 STAMP = re.compile(r"(\d{4}-\d\d-\d\d)(?:[ T](\d\d:\d\d))?")
 
 
