@@ -135,8 +135,10 @@ def plan_complete(project: Path, version: int) -> bool:
     return section is not None and "- [x]" in section.lower() and "- [ ]" not in section
 
 
-MILESTONE_HEAD = re.compile(r"^#{3,}\s+(.+?)\s*$")
-OPEN_TICKET = re.compile(r"^- \[ \]\s*(.+?)\s*$")  # top level only: indented checkboxes are a ticket's details
+# Markdown allows a heading and a top-level list item to start with a space (seen 2026-10-27: an agent indented a
+# whole new milestone by one space, which hid its tickets); a ticket's details are indented two or more.
+MILESTONE_HEAD = re.compile(r"^ {0,3}#{3,}\s+(.+?)\s*$")
+OPEN_TICKET = re.compile(r"^ ?- \[ \]\s*(.+?)\s*$")
 
 
 def uncommitted(project: Path) -> list[str]:
