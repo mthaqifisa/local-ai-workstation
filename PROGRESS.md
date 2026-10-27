@@ -269,3 +269,4 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - 2026-10-27: OpenCode auto-continued P-22.4's session into P-22.5 (no LAW gate between). Fix 9bd7dba: LAW ends a session once its ticket is ticked and committed.
 - 2026-10-27: Trial (owner OK): coder rule 'draft in the file, not in your head' (19ac529). Baseline first save 53-78 min, 2-4 nudges, 106-149 min per ticket; rollback if worse or broken drafts. Metrics script ~/LAW/cache/tmp/ticket-metrics.py.
 - 2026-10-27: Fix 4e0e64a: an agent session keeps one deadline across nudge resumes (each resume had restarted the cap).
+- 2026-10-27: Rules for simple code and files under ~400 lines (coder, build spec, review rubric) 87a375c; Pantry split ticket P-22.8 requested via Tony.
