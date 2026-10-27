@@ -587,6 +587,11 @@ async def test_a_stalled_writer_is_told_to_save_sections_not_to_build(setup, san
     ("▶ running curl -fsSL https://raw.githubusercontent.com/apache/tomcat/10.1.55/java/org/apache/tomcat/util/net/S", True),
     ('▶ running curl -fsSL "https://api.github.com/repos/apache/tomcat/git/refs/tags?per_page=100"', True),
     ("▶ running curl -fsS https://world.openfoodfacts.org/api/v2/product/3017620422003.json", False),
+    ("▶ running node -e \" ; const bwipjs = require('bwip-js'); ; const ZX = require('~/SourceCode/pantry/ui/node_"
+     "modules/@zxing/library'); ; const { MultiFo", True),
+    ("▶ running python3 -c \"import json; print(json.load(open('node_modules/x/package.json')))\"", True),
+    ("▶ running node -e \"console.log(new Date(2026, 10, 2).toLocaleDateString('en-US'))\"", False),
+    ("▶ running npm --prefix e2e test 2>&1 | tail -30", False),
 ])
 def test_library_digging_is_recognised(command, dig):
     from law.handlers.tasks import is_library_dig
