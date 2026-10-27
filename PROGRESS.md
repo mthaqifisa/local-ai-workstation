@@ -274,3 +274,4 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - 2026-10-27: Pantry P-22.6 (92b64ae): ticket-done stop, LAW gate and a fresh story session with the project map all worked unattended (9bd7dba, 4e0e64a, 254c451).
 - 2026-10-27: Pantry milestone M5 (frontend PWA) complete, P-23 02582fd; M6 started.
 - 2026-10-27: Plan reader tolerates one-space-indented milestones/tickets (b839b0c); Pantry's new M7 was indented and would have been skipped.
+- 2026-10-27: Library-dig guard counts node -e / python -c / require( on node_modules (80d7dcf); P-24.2 was repeating P-24.1's decoder rabbit hole.
