@@ -61,7 +61,8 @@ async def run_cmd(ctx: Context, cmd: list[str], *, cwd: Path | None = None, env:
                   describe: Callable[[str], str | None] | None = None,
                   stall_s: float | None = None, is_work: Callable[[str], bool] | None = None,
                   alive: Callable[[], Awaitable[bool]] | None = None,
-                  steer: Callable[[str], str | None] | None = None) -> str:
+                  steer: Callable[[str], str | None] | None = None,
+                  changed_since: Callable[[float], bool] | None = None) -> str:
     """Run a subprocess and kill it if the job is cancelled. Progress is either every Nth output line or, with
     `describe`, a readable summary of each line it recognises (e.g. an agent's tool calls). With `stall_s`, a
     command that emits no line accepted by `is_work` for that long is stopped and `Stalled` is raised, unless
@@ -107,12 +108,17 @@ async def run_cmd(ctx: Context, cmd: list[str], *, cwd: Path | None = None, env:
             proc.kill()
 
     async def watch_stall() -> None:
-        nonlocal stalled
+        nonlocal stalled, last_work
         assert stall_s is not None
         reply_from: float | None = None  # the last action before the reply we let finish
         while True:
             await asyncio.sleep(min(stall_s / 4, 30.0))
             now = time.monotonic()
+            # a file changed on disk by a shell command is work too (the agent's own edit events are not the
+            # only way it saves: seen 2026-10-28, 25 min of real edits through python scripts struck as a stall)
+            if now - last_work >= stall_s and changed_since is not None and \
+                    changed_since(time.time() - (now - last_work)):
+                last_work = now
             if now - last_work < stall_s:
                 reply_from = None
                 continue
