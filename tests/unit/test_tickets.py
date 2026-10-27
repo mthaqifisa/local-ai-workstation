@@ -303,3 +303,15 @@ async def test_a_nudged_session_keeps_one_deadline(tmp_path: Path, monkeypatch: 
     monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
     await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
     assert len(timeouts) == 2 and timeouts[1] == timeouts[0] - 1800  # the resume gets what is left, not a fresh cap
+
+
+def test_the_rules_ask_for_simple_code_and_small_files() -> None:
+    """Owner, 2026-10-27: optimized, simple code, no simple task written in a complex way. Pantry's inventory screen
+    had grown to a 624-line component and a 1,008-line test file that every ticket had to re-read."""
+    from law.handlers.project import DEV_SPEC
+    from law.handlers.tasks import CODE_RUBRIC
+    from law.roles import load
+
+    coder = load(REPO / "settings" / "roles.yaml").get("coder").prompt
+    assert "simplest code" in coder and "400 lines" in coder
+    assert "Split <file>" in DEV_SPEC and "over-engineering" in CODE_RUBRIC and "400 lines" in CODE_RUBRIC

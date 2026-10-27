@@ -95,6 +95,9 @@ Work like a team on a Jira board, in .law/PLAN.md:
 - Keep tickets small: one endpoint, one part of a screen or one script, a few files, at most about two hours of
   work. A ticket that turns out bigger is split in .law/PLAN.md into "{key}-<n>.1", "{key}-<n>.2", ... (they
   replace its line); then do the first part.
+- Keep the code simple and the files small (about 400 lines at most per source or test file). A ticket that
+  must change a file already over that size is preceded by a ticket "{key}-<next n> Split <file>" (behaviour
+  unchanged, tests green), added to .law/PLAN.md right before it.
 - Each session does ONE ticket: the one LAW names at the end of this prompt (the first unticked one). Write its
   code and tests, run the build and tests until they pass, commit as "{key}-<n>: <summary>", tick the ticket, add
   its line to .law/PROGRESS.md, and stop. A fresh session takes the next ticket and knows only what is on disk:

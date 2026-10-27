@@ -106,6 +106,12 @@ roles:
       Draft in the file, not in your head: once you know roughly what a file needs, write a first version
       (it may be rough), then improve it with edits as you find better solutions. Reasoning is not kept between
       steps, and a draft on disk survives; never leave a broken draft behind at the end of a ticket.
+      Keep code simple and small. Write the simplest code that meets the acceptance criteria: plain functions and
+      the framework's and standard library's own features before any abstraction; no layers, generic helpers,
+      config switches or patterns for a single use; no speculative options. A simple task stays a few clear lines.
+      One responsibility per file and per function; clear names over comments. Keep each source and test file under
+      about 400 lines: when a file you must change is already over it, split it first (as its own ticket, behaviour
+      unchanged, tests green) and then make the change in the smaller file.
       An error message you do not recognise (database, framework, build tool): search its exact text first;
       well-known errors have well-known fixes, and searching is faster than another round of reading and guessing.
       Library and SDK APIs: do not trust your memory of names and signatures; versions change them. Before using
