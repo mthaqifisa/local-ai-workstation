@@ -80,7 +80,8 @@ async def test_each_ticket_gets_a_fresh_session_and_the_stage_ends_with_its_mile
     monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
     done = await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
     assert done.result["dir"] == str(project)
-    assert [p[-1].rsplit("ticket ", 1)[1].split(" (", 1)[0] for p in prompts] == ["P-2 products", "P-3 batches"]
+    assert [p[-1].split("This session: ticket ", 1)[1].split(" (", 1)[0] for p in prompts] == [
+        "P-2 products", "P-3 batches"]
     assert all("--session" not in p for p in prompts)  # fresh each time: the finished session is not resumed
     assert checks == 2 and "- [ ] P-4" in plan.read_text()  # M2 is the next stage's
     assert not (project / ".law" / "session.json").exists()
@@ -315,3 +316,40 @@ def test_the_rules_ask_for_simple_code_and_small_files() -> None:
     coder = load(REPO / "settings" / "roles.yaml").get("coder").prompt
     assert "simplest code" in coder and "400 lines" in coder
     assert "Split <file>" in DEV_SPEC and "over-engineering" in CODE_RUBRIC and "400 lines" in CODE_RUBRIC
+
+
+def _git_init(project: Path) -> None:
+    import subprocess
+
+    subprocess.run(["git", "init", "-q"], cwd=project, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=project, check=True)
+
+
+async def test_a_ticket_session_gets_the_project_map_and_works_targeted(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Owner, 2026-10-27: work like one Jira story; scan for what exists, read only what the ticket touches."""
+    from law.handlers import project as _registers_project_specs  # noqa: F401
+    from law.handlers import tasks
+
+    project = tmp_path / "pantry"
+    (project / ".law").mkdir(parents=True)
+    (project / "ui").mkdir()
+    (project / "ui" / "App.tsx").write_text("a\nb\nc\n")
+    (project / "ui" / "package-lock.json").write_text("{}\n")
+    plan = project / ".law" / "PLAN.md"
+    plan.write_text(PLAN.replace("- [ ] P-3 batches\n", ""))
+    (project / ".law" / "check.sh").write_text("exit 0\n")
+    _git_init(project)
+    prompts: list[str] = []
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        if cmd[0] == "opencode":
+            prompts.append(cmd[-1])
+            _tick(plan, "P-2")
+            return json.dumps({"type": "text", "part": {"type": "text", "text": "done"}})
+        return ""
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
+    assert "Scan, don't read" in prompts[0] and "    3 ui/App.tsx" in prompts[0]
+    assert "package-lock.json" not in prompts[0] and ".law/PLAN.md" not in prompts[0].split("Project map")[1]
