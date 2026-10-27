@@ -152,6 +152,9 @@ def test_role_configs_carry_the_roles_reasoning_effort(ctx: Ctx):
         "reasoningEffort": "low", "top_p": 0.95, "top_k": 20, "min_p": 0.0, "presence_penalty": 0.0}
     assert coder["agent"]["coder"]["temperature"] == 1.0  # the model card's, not the role's 0.3
     assert coder["provider"]["law"]["models"][model]["temperature"] is True  # else OpenCode sends none
+    assert coder["provider"]["law"]["models"][model]["modalities"]["input"] == ["text", "image"]  # Qwen3.8 sees
+    reviewer = json.loads((ctx.paths.config / "opencode-reviewer.json").read_text())
+    assert "modalities" not in reviewer["provider"]["law"]["models"]["gemma-4-31b-8bit"]  # no vision in the registry
     architect = json.loads((ctx.paths.config / "opencode-architect.json").read_text())
     effort = roles.load(REPO / "settings" / "roles.yaml").get("architect").reasoning
     assert architect["provider"]["law"]["models"][architect["model"].removeprefix("law/")]["options"][

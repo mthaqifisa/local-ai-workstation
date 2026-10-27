@@ -27,6 +27,7 @@ house_standard: |
     alone creates its CA in `mkcert -CAROOT` without installing it), and list any one-time step the owner must
     do by hand in the handover. Do not retry a command that failed for lack of sudo.
   - Before a finding becomes a headline, try to disprove it with a second source (logs, code, a rerun).
+  - You can see images: open a picture, screenshot or design reference with the read tool and look at it.
   - Measuring LAW itself (model speed, latency, memory): your own requests use the same models and slow them down.
     Run the benchmark in the foreground and wait for it; never start it in the background and keep working.
     Afterwards read `~/LAW/logs/omlx.log` for the run window: every "Chat completion" line in it must be the
