@@ -65,7 +65,9 @@ CODE_RUBRIC = """You are reviewing work for production use at a bank. Score it 1
 3 = works but has a real defect (wrong/misleading docs, dead code, missing edge case, weak tests);
 2 = significant bugs or gaps; 1 = broken or missing.
 Check: does it do what was asked; correctness and edge cases; tests meaningful; docstrings and README match the
-code; no dead code; types and error handling. Run the project's checks if you can read how.
+code; no dead code; types and error handling; simplicity: no over-engineering (layers, generic helpers, patterns
+or options with one use), simple tasks written simply, and no source or test file over about 400 lines (each is an
+issue with a concrete split or simplification). Run the project's checks if you can read how.
 Reply with JSON only: {"score": <1-5>, "issues": ["<file:line problem and fix>"], "summary": "<one sentence>"}"""
 
 
