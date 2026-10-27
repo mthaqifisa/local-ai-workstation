@@ -275,3 +275,4 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - 2026-10-27: Pantry milestone M5 (frontend PWA) complete, P-23 02582fd; M6 started.
 - 2026-10-27: Plan reader tolerates one-space-indented milestones/tickets (b839b0c); Pantry's new M7 was indented and would have been skipped.
 - 2026-10-27: Library-dig guard counts node -e / python -c / require( on node_modules (80d7dcf); P-24.2 was repeating P-24.1's decoder rabbit hole.
+- 2026-10-28: Pantry milestone M6 complete (P-24.1-P-24.4 e2e, P-25 evidence 07cc012); M7 started with P-35.
