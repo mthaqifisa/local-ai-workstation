@@ -272,3 +272,4 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - 2026-10-27: Rules for simple code and files under ~400 lines (coder, build spec, review rubric) 87a375c; Pantry split ticket P-22.8 requested via Tony.
 - 2026-10-27: Ticket sessions get a project map and 'scan, don't read' story-style instructions (254c451); planned worker restart 10:17 to load it (attempt stays 2).
 - 2026-10-27: Pantry P-22.6 (92b64ae): ticket-done stop, LAW gate and a fresh story session with the project map all worked unattended (9bd7dba, 4e0e64a, 254c451).
+- 2026-10-27: Pantry milestone M5 (frontend PWA) complete, P-23 02582fd; M6 started.
