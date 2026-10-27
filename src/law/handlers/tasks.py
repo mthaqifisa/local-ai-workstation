@@ -353,7 +353,10 @@ def is_library_dig(command: str) -> bool:
     if re.search(r"\bfind\b[^|;&]*-i?name\s+\S*\.ja(?:r\b|\S?$)", c) or "localrepository" in c:
         return True
     # Reading installed packages or the SDK to learn an API (cleanup such as `rm -rf node_modules` is not reading).
-    reads = re.search(r"(?:^|[\s;&|(])(?:find|grep|rg|cat|head|tail|less|sed|awk|ls)\s", c)
+    # (an inline script loading a package's internals counts too: seen 2026-10-27, an hour of `node -e
+    # "require('.../node_modules/@zxing/library')"` probing a decoder in two Pantry tickets)
+    reads = re.search(r"(?:^|[\s;&|(])(?:find|grep|rg|cat|head|tail|less|sed|awk|ls)\s|\bnode\s+-e\b|"
+                      r"\bpython3?\s+-c\b|\brequire\(", c)
     internals = re.search(r"node_modules/|/pkg/mod/|gomodcache|\.swiftinterface|\.platform/developer/sdks/|"
                           r"\.build/checkouts/", c)
     if reads and internals and not re.search(r"node_modules/\.bin/", c):
