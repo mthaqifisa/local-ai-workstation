@@ -174,6 +174,36 @@ CHECK_TIMEOUT_S = 30 * 60
 CHECK_TAIL = 3000
 TICKET_SESSION = ("This session: ticket {ticket} (milestone {milestone}). Do only this ticket: code and tests, the "
                   "build and tests passing, commit, tick it in .law/PLAN.md, its line in .law/PROGRESS.md, then stop.")
+# A ticket is a story-sized change: the session scans the project for what exists (no duplicates), then reads only
+# what the ticket touches. Seen 2026-10-27: every Pantry session spent 25-75 min re-reading the codebase first.
+TARGETED = ("Work like a developer picking up one story: do not read the whole codebase. The project map below lists "
+            "every file with its size. Scan, don't read: use the map and `rg <name>` to check whether what this "
+            "ticket needs already exists (reuse it, never build it twice); then open only the files this ticket "
+            "changes and their tests, and treat the rest as new work.\n\nProject map (lines, file):\n{map}")
+MAP_LIMIT = 200
+SOURCE_FILE = re.compile(r"\.(?:java|kt|kts|ts|tsx|js|jsx|mjs|py|go|swift|rs|sql|css|scss|html|vue|svelte|sh|ya?ml|"
+                         r"json|xml|toml|md)$")
+
+
+def project_map(project: Path) -> str:
+    """Tracked source, test and config files with their line counts (no lock files, assets or LAW's memory)."""
+    import subprocess
+
+    out = subprocess.run(["git", "ls-files"], cwd=project, capture_output=True, text=True, timeout=30).stdout
+    files = [f for f in out.splitlines() if SOURCE_FILE.search(f) and not f.startswith((f"{FOLDER}/", "docs/"))
+             and not f.endswith(("package-lock.json", "pnpm-lock.yaml", "yarn.lock"))]
+    rows = []
+    for name in files[:MAP_LIMIT]:
+        try:
+            lines = (project / name).read_text(errors="replace").count("\n")
+        except OSError:
+            continue
+        rows.append(f"{lines:>5} {name}")
+    if len(files) > MAP_LIMIT:
+        rows.append(f"  ... {len(files) - MAP_LIMIT} more (git ls-files)")
+    return "\n".join(rows) or "(no files yet)"
+
+
 FIRST_TICKET = ("This session: .law/PLAN.md has no build section for this version yet. Write it as described "
                 "above, then do its first ticket the same way (code and tests, passing, commit, tick, progress line) "
                 "and stop.")
@@ -719,6 +749,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 break  # this milestone is done; the next stage takes the next one
             task = TICKET_SESSION.format(ticket=ticket[1], milestone=ticket[0] or "-") if ticket else \
                 ALL_TICKED if build_section(folder, version) is not None else FIRST_TICKET
+            if ticket:
+                task += "\n\n" + TARGETED.format(map=project_map(folder))
             prompt = f"{_scoped(p, memory)}\n\n{GATE_FAILED.format(problem=problem) if problem else ''}{task}"
             def ticket_done(current: tuple[str, str] | None = ticket) -> bool:
                 return current is not None and next_ticket(folder, version) != current and not uncommitted(folder)
