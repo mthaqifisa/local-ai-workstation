@@ -149,6 +149,25 @@ def uncommitted(project: Path) -> list[str]:
     return [ln[3:] for ln in out.stdout.splitlines() if ln[3:] and not ln[3:].startswith(f"{FOLDER}/")]
 
 
+def changed_since(project: Path, since: float) -> bool:
+    """A file the agent works on (tracked or new, LAW's `.law/` included) was modified after `since` (epoch)."""
+    import subprocess
+
+    try:
+        out = subprocess.run(["git", "status", "--porcelain"], cwd=project, capture_output=True, text=True,
+                             timeout=30).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    for line in out.splitlines():
+        path = project / line[3:].strip().strip('"')
+        try:
+            if path.is_file() and path.stat().st_mtime > since:
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def next_ticket(project: Path, version: int) -> tuple[str, str] | None:
     """The first unticked ticket of this version's build: (its milestone heading, the ticket line), or None."""
     milestone = ""
@@ -557,6 +576,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                                     timeout_s=max(1.0, deadline - time.monotonic()),
                                     stall_s=stall_min * 60 if writes and stall_min > 0 else None,
                                     is_work=is_file_change, alive=model_generating,
+                                    changed_since=lambda since: changed_since(workdir, since),
                                     steer=steer)
                 answer_text = parse_opencode_events(out)
                 if memory is not None and writes and memory.ensure_progress(started, role, answer_text, edits):

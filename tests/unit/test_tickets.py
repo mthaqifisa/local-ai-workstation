@@ -366,3 +366,19 @@ def test_a_slightly_indented_milestone_is_still_read(tmp_path: Path) -> None:
     assert next_ticket(tmp_path, 1) == ("M7 UX", "P-27 layout fix")
     items = board.plan_tickets(plan.split("## Build version 1", 1)[1])
     assert [(t["id"], t["milestone"]) for t in items] == [("P-25", "M6 E2E"), ("P-27", "M7 UX"), ("P-28", "M7 UX")]
+
+
+def test_a_file_changed_by_a_shell_command_counts_as_work(tmp_path: Path) -> None:
+    """Seen 2026-10-28: 25 min of real edits through python scripts were struck as a stall."""
+    import os
+    import time
+
+    from law.handlers.tasks import changed_since
+
+    (tmp_path / "spec.md").write_text("a\n")
+    _git_init(tmp_path)
+    (tmp_path / "spec.md").write_text("b\n")  # modified, as a script would
+    now = time.time()
+    os.utime(tmp_path / "spec.md", (now, now))
+    assert changed_since(tmp_path, now - 60)
+    assert not changed_since(tmp_path, now + 60)
