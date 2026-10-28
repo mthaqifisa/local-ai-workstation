@@ -565,7 +565,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 return None
             if summary.startswith("▶") and RUNS_CHECKS.search(summary):
                 blind_edits = 0
-            if summary.startswith("📖"):
+            # LAW's plan and notes are reread by design (seen 2026-10-28: the split nudge sent a P-34 session to
+            # PLAN.md, and its third open of the plan cut the split off with "write the change")
+            if summary.startswith("📖") and f"/{FOLDER}/" not in summary:
                 name = summary.split(" ", 2)[-1].strip()
                 opened[name] = opened.get(name, 0) + 1
                 if opened[name] >= REREAD_LIMIT and role == "coder":
