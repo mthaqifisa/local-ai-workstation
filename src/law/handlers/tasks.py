@@ -128,6 +128,33 @@ def build_section(project: Path, version: int) -> str | None:
     return text[head.end():nxt.start() if nxt else len(text)]
 
 
+ID_LINE = re.compile(r"^(\s*- \[)([ xX])(\]\s*)([A-Z][A-Z0-9]*-\d+(?:\.\d+)*)\b")
+
+
+def tick_split_parents(project: Path) -> list[str]:
+    """Tick every ticket whose sub-tickets (P-34.1, P-34.2...) are all ticked; returns the IDs ticked. Seen
+    2026-10-29: P-34.4's and P-34's own lines stayed open after their work was committed, and each cost a session
+    that only rechecked finished work."""
+    plan = project / FOLDER / "PLAN.md"
+    if not plan.exists():
+        return []
+    lines = plan.read_text().splitlines(keepends=True)
+    ticked: list[str] = []
+    while True:
+        state = {m.group(4): m.group(2) != " " for line in lines if (m := ID_LINE.match(line))}
+        done = [tid for tid, closed in state.items() if not closed and
+                (parts := [c for t, c in state.items() if t.startswith(f"{tid}.")]) and all(parts)]
+        if not done:
+            break
+        for n, line in enumerate(lines):
+            if (m := ID_LINE.match(line)) and m.group(4) in done:
+                lines[n] = f"{m.group(1)}x{m.group(3)}{line[m.end(3):]}"
+        ticked += done
+    if ticked:
+        plan.write_text("".join(lines))
+    return ticked
+
+
 def plan_complete(project: Path, version: int) -> bool:
     """True when this version's build section exists and every milestone in it is ticked. Other checklists in
     PLAN.md (a proposal's sections, a research plan, another version) do not count."""
@@ -855,6 +882,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             if used >= STAGE_BUDGET_S or left < MIN_SESSION_S:
                 await ctx.progress("⏱ this stage's time is used: the next stage continues the milestone")
                 break
+            for tid in tick_split_parents(folder):
+                await ctx.progress(f"☑️ {tid}: all its sub-tickets are ticked, so LAW ticked it too")
             ticket = next_ticket(folder, version)
             if ticket is None and build_section(folder, version) is not None and not problem:
                 break

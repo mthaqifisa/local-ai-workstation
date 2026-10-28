@@ -630,3 +630,19 @@ async def test_a_stalled_session_with_passing_uncommitted_work_is_told_to_commit
     monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
     await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
     assert "check.sh: it passes" in prompts[1] and "e2e/useSome.spec.ts" in prompts[1]
+
+
+def test_a_parent_is_ticked_once_all_its_sub_tickets_are(tmp_path: Path) -> None:
+    """Seen 2026-10-29: P-34's own line stayed open after P-34.1-.6 were committed and cost a session."""
+    from law.handlers.tasks import tick_split_parents
+
+    (tmp_path / ".law").mkdir()
+    plan = tmp_path / ".law" / "PLAN.md"
+    plan.write_text("## Build version 1\n### M7\n - [ ] P-34 usage UI\n   details\n  - [x] P-34.1 rows\n"
+                    "  - [x] P-34.2 history\n - [ ] P-37 lookup\n  - [x] P-37.1 chain\n  - [ ] P-37.2 more\n"
+                    "- [ ] P-27 layout\n")
+    assert tick_split_parents(tmp_path) == ["P-34"]
+    text = plan.read_text()
+    assert " - [x] P-34 usage UI\n   details\n" in text and " - [ ] P-37 lookup" in text and "- [ ] P-27 layout" in text
+    assert next_ticket(tmp_path, 1) == ("M7", "P-37.2 more")
+    assert tick_split_parents(tmp_path) == []
