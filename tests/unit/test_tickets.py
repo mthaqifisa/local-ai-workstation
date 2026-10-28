@@ -596,3 +596,37 @@ def test_shell_file_writes_are_recognised() -> None:
     for fine in ["▶ running git commit -F- <<'EOF'", "▶ running cat .law/check.sh", "▶ running mvn -q verify > /dev/null",
                  "▶ running npm test 2>&1 | tail -5", "▶ running sed -n '30p' ui/src/views/UseSome.test.tsx"]:
         assert not SHELL_WRITE.search(fine), fine
+
+
+async def test_a_stalled_session_with_passing_uncommitted_work_is_told_to_commit(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Seen 2026-10-29: P-34.6's test and gate passed, then 35 min of rereading the plan without a commit."""
+    from law.handlers import project as _registers_project_specs  # noqa: F401
+    from law.handlers import tasks
+    from law.handlers.base import Stalled
+
+    project = tmp_path / "pantry"
+    (project / ".law").mkdir(parents=True)
+    plan = project / ".law" / "PLAN.md"
+    plan.write_text(PLAN.replace("- [ ] P-3 batches\n", ""))
+    (project / ".law" / "check.sh").write_text("exit 0\n")
+    left = ["e2e/useSome.spec.ts"]
+    monkeypatch.setattr(tasks, "uncommitted", lambda folder: list(left))
+    monkeypatch.setattr(tasks, "changed_since", lambda folder, since, **kw: False)
+    prompts: list[str] = []
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        if cmd[0] == "git":
+            return "".join(f"?? {f}\n" for f in left)
+        if cmd[0] != "opencode":
+            return ""  # the gate passes
+        prompts.append(cmd[-1])
+        if len(prompts) == 1:
+            raise Stalled('{"type": "text", "sessionID": "ses_c", "part": {"type": "text", "text": "x"}}', 1500)
+        left.clear()
+        _tick(plan, "P-2")
+        return json.dumps({"type": "text", "part": {"type": "text", "text": "done"}})
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
+    assert "check.sh: it passes" in prompts[1] and "e2e/useSome.spec.ts" in prompts[1]

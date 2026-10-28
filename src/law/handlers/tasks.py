@@ -309,6 +309,12 @@ SPLIT_NUDGE = ("Twice now you have saved nothing for {minutes} minutes: this tic
                "Split it now in .law/PLAN.md into sub-tickets <ID>.1, <ID>.2, ... replacing its line, each one layer "
                "or one file (e.g. migration; entity and repository; service logic and its tests; API and its tests), "
                "then write the first sub-ticket at once, run the checks, commit it and tick it.")
+# A ticket session that stalls with its work done but uncommitted (seen 2026-10-28/29: the P-35 spec was complete but
+# kept being polished; P-34.6's test and gate passed, then 35 min of rereading the plan): LAW runs the gate itself.
+COMMIT_NUDGE = ("LAW ran .law/check.sh: it passes, and these files are not committed: {files}. Your ticket's work "
+                "looks done. Tick the ticket (and its parent once all its parts are ticked) in .law/PLAN.md, add its "
+                ".law/PROGRESS.md line, commit, and stop. If something in the ticket is still missing, do that first.")
+UNCOMMITTED_HEAD = "Uncommitted changes were left behind: "  # the gate passed; only the commit is missing
 # Writers, researchers and designers produce documents: the nudge is to save work, a section at a time.
 NUDGE_DOCS = ("You have not saved anything for {minutes} minutes. Save your work now: write the next section of the "
               "document to its file (at most about 1,500 words per write, appending section by section), tick it in "
@@ -695,8 +701,12 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 what = "save the next section" if role in DOC_ROLES else "build and fix"
                 if finished is not None and role not in DOC_ROLES and strikes >= 2:
                     nudge, what = SPLIT_NUDGE, "split the ticket into smaller steps"
+                message = nudge.format(minutes=f"{stall_min:.0f}")
+                left = uncommitted(workdir) if finished is not None and role not in DOC_ROLES else []
+                if left and (await _gate_problem(ctx, workdir)).startswith(UNCOMMITTED_HEAD):
+                    message, what = COMMIT_NUDGE.format(files=", ".join(left[:10])), "tick and commit"
                 await ctx.progress(f"⚠️ nothing saved for {stall_min:.0f} min: nudging the agent to {what}")
-                cmd = [*base, "--session", sid, nudge.format(minutes=f"{stall_min:.0f}")]
+                cmd = [*base, "--session", sid, message]
 
     def _scoped(p: dict[str, Any], memory: ProjectMemory | None = None, writes: bool = True) -> str:
         """The agent's prompt: the brief (or the raw request), the folder to work in, and how to keep `.law/`."""
@@ -826,7 +836,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         status = await run_cmd(ctx, ["git", "status", "--porcelain"], cwd=folder, timeout_s=60)
         left = [ln[3:] for ln in status.splitlines() if ln[3:] and not ln[3:].startswith(f"{FOLDER}/")]
         if left:
-            return "Uncommitted changes were left behind: " + ", ".join(left[:20]) + \
+            return UNCOMMITTED_HEAD + ", ".join(left[:20]) + \
                 ". Commit them with the ticket they belong to, or remove them."
         await ctx.progress(f"✅ {CHECK_SCRIPT} passed and the work is committed")
         return ""
