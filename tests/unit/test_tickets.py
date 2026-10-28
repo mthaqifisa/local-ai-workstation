@@ -408,7 +408,8 @@ async def test_reading_the_same_file_again_and_again_is_nudged(tmp_path: Path, m
         calls += 1
         steer = kw["steer"]
         if calls == 1:
-            reads = ["📖 reading ~/pantry/api/Batch.java", "📖 reading ~/pantry/api/Batch.java",
+            reads = ["📖 reading ~/pantry/.law/PLAN.md"] * 4 + [  # the plan is reread by design
+                     "📖 reading ~/pantry/api/Batch.java", "📖 reading ~/pantry/api/Batch.java",
                      "✏️ editing ~/pantry/api/Batch.java",  # an edit resets that file's count
                      "📖 reading ~/pantry/api/Batch.java", "📖 reading ~/pantry/api/Batch.java",
                      "📖 reading ~/pantry/api/Batch.java"]
@@ -423,8 +424,8 @@ async def test_reading_the_same_file_again_and_again_is_nudged(tmp_path: Path, m
 
     monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
     await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
-    assert seen[:5] == [None, None, None, None, None]
-    assert seen[5] is not None and "Batch.java 3 times" in seen[5]
+    assert seen[:9] == [None] * 9
+    assert seen[9] is not None and "Batch.java 3 times" in seen[9]
 
 
 async def test_a_ticket_stalled_twice_is_told_to_split(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
