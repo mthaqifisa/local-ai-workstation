@@ -1,15 +1,12 @@
 {
   "stage": "C-user-requests",
-  "task": "ADR-0021 build stages grow with open tickets",
+  "task": "ticket IDs at any indent",
   "status": "done",
-  "next_step": "monitor Pantry P-37; the worker loads the new code between steps",
-  "timestamp": "2026-10-28T13:27:54",
+  "next_step": "monitor Pantry P-37.x",
+  "timestamp": "2026-10-28T13:34:34",
   "files_touched": [
-    "src/law/queue/worker.py",
     "src/law/handlers/tasks.py",
-    "tests/unit/test_worker.py",
-    "tests/unit/test_tickets.py",
-    "docs/adr/0021-build-stages-grow-with-open-tickets.md"
+    "tests/unit/test_tickets.py"
   ],
   "commands": [
     "uv run pytest -q tests/unit",
