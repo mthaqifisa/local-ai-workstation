@@ -1,9 +1,9 @@
 {
   "stage": "C-user-requests",
-  "task": "re-read guard skips .law files",
+  "task": "split tickets give way to sub-tickets",
   "status": "done",
-  "next_step": "monitor Pantry P-34",
-  "timestamp": "2026-10-28T15:54:29",
+  "next_step": "monitor Pantry P-34.x",
+  "timestamp": "2026-10-28T16:04:27",
   "files_touched": [
     "src/law/handlers/tasks.py",
     "tests/unit/test_tickets.py"
