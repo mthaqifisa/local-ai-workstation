@@ -750,8 +750,8 @@ async def test_a_coder_that_only_reads_is_told_to_write(setup, sandbox, monkeypa
         cmds.append(cmd)
         if len(cmds) == 1:
             steer = kw["steer"]
-            for _ in range(tasks.READ_LIMIT - 1):
-                assert steer("📖 reading ~/p/src/A.java") is None
+            for i in range(tasks.READ_LIMIT - 1):  # different files: the budget counts all reads
+                assert steer(f"📖 reading ~/p/src/A{i}.java") is None
             assert steer("✏️ writing ~/p/src/B.java") is None  # a save resets the budget
             for _ in range(tasks.READ_LIMIT - 1):
                 assert steer("🔎 searching Batch") is None

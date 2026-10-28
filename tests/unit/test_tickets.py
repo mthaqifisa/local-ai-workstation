@@ -382,3 +382,44 @@ def test_a_file_changed_by_a_shell_command_counts_as_work(tmp_path: Path) -> Non
     os.utime(tmp_path / "spec.md", (now, now))
     assert changed_since(tmp_path, now - 60)
     assert not changed_since(tmp_path, now + 60)
+
+
+async def test_reading_the_same_file_again_and_again_is_nudged(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Seen 2026-10-28: P-33 opened the same five files three times in an hour without writing anything."""
+    from law.handlers import project as _registers_project_specs  # noqa: F401
+    from law.handlers import tasks
+    from law.handlers.base import Steered
+
+    project = tmp_path / "pantry"
+    (project / ".law").mkdir(parents=True)
+    plan = project / ".law" / "PLAN.md"
+    plan.write_text(PLAN.replace("- [ ] P-3 batches\n", ""))
+    (project / ".law" / "check.sh").write_text("exit 0\n")
+    monkeypatch.setattr(tasks, "uncommitted", lambda folder: [])
+    seen: list[str | None] = []
+    calls = 0
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        nonlocal calls
+        if cmd[0] != "opencode":
+            return ""
+        calls += 1
+        steer = kw["steer"]
+        if calls == 1:
+            reads = ["📖 reading ~/pantry/api/Batch.java", "📖 reading ~/pantry/api/Batch.java",
+                     "✏️ editing ~/pantry/api/Batch.java",  # an edit resets that file's count
+                     "📖 reading ~/pantry/api/Batch.java", "📖 reading ~/pantry/api/Batch.java",
+                     "📖 reading ~/pantry/api/Batch.java"]
+            for r in reads:
+                message = steer(r)
+                seen.append(message)
+                if message:
+                    raise Steered('{"type": "text", "sessionID": "ses_9", "part": {"type": "text", "text": "x"}}',
+                                  message)
+        _tick(plan, "P-2")
+        return json.dumps({"type": "text", "part": {"type": "text", "text": "done"}})
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
+    assert seen[:5] == [None, None, None, None, None]
+    assert seen[5] is not None and "Batch.java 3 times" in seen[5]

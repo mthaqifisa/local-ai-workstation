@@ -311,6 +311,11 @@ def reads_law_internals(summary: str, repo: Path, home: Path) -> bool:
 READ_LIMIT = 20  # files read or searched since the last save (seen: every ticket opened with 25 min of reading)
 READ_NUDGE = ("You have read enough to start. Write the change for the current ticket now (code and its test), run "
               "the checks, and read more only where the output points.")
+# The same file opened again and again (seen 2026-10-28: P-33 read the same five files three times in an hour, each
+# time after its context was compacted). A file edited since counts afresh: reading it back to check is fine.
+REREAD_LIMIT = 3
+REREAD_NUDGE = ("You have opened {name} {times} times this session. You know what it says: write the change now, "
+                "in the smallest next step (one file), run the checks, and read again only where the output points.")
 BLIND_EDIT_LIMIT = 15  # saved files in a row without a build or test run (seen: 1.5 h of test edits, none run)
 RUNS_CHECKS = re.compile(r"\b(?:npm (?:run )?(?:test|build)|npx (?:vitest|tsc|playwright)|vitest|tsc\b|mvn\b|gradle|"
                          r"pytest|go (?:test|build|vet)|cargo (?:test|build)|xcodebuild|swift (?:test|build)|monkeyc|"
@@ -521,6 +526,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
 
         digs = lookups = blind_edits = reads = 0
         told_law = False
+        opened: dict[str, int] = {}  # file -> times read since it was last edited
 
         def steer(summary: str) -> str | None:
             nonlocal digs, lookups, blind_edits, reads, told_law
@@ -540,6 +546,12 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 return None
             if summary.startswith("▶") and RUNS_CHECKS.search(summary):
                 blind_edits = 0
+            if summary.startswith("📖"):
+                name = summary.split(" ", 2)[-1].strip()
+                opened[name] = opened.get(name, 0) + 1
+                if opened[name] >= REREAD_LIMIT and role == "coder":
+                    times, opened[name] = opened[name], 0
+                    return REREAD_NUDGE.format(name=name.rsplit("/", 1)[-1], times=times)
             if summary.startswith(("📖", "🔎")):
                 reads += 1
                 if reads >= READ_LIMIT:
@@ -547,6 +559,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                     return READ_NUDGE
             if summary.startswith("✏️"):
                 reads = 0
+                opened.pop(summary.split(" ", 2)[-1].strip(), None)
                 blind_edits += 1
                 if blind_edits >= BLIND_EDIT_LIMIT:
                     blind_edits = 0
@@ -607,6 +620,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                        RUN_CHECKS_NUDGE: "many edits without a build or test run: telling the agent to run them",
                        READ_NUDGE: "read enough: telling the agent to write the change"}.get(
                     exc.message, "reading library internals: redirecting the agent to compile and test instead")
+                if exc.message.startswith("You have opened"):
+                    why = "reading the same file again: telling the agent to write the change"
                 await ctx.progress(f"⚠️ {why}")
                 cmd = [*base, "--session", sid, exc.message]
                 continue
