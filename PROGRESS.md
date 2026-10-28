@@ -279,3 +279,4 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - 2026-10-28: Agents can see images (82ad9f0): vision models declare image input to OpenCode; Pantry's P-35 could not see the design reference.
 - 2026-10-28: Stall guard counts on-disk file changes as work (git status mtimes), after a false strike on P-35.
 - 2026-10-28: Recurring note patterns turned into rules + a re-read guard (owner request).
+- 2026-10-28: Split nudge on the second consecutive no-save stall in a ticket session (P-22/P-33 pattern).
