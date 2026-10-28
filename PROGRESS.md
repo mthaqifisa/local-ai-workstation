@@ -291,3 +291,4 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - 2026-10-28 22:43 Lead-note replay done: detection 8/9, notes 4/9 as good as the build session's; not ready to send unsupervised (report ~/LAW/cache/tmp/stuck-eval/REPORT.md).
 - 2026-10-29 00:03 Pantry P-34.5 committed (7dfc714) after the owner's note.
 - 2026-10-29 02:43 Pantry P-37 (multi-source barcode lookup) complete: P-37.1-.5 committed.
+- 2026-10-29 03:04 Guard: shell file writes (cat >>/heredoc, sed -i, tee) get an edit-tool reminder.
