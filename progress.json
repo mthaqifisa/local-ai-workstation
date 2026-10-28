@@ -1,9 +1,9 @@
 {
   "stage": "C-user-requests",
   "task": "stuck detector + lead-note replay eval",
-  "status": "in_progress",
-  "next_step": "review the 12 replay results against my notes; report to owner",
-  "timestamp": "2026-10-28T20:48:21",
+  "status": "done",
+  "next_step": "owner decision on the lead step (draft-for-approval vs richer inputs) and the ticket-size check",
+  "timestamp": "2026-10-28T22:43:26",
   "files_touched": [
     "src/law/handlers/tasks.py",
     "tests/unit/test_tickets.py"
