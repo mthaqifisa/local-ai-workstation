@@ -286,3 +286,4 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - 2026-10-28 15:03 Pantry P-37.1 done (lookup chain, 3 commits, gate passed); stage 10 moved to P-34.
 - 2026-10-28 15:54 Re-read guard skips .law files (it cut off P-34's split).
 - 2026-10-28 16:04 next_ticket prefers a split ticket's open sub-tickets over the parent line.
+- 2026-10-28 20:48 Stuck detector: 2nd probe file in a session gets a time-box nudge (70edb62); lead-note replay eval running (~/LAW/cache/tmp/stuck-eval).
