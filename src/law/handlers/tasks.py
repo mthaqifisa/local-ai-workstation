@@ -140,6 +140,7 @@ def plan_complete(project: Path, version: int) -> bool:
 MILESTONE_HEAD = re.compile(r"^ {0,3}#{3,}\s+(.+?)\s*$")
 OPEN_TICKET = re.compile(r"^ ?- \[ \]\s*(.+?)\s*$")
 # A line with a ticket ID is a ticket at any indent (seen 2026-10-28: split tickets P-37.2-.5 indented two spaces).
+TICKET_ID = re.compile(r"[A-Z][A-Z0-9]*-\d+(?:\.\d+)*")
 OPEN_ID_TICKET = re.compile(r"^\s*- \[ \]\s*([A-Z][A-Z0-9]*-\d+(?:\.\d+)?\b.*?)\s*$")
 
 
@@ -175,13 +176,18 @@ def changed_since(project: Path, since: float, *, code_only: bool = False) -> bo
 
 
 def next_ticket(project: Path, version: int) -> tuple[str, str] | None:
-    """The first unticked ticket of this version's build: (its milestone heading, the ticket line), or None."""
-    milestone = ""
+    """The first unticked ticket of this version's build: (its milestone heading, the ticket line), or None. A ticket
+    split into unticked sub-tickets (P-34 into P-34.1, P-34.2...) gives way to them, so each gets its own session."""
+    milestone, found = "", []
     for line in (build_section(project, version) or "").splitlines():
         if head := MILESTONE_HEAD.match(line):
             milestone = head.group(1)
         elif ticket := OPEN_TICKET.match(line) or OPEN_ID_TICKET.match(line):
-            return milestone, ticket.group(1)
+            found.append((milestone, ticket.group(1)))
+    ids = [TICKET_ID.match(text) for _, text in found]
+    for (milestone, text), tid in zip(found, ids, strict=True):
+        if tid is None or not any(o is not None and o.group(0).startswith(f"{tid.group(0)}.") for o in ids):
+            return milestone, text
     return None
 
 
