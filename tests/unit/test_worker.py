@@ -495,3 +495,51 @@ async def test_a_sharing_job_keeps_the_model_after_the_step_it_joined_ends(store
     assert w.running.heavy is not None and w.running.heavy.id == asked.id and w.running.shared == []
     chat_done.set()
     await w.drain()
+
+
+async def test_pipeline_repeats_a_stage_that_has_work_left(store):
+    runs: list[int] = []
+
+    async def ask(ctx: Context) -> Stages | Done:
+        if ctx.job.parent is None:
+            return Stages([{"kind": "ask", "payload": {"q": "build"}}, {"kind": "judge"}])
+        runs.append(ctx.job.stage)
+        return Done({"answer": "built", "_again": len(runs) < 3})
+
+    w = make_worker(store)
+    w.handlers["ask"] = ask
+    root = await submit(store, "ask")
+    await w.drain()
+    done = await store.require(root.id)
+    assert done.status == Status.DONE and "_again" not in done.result
+    assert runs == [0, 1, 2]
+    assert [s.kind for s in await store.children(root.id)] == ["ask", "ask", "ask", "judge"]
+
+
+async def test_pipeline_does_not_add_a_stage_when_a_repeat_follows(store):
+    async def ask(ctx: Context) -> Stages | Done:
+        if ctx.job.parent is None:
+            return Stages([{"kind": "ask", "payload": {"q": "build"}}] * 2)
+        return Done({"_again": ctx.job.stage == 0})
+
+    w = make_worker(store)
+    w.handlers["ask"] = ask
+    root = await submit(store, "ask")
+    await w.drain()
+    assert len(await store.children(root.id)) == 2
+
+
+async def test_pipeline_repeats_stop_at_the_stage_cap(store, monkeypatch):
+    monkeypatch.setattr("law.queue.worker.MAX_STAGES", 4)
+
+    async def ask(ctx: Context) -> Stages | Done:
+        if ctx.job.parent is None:
+            return Stages([{"kind": "ask", "payload": {"q": "build"}}])
+        return Done({"_again": True})
+
+    w = make_worker(store)
+    w.handlers["ask"] = ask
+    root = await submit(store, "ask")
+    await w.drain()
+    assert (await store.require(root.id)).status == Status.DONE
+    assert len(await store.children(root.id)) == 4
