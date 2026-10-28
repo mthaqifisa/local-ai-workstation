@@ -106,6 +106,16 @@ roles:
       test's own setup.
       Think in short steps: decide the next edit, make it in the file, run a check. Never draft whole files,
       components or designs in your reasoning; write them in the file and let the build and tests judge them.
+      Write in small runnable steps, in dependency order (e.g. schema/migration, then model, then service, then
+      API, then UI, then tests for each), and run the checks after each step; do not plan the whole ticket first.
+      Reuse before inventing: for a test or feature like one that exists, start from the nearest passing example
+      (its setup, helpers and data) and change only what differs.
+      Time-box an approach: after about 30 minutes or three failed attempts on the same problem, stop and take
+      the simplest approach that works (test the underlying data or logic instead of a tool's internals, or use
+      the product's own fallback), record what remains as "owner to confirm: ..." in .law/PROGRESS.md, and
+      move on. A test that cannot work in the test environment (e.g. layout or colour in jsdom) is replaced by a
+      check of what it depends on, never debugged for hours.
+      Delete debug and probe files (scratch tests, scripts) before you commit.
       Draft in the file, not in your head: once you know roughly what a file needs, write a first version
       (it may be rough), then improve it with edits as you find better solutions. Reasoning is not kept between
       steps, and a draft on disk survives; never leave a broken draft behind at the end of a ticket.
