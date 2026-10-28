@@ -535,3 +535,51 @@ def test_a_split_ticket_gives_way_to_its_sub_tickets(tmp_path: Path) -> None:
     _tick(plan, "P-34.1")
     _tick(plan, "P-34.2")
     assert next_ticket(tmp_path, 1) == ("M7 Usage", "P-34 usage UI")  # ticked once its parts are
+
+
+def test_probe_files_are_recognised() -> None:
+    from law.handlers.tasks import PROBE_FILE
+
+    for seen in ["~/p/ui/src/views/scratch-dump.test.tsx", "~/p/ui/src/views/probe-p345.test.tsx",
+                 "~/p/ui/src/scratch.probe.test.tsx", "~/p/api/src/test/java/x/ScratchDebugTests.java",
+                 "~/p/api/src/test/java/x/ScratchLowerByteaProbe.java", "~/p/e2e/debug.spec.ts"]:
+        assert PROBE_FILE.search(seen), seen
+    for real in ["~/p/ui/src/views/UseSome.test.tsx", "~/p/ui/src/lib/debugLog.ts", "~/p/api/src/x/DumpService.java",
+                 "~/p/ui/src/views/InventoryView.tsx"]:
+        assert not PROBE_FILE.search(real), real
+
+
+async def test_a_second_probe_file_gets_a_time_box_without_a_strike(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Seen 2026-10-26 to -28: the stuck episodes all wrote probe files (five in P-22, two in P-34.5)."""
+    from law.handlers import project as _registers_project_specs  # noqa: F401
+    from law.handlers import tasks
+    from law.handlers.base import Steered
+
+    project = tmp_path / "pantry"
+    (project / ".law").mkdir(parents=True)
+    plan = project / ".law" / "PLAN.md"
+    plan.write_text(PLAN.replace("- [ ] P-3 batches\n", ""))
+    (project / ".law" / "check.sh").write_text("exit 0\n")
+    monkeypatch.setattr(tasks, "uncommitted", lambda folder: [])
+    seen: list[str | None] = []
+    prompts: list[str] = []
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        if cmd[0] != "opencode":
+            return ""
+        prompts.append(cmd[-1])
+        if len(prompts) == 1:
+            for line in ["✏️ writing ~/pantry/ui/src/probe-a.test.tsx", "✏️ writing ~/pantry/ui/src/probe-a.test.tsx"]:
+                message = kw["steer"](line)
+                seen.append(message)
+                if message:
+                    raise Steered('{"type": "text", "sessionID": "ses_p", "part": {"type": "text", "text": "x"}}',
+                                  message)
+        _tick(plan, "P-2")
+        return json.dumps({"type": "text", "part": {"type": "text", "text": "done"}})
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
+    assert seen[0] is None and seen[1] == tasks.PROBE_NUDGE
+    assert prompts[1] == tasks.PROBE_NUDGE  # sent into the same session
