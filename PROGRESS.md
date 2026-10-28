@@ -288,3 +288,4 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - 2026-10-28 16:04 next_ticket prefers a split ticket's open sub-tickets over the parent line.
 - 2026-10-28 20:48 Stuck detector: 2nd probe file in a session gets a time-box nudge (70edb62); lead-note replay eval running (~/LAW/cache/tmp/stuck-eval).
 - 2026-10-28 21:14 Planned worker restart (P-34.5 probe loop >1 h) so the probe guard applies.
+- 2026-10-28 22:43 Lead-note replay done: detection 8/9, notes 4/9 as good as the build session's; not ready to send unsupervised (report ~/LAW/cache/tmp/stuck-eval/REPORT.md).
