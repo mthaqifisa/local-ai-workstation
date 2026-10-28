@@ -439,7 +439,7 @@ async def test_a_ticket_stalled_twice_is_told_to_split(tmp_path: Path, monkeypat
     plan.write_text(PLAN.replace("- [ ] P-3 batches\n", ""))
     (project / ".law" / "check.sh").write_text("exit 0\n")
     monkeypatch.setattr(tasks, "uncommitted", lambda folder: [])
-    monkeypatch.setattr(tasks, "changed_since", lambda folder, since: False)
+    monkeypatch.setattr(tasks, "changed_since", lambda folder, since, **kw: False)
     prompts: list[str] = []
 
     async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
@@ -465,3 +465,60 @@ def test_split_tickets_count_at_any_indent(tmp_path: Path) -> None:
     assert next_ticket(tmp_path, 1) == ("M7 Lookup", "P-37.2 sister databases")
     _tick(plan, "P-37.2")
     assert next_ticket(tmp_path, 1) == ("M7 Lookup", "P-34 usage UI")
+
+
+async def test_editing_the_plan_does_not_reset_a_ticket_sessions_stall_count(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Seen 2026-10-28: after a stall nudge a P-37.1 session rewrote its to-do list in PLAN.md and read on, an hour
+    without code; the plan edit counted as progress, so the split nudge never came."""
+    from law.handlers import project as _registers_project_specs  # noqa: F401
+    from law.handlers import tasks
+    from law.handlers.base import Stalled
+
+    project = tmp_path / "pantry"
+    (project / ".law").mkdir(parents=True)
+    plan = project / ".law" / "PLAN.md"
+    plan.write_text(PLAN.replace("- [ ] P-3 batches\n", ""))
+    (project / ".law" / "check.sh").write_text("exit 0\n")
+    monkeypatch.setattr(tasks, "uncommitted", lambda folder: [])
+    monkeypatch.setattr(tasks, "changed_since", lambda folder, since, **kw: False)
+    plan_edit = json.dumps({"type": "tool_use", "sessionID": "ses_s", "part": {
+        "type": "tool", "tool": "edit", "state": {"status": "completed", "input": {"filePath": str(plan)}}}})
+    prompts: list[str] = []
+    seen: list[Any] = []
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        if cmd[0] != "opencode":
+            return ""
+        prompts.append(cmd[-1])
+        seen.append(kw["is_work"])
+        if len(prompts) <= 2:
+            raise Stalled(plan_edit, 1500)
+        _tick(plan, "P-2")
+        return json.dumps({"type": "text", "part": {"type": "text", "text": "done"}})
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
+    assert "too big to start" in prompts[2]
+    assert not seen[0](plan_edit)  # nor does it hold off the stall guard
+    code_edit = plan_edit.replace(str(plan), str(project / "api" / "Lookup.java"))
+    assert seen[0](code_edit)
+
+
+def test_changed_since_can_skip_law_files(tmp_path: Path) -> None:
+    import subprocess
+    import time
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    (tmp_path / ".law").mkdir()
+    before = time.time() - 1
+    (tmp_path / ".law" / "PLAN.md").write_text("plan\n")
+    assert tasks_changed_since(tmp_path, before) and not tasks_changed_since(tmp_path, before, code_only=True)
+    (tmp_path / "Lookup.java").write_text("class Lookup {}\n")
+    assert tasks_changed_since(tmp_path, before, code_only=True)
+
+
+def tasks_changed_since(project: Path, since: float, **kw: Any) -> bool:
+    from law.handlers.tasks import changed_since
+
+    return changed_since(project, since, **kw)
