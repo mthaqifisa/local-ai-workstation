@@ -151,17 +151,21 @@ def uncommitted(project: Path) -> list[str]:
     return [ln[3:] for ln in out.stdout.splitlines() if ln[3:] and not ln[3:].startswith(f"{FOLDER}/")]
 
 
-def changed_since(project: Path, since: float) -> bool:
-    """A file the agent works on (tracked or new, LAW's `.law/` included) was modified after `since` (epoch)."""
+def changed_since(project: Path, since: float, *, code_only: bool = False) -> bool:
+    """A file the agent works on (tracked or new, LAW's `.law/` included unless `code_only`) was modified after
+    `since` (epoch)."""
     import subprocess
 
     try:
-        out = subprocess.run(["git", "status", "--porcelain"], cwd=project, capture_output=True, text=True,
-                             timeout=30).stdout
+        out = subprocess.run(["git", "status", "--porcelain", "--untracked-files=all"], cwd=project,
+                             capture_output=True, text=True, timeout=30).stdout
     except (OSError, subprocess.TimeoutExpired):
         return False
     for line in out.splitlines():
-        path = project / line[3:].strip().strip('"')
+        name = line[3:].strip().strip('"')
+        if code_only and name.startswith(f"{FOLDER}/"):
+            continue
+        path = project / name
         try:
             if path.is_file() and path.stat().st_mtime > since:
                 return True
@@ -414,15 +418,22 @@ LOOKUP_NUDGE = ("You have looked up enough APIs. Write the code for the current 
 DOC_ROLES = {"writer", "researcher", "designer", "analyst", "architect"}
 
 
-def made_progress(output: str) -> bool:
-    """Whether an agent run saved any file before it was stopped."""
-    return any(is_file_change(line) for line in output.splitlines())
+def made_progress(output: str, is_work: Callable[[str], bool] | None = None) -> bool:
+    """Whether an agent run did work (by default: saved any file) before it was stopped."""
+    return any((is_work or is_file_change)(line) for line in output.splitlines())
 
 
 def is_file_change(line: str) -> bool:
     """Progress for the stall guard: a file written, or a page fetched (research agents read before they write)."""
     summary = describe_opencode_line(line)
     return summary is not None and summary.startswith(("✏️", "🌐"))
+
+
+def is_code_change(line: str) -> bool:
+    """Progress for a ticket session's stall guard: a project file written. Editing LAW's plan or notes is not
+    (seen 2026-10-28: a P-37.1 session rewrote its to-do list in PLAN.md after a stall nudge and read on, an hour
+    without code)."""
+    return is_file_change(line) and f"/{FOLDER}/" not in (describe_opencode_line(line) or "")
 
 
 def session_id(output: str) -> str | None:
@@ -590,14 +601,16 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         # budget (one stage runs a whole milestone for hours; seen 2026-10-21: two tickets committed between
         # nudges, then the fourth nudge failed the pipeline).
         strikes = qa_reminders = 0
+        code_only = finished is not None and role not in DOC_ROLES  # a coder's ticket: only code counts as work
+        work = is_code_change if code_only else is_file_change
         while True:
             try:
                 env = {**agent_env(rt, role, ctx.job.payload.get("effort")), **project_env(workdir)}
                 out = await run_cmd(ctx, cmd, cwd=workdir, env=env, describe=describe,
                                     timeout_s=max(1.0, deadline - time.monotonic()),
                                     stall_s=stall_min * 60 if writes and stall_min > 0 else None,
-                                    is_work=is_file_change, alive=model_generating,
-                                    changed_since=lambda since: changed_since(workdir, since),
+                                    is_work=work, alive=model_generating,
+                                    changed_since=lambda since: changed_since(workdir, since, code_only=code_only),
                                     steer=steer)
                 answer_text = parse_opencode_events(out)
                 if memory is not None and writes and memory.ensure_progress(started, role, answer_text, edits):
@@ -621,7 +634,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                     await ctx.progress("📨 passing the owner's note to the agent")
                     cmd = [*base, "--session", sid, exc.message]
                     continue
-                strikes = 1 if made_progress(exc.output) else strikes + 1
+                strikes = 1 if made_progress(exc.output, work) else strikes + 1
                 if sid is None or strikes > STALL_NUDGES:
                     raise Fatal(f"{role} agent kept researching without writing code") from exc
                 why = {LOOKUP_NUDGE: "looked up enough APIs: telling the agent to write the code",
@@ -635,7 +648,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 continue
             except Stalled as exc:
                 sid = session_id(exc.output)
-                strikes = 1 if made_progress(exc.output) else strikes + 1
+                strikes = 1 if made_progress(exc.output, work) else strikes + 1
                 if sid is None or strikes > STALL_NUDGES:
                     raise Fatal(f"{role} agent stalled: {exc}") from exc
                 nudge = NUDGE_DOCS if role in DOC_ROLES else NUDGE
