@@ -1,27 +1,18 @@
 {
   "stage": "C-user-requests",
-  "task": "Model-card sampling for all LLMs (ADR-0020)",
+  "task": "ADR-0021 build stages grow with open tickets",
   "status": "done",
-  "next_step": "Watch Pantry P-22: LAW gate run after the ticket; the next ticket's session uses the card sampling. MTP speed-up (mtp_enabled) to benchmark only when the Mac is idle.",
-  "timestamp": "2026-10-26T20:05+08:00",
+  "next_step": "monitor Pantry P-37; the worker loads the new code between steps",
+  "timestamp": "2026-10-28T13:27:54",
   "files_touched": [
-    "src/law/registry.py",
-    "settings/registry.yaml",
-    "settings/roles.yaml",
-    "src/law/handlers/core.py",
-    "src/law/llm.py",
-    "src/law/install/steps.py",
-    "src/law/static/console.html",
-    "docs/adr/0020-model-card-sampling.md",
-    "docs/RUNBOOK.md",
-    "tests/unit/test_install_engine.py",
-    "tests/unit/test_handlers_core.py",
-    "pyproject.toml"
+    "src/law/queue/worker.py",
+    "src/law/handlers/tasks.py",
+    "tests/unit/test_worker.py",
+    "tests/unit/test_tickets.py",
+    "docs/adr/0021-build-stages-grow-with-open-tickets.md"
   ],
   "commands": [
-    "uv run pytest -q tests/unit (428 passed)",
-    "ruff + mypy clean",
-    "opencode wire capture (temperature, top_p/top_k pass-through)",
-    "./install.sh (ok)"
+    "uv run pytest -q tests/unit",
+    "./install.sh"
   ]
 }
