@@ -454,3 +454,14 @@ async def test_a_ticket_stalled_twice_is_told_to_split(tmp_path: Path, monkeypat
     monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
     await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
     assert "build or tests" in prompts[1] and "too big to start" in prompts[2]
+
+
+def test_split_tickets_count_at_any_indent(tmp_path: Path) -> None:
+    """Seen 2026-10-28: the agent split P-37 and indented P-37.2 to P-37.5 by two spaces; they read as details."""
+    (tmp_path / ".law").mkdir()
+    plan = tmp_path / ".law" / "PLAN.md"
+    plan.write_text("## Build version 1\n### M7 Lookup\n - [x] P-37.1 interface\n  - [ ] P-37.2 sister databases\n"
+                    "    - [ ] wire the chain\n- [ ] P-34 usage UI\n")
+    assert next_ticket(tmp_path, 1) == ("M7 Lookup", "P-37.2 sister databases")
+    _tick(plan, "P-37.2")
+    assert next_ticket(tmp_path, 1) == ("M7 Lookup", "P-34 usage UI")
