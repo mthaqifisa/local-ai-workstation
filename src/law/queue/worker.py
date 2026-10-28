@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
 import logging
 import time
 import traceback
@@ -40,6 +41,7 @@ class Done:
 
 
 JOB_TIMEOUT_S = 6 * 3600  # one run of a job; a handler that loops (a milestone's tickets) keeps within it
+MAX_STAGES = 64  # a pipeline grows by repeated stages ("_again") up to this many, so it cannot loop forever
 
 
 @dataclass
@@ -376,11 +378,17 @@ class Worker:
         root = await self.store.get(stage.parent)
         if root is None or root.status.terminal:
             return
+        result = dict(result)
+        again = result.pop("_again", False)
         carry = {**root.payload.get("_carry", {}), **result}
-        root.payload = {**root.payload, "_carry": carry}
-        await self.store.save(root)
+        stages = list(root.payload["_stages"])
         nxt = stage.stage + 1
-        if nxt < len(root.payload["_stages"]):
+        here = stages[stage.stage]
+        if again and (nxt >= len(stages) or stages[nxt] != here) and len(stages) < MAX_STAGES:
+            stages.insert(nxt, copy.deepcopy(here))  # the stage has work left and no repeat follows: add one
+        root.payload = {**root.payload, "_carry": carry, "_stages": stages}
+        await self.store.save(root)
+        if nxt < len(stages):
             await self._submit_stage(root, nxt, carry)
         else:
             final = {k: v for k, v in carry.items() if not k.startswith("_")}

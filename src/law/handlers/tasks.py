@@ -821,8 +821,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             if start is None:
                 start = next_ticket(folder, version)
             if idle >= IDLE_SESSIONS:
-                break
-        return Done({"answer": text, "dir": str(folder)})
+                return Done({"answer": text, "dir": str(folder)})
+        # Open tickets left: ask the worker for one more build stage if the pipeline has none left (ADR-0021).
+        return Done({"answer": text, "dir": str(folder), "_again": next_ticket(folder, version) is not None})
 
     async def _qa_round(ctx: Context, p: dict[str, Any]) -> dict[str, Any]:
         """Black-box QA of a project: a fresh session of the QA role (another model than the coder) tests the

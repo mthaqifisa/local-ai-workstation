@@ -168,8 +168,9 @@ async def test_sessions_that_change_nothing_end_the_stage(tmp_path: Path, monkey
         return json.dumps({"type": "text", "part": {"type": "text", "text": "nothing"}}) if cmd[0] == "opencode" else ""
 
     monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
-    await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
+    done = await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
     assert sessions == tasks.IDLE_SESSIONS
+    assert "_again" not in done.result  # a stuck stage does not ask for more stages
 
 
 async def test_a_new_build_writes_the_plan_first(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -234,6 +235,7 @@ async def test_a_stage_keeps_within_one_job_run(tmp_path: Path, monkeypatch: pyt
     monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
     done = await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
     assert done.result["dir"] == str(project)  # the stage ends cleanly; the next one continues the ticket
+    assert done.result["_again"] is True  # tickets are open: the worker adds a stage if the pipeline has none left
     assert len(timeouts) == 1 and timeouts[0] <= JOB_TIMEOUT_S - tasks.CHECK_TIMEOUT_S
     assert not (project / ".law" / "session.json").exists()
 
