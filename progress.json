@@ -1,15 +1,16 @@
 {
   "stage": "C-user-requests",
-  "task": "split tickets give way to sub-tickets",
-  "status": "done",
-  "next_step": "monitor Pantry P-34.x",
-  "timestamp": "2026-10-28T16:04:27",
+  "task": "stuck detector + lead-note replay eval",
+  "status": "in_progress",
+  "next_step": "review the 12 replay results against my notes; report to owner",
+  "timestamp": "2026-10-28T20:48:21",
   "files_touched": [
     "src/law/handlers/tasks.py",
     "tests/unit/test_tickets.py"
   ],
   "commands": [
     "uv run pytest -q tests/unit",
-    "./install.sh"
+    "./install.sh",
+    "python3 -I ~/LAW/cache/tmp/stuck-eval/lead.py"
   ]
 }
