@@ -523,3 +523,15 @@ def tasks_changed_since(project: Path, since: float, **kw: Any) -> bool:
     from law.handlers.tasks import changed_since
 
     return changed_since(project, since, **kw)
+
+
+def test_a_split_ticket_gives_way_to_its_sub_tickets(tmp_path: Path) -> None:
+    """Seen 2026-10-28: P-34 was split into P-34.1 to P-34.6 below its own unticked line."""
+    (tmp_path / ".law").mkdir()
+    plan = tmp_path / ".law" / "PLAN.md"
+    plan.write_text("## Build version 1\n### M7 Usage\n - [ ] P-34 usage UI\n   details\n  - [ ] P-34.1 stock rows\n"
+                    "  - [ ] P-34.2 history\n- [ ] P-35 next\n")
+    assert next_ticket(tmp_path, 1) == ("M7 Usage", "P-34.1 stock rows")
+    _tick(plan, "P-34.1")
+    _tick(plan, "P-34.2")
+    assert next_ticket(tmp_path, 1) == ("M7 Usage", "P-34 usage UI")  # ticked once its parts are
