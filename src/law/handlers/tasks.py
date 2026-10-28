@@ -338,6 +338,16 @@ BLIND_EDIT_LIMIT = 15  # saved files in a row without a build or test run (seen:
 RUNS_CHECKS = re.compile(r"\b(?:npm (?:run )?(?:test|build)|npx (?:vitest|tsc|playwright)|vitest|tsc\b|mvn\b|gradle|"
                          r"pytest|go (?:test|build|vet)|cargo (?:test|build)|xcodebuild|swift (?:test|build)|monkeyc|"
                          r"just check|make\b)")
+# Throwaway probe files mark a debugging loop (seen 2026-10-26 to -28: every stuck episode wrote them, e.g. five
+# scratch.probe.test.tsx writes in P-22, ScratchDebugTests in the 3 h P-24.1 barcode hunt, two in P-34.5).
+PROBE_FILE = re.compile(r"(?i)/(?:(?:probe|scratch)[^/]*|[^/]*(?:probe|scratch|debug|dump)[^/]*\.(?:test|spec)\.[jt]sx?"
+                        r"|(?:probe|scratch|debug)\w*tests?\.java)$")
+PROBE_LIMIT = 2  # probe writes in one session before LAW calls time
+PROBE_NUDGE = ("You are writing probe files to debug one problem. Time-box it now: if this approach has not worked "
+               "after about 30 minutes or 3 attempts, take the simplest fallback that meets the ticket (a check of "
+               "what the code depends on instead of a test the environment cannot run, the nearest passing example, "
+               "or a smaller acceptance), write \"owner to confirm: <what and why>\" in .law/PROGRESS.md, delete the "
+               "probe files, run the checks and commit.")
 RUN_CHECKS_NUDGE = ("You have changed many files without running the build or tests. Run them now (the project's "
                     "build, type check and tests) and let the output guide your next change.")
 CODE_FILE = re.compile(r"\.(?:java|kt|kts|scala|ts|tsx|js|jsx|mjs|cjs|py|go|swift|rb|cs|php|rs|sql|vue|svelte)\b")
@@ -549,12 +559,12 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 edits.append(summary.split(" ", 2)[-1])
             return summary
 
-        digs = lookups = blind_edits = reads = 0
-        told_law = False
+        digs = lookups = blind_edits = reads = probes = 0
+        told_law = told_probe = False
         opened: dict[str, int] = {}  # file -> times read since it was last edited
 
         def steer(summary: str) -> str | None:
-            nonlocal digs, lookups, blind_edits, reads, told_law
+            nonlocal digs, lookups, blind_edits, reads, probes, told_law, told_probe
             if finished is not None and finished():
                 return TICKET_DONE
             note = memory.take_notes() if memory is not None else None
@@ -584,6 +594,11 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 if reads >= READ_LIMIT:
                     reads = 0
                     return READ_NUDGE
+            if summary.startswith("✏️ writing") and PROBE_FILE.search(summary.split(" ", 2)[-1].strip()):
+                probes += 1
+                if probes >= PROBE_LIMIT and not told_probe:
+                    told_probe = True
+                    return PROBE_NUDGE
             if summary.startswith("✏️"):
                 reads = 0
                 opened.pop(summary.split(" ", 2)[-1].strip(), None)
@@ -632,6 +647,10 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 if exc.message == QA_CODE_NUDGE and sid is not None and qa_reminders < 3:
                     qa_reminders += 1
                     await ctx.progress("⚠️ QA started reading the source: back to testing the product")
+                    cmd = [*base, "--session", sid, exc.message]
+                    continue
+                if exc.message == PROBE_NUDGE and sid is not None:  # it is working, just in a loop: not a strike
+                    await ctx.progress("⚠️ debugging with probe files: telling the agent to time-box and fall back")
                     cmd = [*base, "--session", sid, exc.message]
                     continue
                 if exc.message.startswith(LAW_INTERNALS_NUDGE) and sid is not None:  # guidance, not a strike
