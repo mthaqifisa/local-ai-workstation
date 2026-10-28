@@ -139,6 +139,8 @@ def plan_complete(project: Path, version: int) -> bool:
 # whole new milestone by one space, which hid its tickets); a ticket's details are indented two or more.
 MILESTONE_HEAD = re.compile(r"^ {0,3}#{3,}\s+(.+?)\s*$")
 OPEN_TICKET = re.compile(r"^ ?- \[ \]\s*(.+?)\s*$")
+# A line with a ticket ID is a ticket at any indent (seen 2026-10-28: split tickets P-37.2-.5 indented two spaces).
+OPEN_ID_TICKET = re.compile(r"^\s*- \[ \]\s*([A-Z][A-Z0-9]*-\d+(?:\.\d+)?\b.*?)\s*$")
 
 
 def uncommitted(project: Path) -> list[str]:
@@ -174,7 +176,7 @@ def next_ticket(project: Path, version: int) -> tuple[str, str] | None:
     for line in (build_section(project, version) or "").splitlines():
         if head := MILESTONE_HEAD.match(line):
             milestone = head.group(1)
-        elif ticket := OPEN_TICKET.match(line):
+        elif ticket := OPEN_TICKET.match(line) or OPEN_ID_TICKET.match(line):
             return milestone, ticket.group(1)
     return None
 
