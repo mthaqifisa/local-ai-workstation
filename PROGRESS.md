@@ -292,3 +292,4 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - 2026-10-29 00:03 Pantry P-34.5 committed (7dfc714) after the owner's note.
 - 2026-10-29 02:43 Pantry P-37 (multi-source barcode lookup) complete: P-37.1-.5 committed.
 - 2026-10-29 03:04 Guard: shell file writes (cat >>/heredoc, sed -i, tee) get an edit-tool reminder.
+- 2026-10-29 04:14 Stall nudge runs the gate on uncommitted work; a pass gets a tick-and-commit nudge.
