@@ -291,6 +291,12 @@ NUDGE = ("You have not changed any file for {minutes} minutes. Stop reading and 
          "If the error is a library class or method that does not exist (cannot find symbol, does not override), "
          "run `law api <Class> [member]` once for the real signatures instead of guessing again. "
          "Commit when a gate passes.")
+# A ticket session nudged twice in a row without saving anything is too big to start (seen 2026-10-28: P-22 and P-33
+# planned their whole ticket in reasoning for hours; splitting P-22 by hand unblocked it).
+SPLIT_NUDGE = ("Twice now you have saved nothing for {minutes} minutes: this ticket is too big to start in one step. "
+               "Split it now in .law/PLAN.md into sub-tickets <ID>.1, <ID>.2, ... replacing its line, each one layer "
+               "or one file (e.g. migration; entity and repository; service logic and its tests; API and its tests), "
+               "then write the first sub-ticket at once, run the checks, commit it and tick it.")
 # Writers, researchers and designers produce documents: the nudge is to save work, a section at a time.
 NUDGE_DOCS = ("You have not saved anything for {minutes} minutes. Save your work now: write the next section of the "
               "document to its file (at most about 1,500 words per write, appending section by section), tick it in "
@@ -632,6 +638,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                     raise Fatal(f"{role} agent stalled: {exc}") from exc
                 nudge = NUDGE_DOCS if role in DOC_ROLES else NUDGE
                 what = "save the next section" if role in DOC_ROLES else "build and fix"
+                if finished is not None and role not in DOC_ROLES and strikes >= 2:
+                    nudge, what = SPLIT_NUDGE, "split the ticket into smaller steps"
                 await ctx.progress(f"⚠️ nothing saved for {stall_min:.0f} min: nudging the agent to {what}")
                 cmd = [*base, "--session", sid, nudge.format(minutes=f"{stall_min:.0f}")]
 

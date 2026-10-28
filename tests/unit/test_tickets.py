@@ -423,3 +423,32 @@ async def test_reading_the_same_file_again_and_again_is_nudged(tmp_path: Path, m
     await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
     assert seen[:5] == [None, None, None, None, None]
     assert seen[5] is not None and "Batch.java 3 times" in seen[5]
+
+
+async def test_a_ticket_stalled_twice_is_told_to_split(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Seen 2026-10-28: P-22 and P-33 planned the whole ticket for hours; splitting P-22 by hand unblocked it."""
+    from law.handlers import project as _registers_project_specs  # noqa: F401
+    from law.handlers import tasks
+    from law.handlers.base import Stalled
+
+    project = tmp_path / "pantry"
+    (project / ".law").mkdir(parents=True)
+    plan = project / ".law" / "PLAN.md"
+    plan.write_text(PLAN.replace("- [ ] P-3 batches\n", ""))
+    (project / ".law" / "check.sh").write_text("exit 0\n")
+    monkeypatch.setattr(tasks, "uncommitted", lambda folder: [])
+    monkeypatch.setattr(tasks, "changed_since", lambda folder, since: False)
+    prompts: list[str] = []
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        if cmd[0] != "opencode":
+            return ""
+        prompts.append(cmd[-1])
+        if len(prompts) <= 2:
+            raise Stalled('{"type": "text", "sessionID": "ses_s", "part": {"type": "text", "text": "x"}}', 1500)
+        _tick(plan, "P-2")
+        return json.dumps({"type": "text", "part": {"type": "text", "text": "done"}})
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
+    assert "build or tests" in prompts[1] and "too big to start" in prompts[2]
