@@ -1,9 +1,9 @@
 {
   "stage": "C-user-requests",
-  "task": "ticket sessions: only code counts as progress",
+  "task": "re-read guard skips .law files",
   "status": "done",
-  "next_step": "monitor Pantry P-37.1",
-  "timestamp": "2026-10-28T14:05:52",
+  "next_step": "monitor Pantry P-34",
+  "timestamp": "2026-10-28T15:54:29",
   "files_touched": [
     "src/law/handlers/tasks.py",
     "tests/unit/test_tickets.py"

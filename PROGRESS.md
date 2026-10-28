@@ -284,3 +284,4 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - 2026-10-28 13:34 Ticket IDs count at any indent in PLAN.md (Pantry's split P-37.2-.5 were indented two spaces).
 - 2026-10-28 14:05 Coder ticket sessions: .law edits no longer count as progress for the stall guard (P-37.1 planned for an hour).
 - 2026-10-28 15:03 Pantry P-37.1 done (lookup chain, 3 commits, gate passed); stage 10 moved to P-34.
+- 2026-10-28 15:54 Re-read guard skips .law files (it cut off P-34's split).
