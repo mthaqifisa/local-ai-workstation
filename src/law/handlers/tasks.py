@@ -342,6 +342,12 @@ RUNS_CHECKS = re.compile(r"\b(?:npm (?:run )?(?:test|build)|npx (?:vitest|tsc|pl
 # scratch.probe.test.tsx writes in P-22, ScratchDebugTests in the 3 h P-24.1 barcode hunt, two in P-34.5).
 PROBE_FILE = re.compile(r"(?i)/(?:(?:probe|scratch)[^/]*|[^/]*(?:probe|scratch|debug|dump)[^/]*\.(?:test|spec)\.[jt]sx?"
                         r"|(?:probe|scratch|debug)\w*tests?\.java)$")
+# A shell command that writes a file (seen 2026-10-29: P-37.4 and P-34.4 appended to RESEARCH.md and PROGRESS.md
+# with `cat >> file <<'EOF'`, against the house standard; such edits bypass the edit events LAW tracks).
+SHELL_WRITE = re.compile(r"(?:\bcat\b[^|;&]*>>?\s*\S+[^|;&]*<<|<<-?\s*['\"]?\w+['\"]?[^|;&]*>>?\s*[\w~./-]+|"
+                         r"\bsed\s+-i\b|\btee\s+(?:-a\s+)?[\w~./-]+\s*<<)")
+SHELL_WRITE_NUDGE = ("Change files with the edit and write tools, not with shell commands (cat > or >> with a "
+                     "heredoc, sed -i, tee). Redo that change with the edit tool if it is not right, then carry on.")
 PROBE_LIMIT = 2  # probe writes in one session before LAW calls time
 PROBE_NUDGE = ("You are writing probe files to debug one problem. Time-box it now: if this approach has not worked "
                "after about 30 minutes or 3 attempts, take the simplest fallback that meets the ticket (a check of "
@@ -560,11 +566,11 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             return summary
 
         digs = lookups = blind_edits = reads = probes = 0
-        told_law = told_probe = False
+        told_law = told_probe = told_shell_write = False
         opened: dict[str, int] = {}  # file -> times read since it was last edited
 
         def steer(summary: str) -> str | None:
-            nonlocal digs, lookups, blind_edits, reads, probes, told_law, told_probe
+            nonlocal digs, lookups, blind_edits, reads, probes, told_law, told_probe, told_shell_write
             if finished is not None and finished():
                 return TICKET_DONE
             note = memory.take_notes() if memory is not None else None
@@ -581,6 +587,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 return None
             if summary.startswith("▶") and RUNS_CHECKS.search(summary):
                 blind_edits = 0
+            if summary.startswith("▶") and not told_shell_write and SHELL_WRITE.search(summary):
+                told_shell_write = True
+                return SHELL_WRITE_NUDGE
             # LAW's plan and notes are reread by design (seen 2026-10-28: the split nudge sent a P-34 session to
             # PLAN.md, and its third open of the plan cut the split off with "write the change")
             if summary.startswith("📖") and f"/{FOLDER}/" not in summary:
@@ -647,6 +656,10 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 if exc.message == QA_CODE_NUDGE and sid is not None and qa_reminders < 3:
                     qa_reminders += 1
                     await ctx.progress("⚠️ QA started reading the source: back to testing the product")
+                    cmd = [*base, "--session", sid, exc.message]
+                    continue
+                if exc.message == SHELL_WRITE_NUDGE and sid is not None:  # a reminder of the house standard
+                    await ctx.progress("⚠️ edited a file with a shell command: reminding the agent to use the edit tool")
                     cmd = [*base, "--session", sid, exc.message]
                     continue
                 if exc.message == PROBE_NUDGE and sid is not None:  # it is working, just in a loop: not a strike

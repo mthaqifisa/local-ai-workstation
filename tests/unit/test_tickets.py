@@ -583,3 +583,16 @@ async def test_a_second_probe_file_gets_a_time_box_without_a_strike(
     await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
     assert seen[0] is None and seen[1] == tasks.PROBE_NUDGE
     assert prompts[1] == tasks.PROBE_NUDGE  # sent into the same session
+
+
+def test_shell_file_writes_are_recognised() -> None:
+    """Seen 2026-10-29: two sessions appended to .law notes with `cat >> file <<'EOF'`."""
+    from law.handlers.tasks import SHELL_WRITE
+
+    for seen in ["▶ running cat >> ~/SourceCode/pantry/.law/PROGRESS.md <<'EOF'", "▶ running cat >> .law/RESEARCH.md <<'EOF'",
+                 "▶ running cat > ui/src/x.ts <<EOF", "▶ running sed -i '' 's/a/b/' api/pom.xml",
+                 "▶ running tee -a notes.md <<'EOF'"]:
+        assert SHELL_WRITE.search(seen), seen
+    for fine in ["▶ running git commit -F- <<'EOF'", "▶ running cat .law/check.sh", "▶ running mvn -q verify > /dev/null",
+                 "▶ running npm test 2>&1 | tail -5", "▶ running sed -n '30p' ui/src/views/UseSome.test.tsx"]:
+        assert not SHELL_WRITE.search(fine), fine
