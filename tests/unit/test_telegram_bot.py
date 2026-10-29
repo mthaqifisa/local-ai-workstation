@@ -239,3 +239,35 @@ def test_project_templates_and_quick_tasks_are_told_apart():
     template_like = lambda args: args.lower() == "init" or bool(_re.match(r"(?i)new\s*\n", args))  # noqa: E731
     assert template_like("new\nname: X") and template_like("init")
     assert not template_like("newsletter signup form") and not template_like("new feature: dark mode")
+
+
+async def test_a_telegram_job_that_stops_unfollowed_is_reported_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Seen 2026-10-29: the Pantry pipeline (started days before the bot's last restart) failed; nobody followed it,
+    so Telegram heard nothing."""
+    import time
+
+    b = telegram_bot.LawBot(TOKEN, {42}, "http://api", delivered=tmp_path / "d.txt")
+    sent: list[str] = []
+    offered: list[str] = []
+
+    async def fake_send(chat: int, markdown: str) -> None:
+        sent.append(markdown)
+
+    async def fake_offer(chat: int, job: dict) -> None:
+        offered.append(job["id"])
+
+    monkeypatch.setattr(b, "_send", fake_send)
+    monkeypatch.setattr(b, "_offer_recovery", fake_offer)
+    now = time.time()
+    job = {"id": "pipe", "kind": "project_step", "source": "telegram", "parent": None, "status": "failed",
+           "error": "stage 13 failed: database is locked", "created": now - 4 * 86400, "finished": now,
+           "reply_to": {"chat_id": 42}}
+    assert b._stopped_unreported(job, now - 60)
+    await b._report_stopped(job)
+    assert offered == ["pipe"] and "database is locked" in sent[0]
+    assert not b._stopped_unreported(job, now - 60)  # once only
+    followed = {**job, "id": "followed"}
+    b.following.add("followed")
+    assert not b._stopped_unreported(followed, now - 60)  # its follower reports it
+    old = {**job, "id": "old", "finished": now - 3600}
+    assert not b._stopped_unreported(old, now - 60)  # stopped before this process started: not news

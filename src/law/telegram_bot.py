@@ -645,9 +645,25 @@ class LawBot:
                     if (job.get("parent") is None and job.get("source") in self.notify_sources
                             and (job["created"] >= started_at or job["status"] in LIVE)):
                         await self._notify(job)
+                    elif self._stopped_unreported(job, started_at):
+                        await self._report_stopped(job)
             except (httpx.HTTPError, ValueError):
                 pass  # API restarting; try again next round
             await asyncio.sleep(poll_s)
+
+    def _stopped_unreported(self, job: dict[str, Any], since: float) -> bool:
+        """A Telegram job that stopped while nobody was following it (seen 2026-10-29: the Pantry pipeline, started
+        days before the bot's last restart, failed and Telegram heard nothing; only followed jobs reported)."""
+        return (job.get("source") == "telegram" and job.get("parent") is None and job["status"] in STOPPED
+                and float(job.get("finished") or 0) >= since and job["id"] not in self.following
+                and not self.delivered.seen(job["id"]) and not self.delivered.seen(f"end:{job['id']}"))
+
+    async def _report_stopped(self, job: dict[str, Any]) -> None:
+        self.delivered.add(f"end:{job['id']}")
+        chats = [job["reply_to"]["chat_id"]] if job.get("reply_to") else list(self.allowed)
+        for chat in chats:
+            await self._send(chat, outcome_line(job))
+            await self._offer_recovery(chat, job)
 
     async def _reattach(self, job: dict[str, Any]) -> None:
         """A Telegram job reopened elsewhere (Retry/Skip/Restart in the Console) is followed in its chat again."""
@@ -715,6 +731,7 @@ class LawBot:
 
 
 TERMINAL = {"done", "failed", "cancelled", "dead"}
+STOPPED = {"failed", "cancelled", "dead"}
 BUTTONS = {"go": "✅ Go", "nogo": "❌ No go", "allgood": "👍 All good", "changes": "🛠 Needs changes",
            "push": "⬆️ Push", "resume": "▶️ Resume", "email": "📧 Email it"}
 NEEDS_NOTE = {"nogo", "changes", "resume"}
