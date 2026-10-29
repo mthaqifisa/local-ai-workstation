@@ -646,3 +646,52 @@ def test_a_parent_is_ticked_once_all_its_sub_tickets_are(tmp_path: Path) -> None
     assert " - [x] P-34 usage UI\n   details\n" in text and " - [ ] P-37 lookup" in text and "- [ ] P-27 layout" in text
     assert next_ticket(tmp_path, 1) == ("M7", "P-37.2 more")
     assert tick_split_parents(tmp_path) == []
+
+
+async def test_a_locked_opencode_database_is_retried(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Seen 2026-10-29: stage 13 started one second after stage 12's agent exited; OpenCode quit with "database is
+    locked" and the whole pipeline failed on a transient error."""
+    from law.handlers import project as _registers_project_specs  # noqa: F401
+    from law.handlers import tasks
+
+    project = tmp_path / "pantry"
+    (project / ".law").mkdir(parents=True)
+    plan = project / ".law" / "PLAN.md"
+    plan.write_text(PLAN.replace("- [ ] P-3 batches\n", ""))
+    (project / ".law" / "check.sh").write_text("exit 0\n")
+    monkeypatch.setattr(tasks, "uncommitted", lambda folder: [])
+    monkeypatch.setattr(tasks, "DB_LOCKED_WAITS_S", (0, 0, 0))
+    runs = 0
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        nonlocal runs
+        if cmd[0] != "opencode":
+            return ""
+        runs += 1
+        if runs == 1:
+            raise Fatal("opencode exited 1: Error: Unexpected error\n\ndatabase is locked")
+        _tick(plan, "P-2")
+        return json.dumps({"type": "text", "part": {"type": "text", "text": "done"}})
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
+    assert runs == 2
+
+
+async def test_other_agent_failures_still_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from law.handlers import project as _registers_project_specs  # noqa: F401
+    from law.handlers import tasks
+
+    project = tmp_path / "pantry"
+    (project / ".law").mkdir(parents=True)
+    (project / ".law" / "PLAN.md").write_text(PLAN)
+    (project / ".law" / "check.sh").write_text("exit 0\n")
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        if cmd[0] == "opencode":
+            raise Fatal("opencode exited 1: Error: model not found")
+        return ""
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    with pytest.raises(Fatal, match="model not found"):
+        await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
