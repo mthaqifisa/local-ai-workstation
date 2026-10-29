@@ -730,7 +730,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                     nudge, what = SPLIT_NUDGE, "split the ticket into smaller steps"
                 message = nudge.format(minutes=f"{stall_min:.0f}")
                 left = uncommitted(workdir) if finished is not None and role not in DOC_ROLES else []
-                if left and (await _gate_problem(ctx, workdir)).startswith(UNCOMMITTED_HEAD):
+                if left and (await _gate_problem(ctx, workdir, after_ticket=False)).startswith(UNCOMMITTED_HEAD):
                     message, what = COMMIT_NUDGE.format(files=", ".join(left[:10])), "tick and commit"
                 await ctx.progress(f"⚠️ nothing saved for {stall_min:.0f} min: nudging the agent to {what}")
                 cmd = [*base, "--session", sid, message]
@@ -844,7 +844,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         text = await _agent(ctx, p["role"], _scoped(p, memory), _workdir(p), memory=memory)
         return Done({"answer": text, "dir": str(_workdir(p))})
 
-    async def _gate_problem(ctx: Context, folder: Path) -> str:
+    async def _gate_problem(ctx: Context, folder: Path, *, after_ticket: bool = True) -> str:
         """What is wrong after a ticket, from LAW's own checks (not the agent's word): `.law/check.sh` fails, is
         missing, or product files were left uncommitted. Empty when the ticket is really done."""
         script = folder / CHECK_SCRIPT
@@ -856,7 +856,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             await run_cmd(ctx, ["bash", CHECK_SCRIPT], cwd=folder, env=env, timeout_s=CHECK_TIMEOUT_S,
                           progress_every=10**9)  # the build log is not progress
         except Fatal as exc:
-            await ctx.progress(f"❌ {CHECK_SCRIPT} failed: the next session fixes it first")
+            await ctx.progress(f"❌ {CHECK_SCRIPT} failed: " + ("the next session fixes it first" if after_ticket
+                                                              else "the agent is still working on it"))
             return f"{CHECK_SCRIPT} failed:\n{str(exc)[-CHECK_TAIL:]}"
         except TimeoutError:
             return f"{CHECK_SCRIPT} did not finish within {CHECK_TIMEOUT_S // 60} minutes."
