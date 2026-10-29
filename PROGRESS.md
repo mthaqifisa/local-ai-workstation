@@ -297,3 +297,4 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - 2026-10-29 09:05 Pantry P-28 committed; ADR-0021 added build stage 13; stage 13 failed on OpenCode 'database is locked' -> pipeline failed. Fix 4f112db (retry on db lock). Owner asked to /retry 8d704c86fce6 (screen locked).
 - 2026-10-29 09:19 Telegram reports stopped jobs nobody followed (Pantry failure went unnoticed). Pipeline retried via Tony 09:17.
 - 2026-10-29 09:25 Review: Telegram stop reports per stop (2b6c492); PROMPT.md rewritten only on change; RUNBOOK lists the new guards.
+- 2026-10-29 09:44 A mid-session split no longer ends the session (P-29 split was taken for done).
