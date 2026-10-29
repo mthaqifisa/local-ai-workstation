@@ -202,6 +202,14 @@ def changed_since(project: Path, since: float, *, code_only: bool = False) -> bo
     return False
 
 
+def is_split_of(part: str, whole: str) -> bool:
+    """Whether ticket line `part` is a sub-ticket of ticket line `whole` (P-29.1 of P-29). Seen 2026-10-29: the agent
+    split P-29 in its plan; LAW took the changed next ticket for "done" and ended a session that had just read 25
+    minutes for that work."""
+    a, b = TICKET_ID.match(part), TICKET_ID.match(whole)
+    return a is not None and b is not None and a.group(0).startswith(f"{b.group(0)}.")
+
+
 def next_ticket(project: Path, version: int) -> tuple[str, str] | None:
     """The first unticked ticket of this version's build: (its milestone heading, the ticket line), or None. A ticket
     split into unticked sub-tickets (P-34 into P-34.1, P-34.2...) gives way to them, so each gets its own session."""
@@ -907,8 +915,14 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             if ticket:
                 task += "\n\n" + TARGETED.format(map=project_map(folder))
             prompt = f"{_scoped(p, memory)}\n\n{GATE_FAILED.format(problem=problem) if problem else ''}{task}"
-            def ticket_done(current: tuple[str, str] | None = ticket) -> bool:
-                return current is not None and next_ticket(folder, version) != current and not uncommitted(folder)
+            def ticket_done(session_ticket: list[tuple[str, str] | None] = [ticket]) -> bool:  # noqa: B006
+                current, now = session_ticket[0], next_ticket(folder, version)
+                if current is None or now == current:
+                    return False
+                if now is not None and is_split_of(now[1], current[1]):
+                    session_ticket[0] = now  # split: the session goes on with the first part it just planned
+                    return False
+                return not uncommitted(folder)
 
             try:
                 text = await _agent(ctx, p["role"], prompt, folder, memory=memory,

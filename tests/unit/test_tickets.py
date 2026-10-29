@@ -695,3 +695,44 @@ async def test_other_agent_failures_still_fail(tmp_path: Path, monkeypatch: pyte
     monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
     with pytest.raises(Fatal, match="model not found"):
         await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
+
+
+async def test_splitting_the_ticket_keeps_the_session_for_its_first_part(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Seen 2026-10-29: the agent split P-29 in its plan; LAW took the changed next ticket for "done" and ended a
+    session that had just read 25 minutes for that work."""
+    from law.handlers import project as _registers_project_specs  # noqa: F401
+    from law.handlers import tasks
+
+    project = tmp_path / "pantry"
+    (project / ".law").mkdir(parents=True)
+    plan = project / ".law" / "PLAN.md"
+    plan.write_text(PLAN.replace("- [ ] P-3 batches\n", ""))
+    (project / ".law" / "check.sh").write_text("exit 0\n")
+    monkeypatch.setattr(tasks, "uncommitted", lambda folder: [])
+    checks: list[bool] = []
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        if cmd[0] != "opencode":
+            return ""
+        if not checks:
+            done = kw["steer"]
+            plan.write_text(plan.read_text().replace("- [ ] P-2 products\n", "- [ ] P-2.1 entity\n- [ ] P-2.2 api\n"))
+            checks.append(done("📖 reading ~/pantry/api/A.java") is None)  # split: the session goes on
+            _tick(plan, "P-2.1")
+            checks.append(done("✏️ editing ~/pantry/api/A.java") == tasks.TICKET_DONE)  # first part done: it ends
+        else:
+            _tick(plan, "P-2.2")
+        return json.dumps({"type": "text", "part": {"type": "text", "text": "done"}})
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
+    assert checks == [True, True]
+
+
+def test_is_split_of() -> None:
+    from law.handlers.tasks import is_split_of
+
+    assert is_split_of("P-29.1 keep the URL", "P-29 Product images")
+    assert not is_split_of("P-30 cards", "P-29 Product images") and not is_split_of("P-290 x", "P-29 y")
+    assert not is_split_of("tidy the README", "P-29 Product images")
