@@ -60,7 +60,11 @@ class ProjectMemory:
         if f"· job {job_id}\n" not in (log.read_text() if log.exists() else ""):  # once per job, not per stage
             with log.open("a") as f:
                 f.write(f"\n## {stamp} · job {job_id}\n\n{request.strip()}\n")
-        (self.dir / "PROMPT.md").write_text(f"# Brief (job {job_id}, {stamp})\n\n{(brief or request).strip()}\n")
+        # rewritten only when the brief changes: a fresh timestamp every stage left the file always modified, and
+        # agents spent a turn on `git diff .law/PROMPT.md` 35 times in Pantry (2026-10-26 to -29) to find out why
+        prompt, body = self.dir / "PROMPT.md", f"\n\n{(brief or request).strip()}\n"
+        if not (prompt.exists() and prompt.read_text().partition("\n")[2] == body[1:]):
+            prompt.write_text(f"# Brief (job {job_id}, {stamp}){body}")
 
     def instructions(self) -> str:
         return INSTRUCTIONS.format(folder=FOLDER)

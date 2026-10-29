@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from law.project_memory import FOLDER, SEEDS, ProjectMemory, project_listing
 
 
@@ -20,6 +22,22 @@ def test_prepare_seeds_files_once_and_logs_every_request(tmp_path: Path) -> None
     ignore = (law / ".gitignore").read_text()
     assert ignore.startswith("*\n") and "!PLAN.md\n" in ignore and "session.json" not in ignore  # allow-list
     assert set(SEEDS) <= {p.name for p in law.iterdir()}
+
+
+def test_the_brief_is_rewritten_only_when_it_changes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Seen 2026-10-26 to -29: a fresh timestamp each stage left PROMPT.md always modified; agents diffed it 35 times."""
+    import law.project_memory as pm
+
+    mem = ProjectMemory(tmp_path)
+    monkeypatch.setattr(pm.time, "strftime", lambda fmt: "2026-10-28 10:00")
+    mem.prepare("root", "build pantry", "## Goal\nPantry")
+    prompt = tmp_path / FOLDER / "PROMPT.md"
+    first = prompt.read_text()
+    monkeypatch.setattr(pm.time, "strftime", lambda fmt: "2026-10-29 09:00")
+    mem.prepare("root", "build pantry", "## Goal\nPantry")  # the next stage of the same pipeline
+    assert prompt.read_text() == first
+    mem.prepare("root", "build pantry", "## Goal\nPantry v2")
+    assert "Pantry v2" in prompt.read_text()
 
 
 def test_context_shows_only_real_plan_and_progress(tmp_path: Path) -> None:
