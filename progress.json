@@ -1,16 +1,18 @@
 {
   "stage": "C-user-requests",
-  "task": "stuck detector + lead-note replay eval",
+  "task": "review of the day's v6 changes",
   "status": "done",
-  "next_step": "owner decision on the lead step (draft-for-approval vs richer inputs) and the ticket-size check",
-  "timestamp": "2026-10-28T22:43:26",
+  "next_step": "monitor Pantry P-29",
+  "timestamp": "2026-10-29T09:25:52",
   "files_touched": [
-    "src/law/handlers/tasks.py",
-    "tests/unit/test_tickets.py"
+    "src/law/telegram_bot.py",
+    "src/law/project_memory.py",
+    "docs/RUNBOOK.md",
+    "tests/unit/test_telegram_bot.py",
+    "tests/unit/test_project_memory.py"
   ],
   "commands": [
     "uv run pytest -q tests/unit",
-    "./install.sh",
-    "python3 -I ~/LAW/cache/tmp/stuck-eval/lead.py"
+    "./install.sh"
   ]
 }
