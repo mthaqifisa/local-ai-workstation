@@ -294,3 +294,4 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - 2026-10-29 03:04 Guard: shell file writes (cat >>/heredoc, sed -i, tee) get an edit-tool reminder.
 - 2026-10-29 04:14 Stall nudge runs the gate on uncommitted work; a pass gets a tick-and-commit nudge.
 - 2026-10-29 04:34 LAW ticks a parent ticket when all its sub-tickets are ticked.
+- 2026-10-29 09:05 Pantry P-28 committed; ADR-0021 added build stage 13; stage 13 failed on OpenCode 'database is locked' -> pipeline failed. Fix 4f112db (retry on db lock). Owner asked to /retry 8d704c86fce6 (screen locked).
