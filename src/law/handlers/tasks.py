@@ -378,7 +378,7 @@ PROBE_FILE = re.compile(r"(?i)/(?:(?:probe|scratch)[^/]*|[^/]*(?:probe|scratch|d
 # A shell command that writes a file (seen 2026-10-29: P-37.4 and P-34.4 appended to RESEARCH.md and PROGRESS.md
 # with `cat >> file <<'EOF'`, against the house standard; such edits bypass the edit events LAW tracks).
 SHELL_WRITE = re.compile(r"(?:\bcat\b[^|;&]*>>?\s*\S+[^|;&]*<<|<<-?\s*['\"]?\w+['\"]?[^|;&]*>>?\s*[\w~./-]+|"
-                         r"\bsed\s+-i\b|\btee\s+(?:-a\s+)?[\w~./-]+\s*<<)")
+                         r"\bsed\s+-i\b|\bperl\s+-\w*i|\btee\s+(?:-a\s+)?[\w~./-]+\s*<<)")
 SHELL_WRITE_NUDGE = ("Change files with the edit and write tools, not with shell commands (cat > or >> with a "
                      "heredoc, sed -i, tee). Redo that change with the edit tool if it is not right, then carry on.")
 PROBE_LIMIT = 2  # probe writes in one session before LAW calls time

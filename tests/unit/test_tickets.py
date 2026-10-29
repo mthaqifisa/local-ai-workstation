@@ -591,7 +591,7 @@ def test_shell_file_writes_are_recognised() -> None:
 
     for seen in ["▶ running cat >> ~/SourceCode/pantry/.law/PROGRESS.md <<'EOF'", "▶ running cat >> .law/RESEARCH.md <<'EOF'",
                  "▶ running cat > ui/src/x.ts <<EOF", "▶ running sed -i '' 's/a/b/' api/pom.xml",
-                 "▶ running tee -a notes.md <<'EOF'"]:
+                 "▶ running tee -a notes.md <<'EOF'", "▶ running perl -0pi -e 's/a/b/' .law/PLAN.md"]:
         assert SHELL_WRITE.search(seen), seen
     for fine in ["▶ running git commit -F- <<'EOF'", "▶ running cat .law/check.sh", "▶ running mvn -q verify > /dev/null",
                  "▶ running npm test 2>&1 | tail -5", "▶ running sed -n '30p' ui/src/views/UseSome.test.tsx"]:
