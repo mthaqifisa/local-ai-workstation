@@ -271,3 +271,5 @@ async def test_a_telegram_job_that_stops_unfollowed_is_reported_once(tmp_path: P
     assert not b._stopped_unreported(followed, now - 60)  # its follower reports it
     old = {**job, "id": "old", "finished": now - 3600}
     assert not b._stopped_unreported(old, now - 60)  # stopped before this process started: not news
+    again = {**job, "finished": now + 600}  # retried, then stopped again with nobody following
+    assert b._stopped_unreported(again, now - 60)

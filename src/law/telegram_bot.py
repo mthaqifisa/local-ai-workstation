@@ -500,6 +500,7 @@ class LawBot:
         result = final.get("result") or {}
         self.history.remember(chat, final)
         if final.get("status") != "done":
+            self.delivered.add(stopped_key(final))  # its follower reports this stop; the job watcher need not
             await self._edit(reply, outcome_line(final))
             await self._offer_recovery(chat, final)
             return
@@ -656,10 +657,10 @@ class LawBot:
         days before the bot's last restart, failed and Telegram heard nothing; only followed jobs reported)."""
         return (job.get("source") == "telegram" and job.get("parent") is None and job["status"] in STOPPED
                 and float(job.get("finished") or 0) >= since and job["id"] not in self.following
-                and not self.delivered.seen(job["id"]) and not self.delivered.seen(f"end:{job['id']}"))
+                and not self.delivered.seen(stopped_key(job)))
 
     async def _report_stopped(self, job: dict[str, Any]) -> None:
-        self.delivered.add(f"end:{job['id']}")
+        self.delivered.add(stopped_key(job))
         chats = [job["reply_to"]["chat_id"]] if job.get("reply_to") else list(self.allowed)
         for chat in chats:
             await self._send(chat, outcome_line(job))
@@ -732,6 +733,11 @@ class LawBot:
 
 TERMINAL = {"done", "failed", "cancelled", "dead"}
 STOPPED = {"failed", "cancelled", "dead"}
+
+
+def stopped_key(job: dict[str, Any]) -> str:
+    """One report per stop: a job retried and stopped again finishes at another time."""
+    return f"stopped:{job['id']}:{job.get('finished')}"
 BUTTONS = {"go": "✅ Go", "nogo": "❌ No go", "allgood": "👍 All good", "changes": "🛠 Needs changes",
            "push": "⬆️ Push", "resume": "▶️ Resume", "email": "📧 Email it"}
 NEEDS_NOTE = {"nogo", "changes", "resume"}
