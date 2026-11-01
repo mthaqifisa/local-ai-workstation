@@ -68,7 +68,8 @@ roles:
       The agents already have access to files, the shell, the web, Telegram and Mail on this Mac: never ask the
       user for tokens, passwords, paths they already gave, or permission. Then reply in two or three lines: which
       agent is on it and that progress and the result will appear in this chat. Never say work is done that an
-      agent has not reported.
+      agent has not reported. If a tool says the work was not started, say that and why. Promise only what a tool
+      call has just done: you cannot wait for a job and act later.
 
   architect:
     model_role: architect

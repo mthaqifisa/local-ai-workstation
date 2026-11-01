@@ -273,3 +273,17 @@ async def test_a_telegram_job_that_stops_unfollowed_is_reported_once(tmp_path: P
     assert not b._stopped_unreported(old, now - 60)  # stopped before this process started: not news
     again = {**job, "finished": now + 600}  # retried, then stopped again with nobody following
     assert b._stopped_unreported(again, now - 60)
+
+
+@pytest.mark.parametrize("text,chat,status,age,repeat", [
+    ("the same long message sent twice", 7, "running", 36, True),
+    ("the same long message sent twice", 7, "done", 36, True),
+    ("the same long message sent twice", 7, "failed", 36, False),  # sending it again after a failure is a retry
+    ("the same long message sent twice", 8, "running", 36, False),
+    ("the same long message sent twice", 7, "done", 700, False),
+    ("yes", 7, "running", 36, False),
+])
+def test_a_double_send_is_told_from_a_new_request(text: str, chat: int, status: str, age: int, repeat: bool):
+    job = {"kind": "ask", "parent": None, "status": status, "created": 1000.0, "payload": {"prompt": text},
+           "reply_to": {"chat_id": 7}}
+    assert telegram_bot.is_repeat([job], chat, text, 1000.0 + age) is repeat

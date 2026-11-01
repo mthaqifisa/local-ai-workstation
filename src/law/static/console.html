@@ -95,6 +95,7 @@
   .ticket .t-meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 6px; font-size: 11.5px; color: var(--muted); }
   .k-dev { border-left-color: var(--accent); } .k-qa { border-left-color: var(--warn); } .k-bugfix { border-left-color: var(--bad); }
   .k-proposal, .k-docs { border-left-color: #b48cff; } .k-approval { border-left-color: var(--ok); } .k-setup { border-left-color: var(--muted); }
+  .approve { width: 100%; margin-bottom: 8px; }
   .tag { padding: 1px 7px; border-radius: 99px; border: 1px solid var(--line); font-size: 11px; }
   .drawer-bg { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); z-index: 5; display: none; }
   .drawer-bg.show { display: block; }
@@ -374,6 +375,7 @@ const KIND = {dev: "dev", qa: "QA", bugfix: "bug fix", proposal: "proposal", doc
 const STATE_PILL = {proposing: "s-running", awaiting_go: "s-queued", developing: "s-running", awaiting_verification: "s-queued",
                     parked: "s-cancelled", done: "s-done"};
 const when = (t) => t ? new Date(t * 1000).toLocaleString([], {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false}) : "";
+const APPROVE = {go: "Approve and start the build", allgood: "Approve the build"};
 let boardData = null, openTicket = null, logFilter = "all";
 const savedProject = () => { try { return localStorage.getItem("law.project"); } catch (e) { return null; } };
 async function loadProjects() {
@@ -415,7 +417,7 @@ async function refreshBoard() {
         <div class="t-title">${esc(t.title)}</div>
         <div class="t-meta"><span>${esc(t.epic)}</span><span class="spacer"></span>
           ${t.notes.length ? `<span title="notes">💬 ${t.notes.length}</span>` : ""}${t.logs.length ? `<span title="log entries">📜 ${t.logs.length}</span>` : ""}</div>
-      </button>`).join("") || '<div class="sub" style="padding:8px">—</div>'}</div></div>`;
+      </button>${t.column === "approval" && pr.approve ? `<button class="btn primary approve" data-approve>${APPROVE[pr.approve]}</button>` : ""}`).join("") || '<div class="sub" style="padding:8px">—</div>'}</div></div>`;
   }).join(""));
   if (openTicket) {
     const t = data.tickets.find((x) => x.id === openTicket);
@@ -461,7 +463,14 @@ function closeTicket() {
   openTicket = null;
   $("#drawer").classList.remove("show"); $("#drawer-bg").classList.remove("show"); $("#drawer").setAttribute("aria-hidden", "true");
 }
-$("#board").onclick = (ev) => { const b = ev.target.closest("[data-ticket]"); if (b) openTicketById(b.dataset.ticket); };
+$("#board").onclick = async (ev) => {
+  const b = ev.target.closest("[data-ticket]"); if (b) { openTicketById(b.dataset.ticket); return; }
+  const yes = ev.target.closest("[data-approve]"); if (!yes) return;
+  yes.disabled = true;
+  try { await api(`/board/${encodeURIComponent($("#proj").value)}/approve`, {method: "POST"}); toast("Approved; progress appears here and in Telegram"); }
+  catch (e) { toast("Not approved: " + e.message); yes.disabled = false; }
+  refreshBoard();
+};
 $("#d-close").onclick = closeTicket; $("#drawer-bg").onclick = closeTicket;
 document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") { closeTicket(); $("#del-modal").classList.remove("show"); } });
 $("#d-filters").onclick = (ev) => {

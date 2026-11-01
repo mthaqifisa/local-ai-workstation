@@ -350,7 +350,16 @@ class LawBot:
             if message.text.startswith("/"):
                 await self._send(message.chat.id, "Unknown command. Send /help for the list.")
                 return
+            if await self._repeated(message.chat.id, message.text):
+                await self._send(message.chat.id, "♻️ Same message as a moment ago, and that one is in hand, so I did "
+                                                  "not start it again.")
+                return
             await self._job(message, "ask", {"prompt": message.text, "role": "assistant"})
+
+    async def _repeated(self, chat: int, text: str) -> bool:
+        async with httpx.AsyncClient(timeout=30) as client:
+            jobs = (await client.get(f"{self.api}/jobs", params={"limit": 50})).json()
+        return is_repeat(jobs, chat, text, time.time())
 
     async def _job_action(self, chat: int, job_id: str, action: str) -> None:
         """Retry, skip, restart or cancel a job from a button, then follow it again in this chat."""
@@ -889,6 +898,17 @@ def roles_text() -> str:
     loaded = roles.load(LawPaths.from_env().settings / "roles.yaml")
     return "**Roles for /agent**\n" + "\n".join(f"`{n}` — {r.summary}" for n, r in loaded.roles.items())
 TELEGRAM_LIMIT = 4000
+REPEAT_CHARS = 20  # "yes" and "go on" are meant each time
+REPEAT_WINDOW_S = 600.0
+
+
+def is_repeat(jobs: list[dict[str, Any]], chat: int, text: str, now: float) -> bool:
+    """The same long message from this chat a moment ago, not failed: a double send, not a new request (2026-11-01:
+    one message arrived twice 36 s apart and queued two coders). Sending it again after a failure still works."""
+    return len(text) >= REPEAT_CHARS and any(
+        j.get("kind") == "ask" and j.get("parent") is None and (j.get("reply_to") or {}).get("chat_id") == chat
+        and (j.get("payload") or {}).get("prompt") == text and j.get("status") not in STOPPED
+        and now - float(j.get("created", 0)) < REPEAT_WINDOW_S for j in jobs)
 
 
 def queued_ahead(jobs: list[dict[str, Any]], job_id: str) -> int:

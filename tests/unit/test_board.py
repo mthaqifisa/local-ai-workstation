@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import shutil
 import time
 from pathlib import Path
@@ -172,6 +173,30 @@ def test_notes_api_add_list_delete_and_to_agent(client):
     assert c.delete(f"/board/pantry/notes/{r.json()['id']}").status_code == 200
     assert c.delete(f"/board/pantry/notes/{r.json()['id']}").status_code == 404
     assert c.get("/board/nope").status_code == 404
+
+
+@pytest.mark.parametrize("state,action", [("awaiting_go", "go"), ("awaiting_verification", "allgood")])
+def test_approve_submits_the_owners_decision_once(client, state, action):
+    c, paths, store = client
+    _project(paths, state)
+    paths.env_file.parent.mkdir(parents=True, exist_ok=True)
+    paths.env_file.write_text("LAW_TELEGRAM_USER_IDS=42\n")
+    assert c.get("/board/pantry").json()["project"]["approve"] == action
+    r = c.post("/board/pantry/approve")
+    assert r.status_code == 201 and r.json()["action"] == action
+    job = asyncio.run(store.require(r.json()["job"]))
+    assert job.kind == "project_step" and job.source == "telegram" and job.reply_to["chat_id"] == 42
+    assert job.payload == {"project": "pantry", "action": action, "note": "", "chat": 42}
+    assert c.post("/board/pantry/approve").status_code == 409  # its job is live: a double click does nothing
+    assert c.get("/board/pantry").json()["project"]["approve"] is None
+
+
+def test_approve_refuses_a_project_not_at_a_gate(client):
+    c, paths, _ = client
+    _project(paths, "developing")
+    assert c.get("/board/pantry").json()["project"]["approve"] is None
+    assert c.post("/board/pantry/approve").status_code == 409
+    assert c.post("/board/nope/approve").status_code == 404
 
 
 def test_delete_project_removes_jobs_notes_and_record(client):

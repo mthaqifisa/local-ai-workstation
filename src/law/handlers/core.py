@@ -11,6 +11,7 @@ from typing import Any
 from law import calc
 from law.handlers.base import Runtime
 from law.llm import TruncatedError, chat_with_tools, image_part
+from law.queue.store import JobStore
 from law.queue.worker import Context, Done, Fatal, Outcome, Stages
 
 PASS_SCORE = 4
@@ -74,6 +75,7 @@ AGENT_TOOL: dict[str, Any] = {
         },
     },
 }
+ACTIVE_LOOKBACK = 1000  # recent jobs searched for a live agent: a long pipeline is followed by many stage jobs
 MIN_WORDS = 20  # shorter messages ("yes", "go on") add nothing to a brief
 HISTORY_CHARS = 8000  # conversation the judge sees as context
 
@@ -215,6 +217,20 @@ def review_skip(rt: Runtime, ctx: Context, role: str, text: str, agent_job: str 
     return None
 
 
+async def _agent_in(store: JobStore, folder: Path) -> str | None:
+    """A live agent task on this folder. Two pipelines take turns on the heavy lane, so a second one would work in
+    the same tree between the first one's stages (2026-11-01: a message sent twice queued two Pantry coders)."""
+    for job in await store.history(ACTIVE_LOOKBACK):
+        where = job.payload.get("dir")
+        if job.parent is None and job.kind == "task" and not job.status.terminal and where:
+            try:
+                if Path(where).samefile(folder):  # the chat model's spelling may differ: Pantry, pantry
+                    return job.id
+            except OSError:
+                continue
+    return None
+
+
 def make_handlers(rt: Runtime) -> dict[str, Any]:
     def agent_starter(ctx: Context, started: list[str]) -> AgentStarter:
         """`start_agent` for this chat message: queues one agent task that reports to the same chat."""
@@ -265,6 +281,10 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 if not path.is_absolute() or not path.resolve().is_relative_to(rt.paths.user_home.resolve()):
                     return f"error: folder must be an absolute path in {rt.paths.user_home}"
                 path.mkdir(parents=True, exist_ok=True)
+                busy = await _agent_in(ctx.store, path)
+                if busy:
+                    return (f"not started: agent job {busy} is already working in {path}. Tell the user that job has "
+                            "this folder; anything new for it can be sent once it finishes")
                 payload["dir"] = str(path)
             elif role != "coder":  # a coder's brief names its project folder; other work gets its own folder
                 path = rt.paths.outputs / "agents" / ctx.job.id

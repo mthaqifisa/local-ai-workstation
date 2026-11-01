@@ -11,6 +11,7 @@ import pytest
 
 from law import registry, roles
 from law.app import handlers, resolver
+from law.handlers import core
 from law.handlers.base import Runtime
 from law.llm import LLM
 from law.paths import LawPaths
@@ -131,6 +132,31 @@ async def test_one_message_starts_at_most_one_agent(setup):
     tasks = [j for j in await store.queued() if j.kind == "task"]
     assert len(tasks) == 1 and tasks[0].payload["dir"].endswith(f"agents/{job.id}")
     assert "already started job" in rt.llm.bodies[2]["messages"][-1]["content"]
+
+
+async def test_a_second_agent_is_refused_on_a_folder_with_a_live_agent(setup, sandbox):
+    rt, store, w = setup
+    (sandbox / "pantry").mkdir()
+    await store.submit(resolver(rt)(Job(kind="task", payload={"role": "coder", "prompt": "fix", "dir": str(sandbox / "pantry")})))
+    first = (await store.queued())[0]
+    assert await store.claim(first)  # at work: the worker does not start it here
+    tool = {"name": "start_agent", "args": {"deliverable": "software", "request": "fix", "folder": str(sandbox / "pantry")}}
+    rt.llm.replies = [tool, "That job already has the folder."]
+    job = await store.submit(resolver(rt)(Job(kind="ask", payload={"prompt": "fix", "role": "assistant"})))
+    while (await store.require(job.id)).status != Status.DONE:
+        await w.schedule_once()
+        for t in list(w.tasks.values()):
+            await t
+    assert [j.id for j in await store.history(10) if j.kind == "task"] == [first.id]
+    assert f"agent job {first.id} is already working" in rt.llm.bodies[1]["messages"][-1]["content"]
+
+
+async def test_a_finished_agent_does_not_hold_its_folder(setup, sandbox):
+    rt, store, _ = setup
+    (sandbox / "pantry").mkdir()
+    done = await store.submit(resolver(rt)(Job(kind="task", payload={"role": "coder", "prompt": "fix", "dir": str(sandbox / "pantry")})))
+    await store.finish(done, Status.DONE, result={})
+    assert await core._agent_in(store, sandbox / "pantry") is None
 
 
 async def test_an_agent_folder_outside_the_home_folder_is_refused(setup):

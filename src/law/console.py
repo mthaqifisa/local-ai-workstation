@@ -154,6 +154,17 @@ def mount(app: Any, llm_internal: str, paths: LawPaths) -> None:
             ProjectMemory(Path(project.dir)).add_note(body.text)
         return saved.model_dump()
 
+    @router.post("/board/{pid}/approve", status_code=201)
+    async def board_approve(request: Request, pid: str) -> dict[str, Any]:
+        """The owner approves the gate this project is waiting at (go on a plan, all good on a build)."""
+        state = request.app.state
+        try:
+            return await board.approve(paths, state.store, state.resolve, pid)
+        except KeyError as exc:
+            raise HTTPException(404, str(exc).strip("'\"")) from exc
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
     @router.delete("/board/{pid}/notes/{note_id}")
     def board_note_delete(pid: str, note_id: str) -> dict[str, str]:
         try:

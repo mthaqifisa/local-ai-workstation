@@ -21,13 +21,14 @@ import re
 import shutil
 import subprocess
 import time
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from law import bugs
+from law import bugs, secrets
 from law.paths import LawPaths
 from law.projects import Project, Projects
 from law.queue.jobs import Job, Status, new_id
@@ -38,6 +39,7 @@ COLUMNS: list[tuple[Column, str]] = [("todo", "To do"), ("progress", "In progres
                                      ("approval", "Waiting for approval"), ("done", "Completed"),
                                      ("failed", "Failed / cancelled")]
 LIVE = {Status.QUEUED, Status.RUNNING, Status.WAITING}
+APPROVE = {"awaiting_go": "go", "awaiting_verification": "allgood"}  # the owner's yes at each gate
 STOPPED = {Status.FAILED, Status.DEAD, Status.CANCELLED}
 DECISIONS = {"go": "Go", "nogo": "No go", "changes": "Needs changes", "allgood": "All good", "resume": "Resumed"}
 LOG_LIMIT = 300
@@ -493,7 +495,8 @@ async def build(paths: LawPaths, store: JobStore, pid: str) -> dict[str, Any]:
     return {
         "project": {"id": project.id, "name": project.name, "state": project.state, "version": project.version,
                     "dir": project.dir, "summary": project.summary, "stack": project.stack,
-                    "live": any(r.status in LIVE for r in roots),
+                    "live": (live := any(r.status in LIVE for r in roots)),
+                    "approve": None if live else APPROVE.get(project.state),
                     "history": [e.model_dump() for e in project.history]},
         "columns": [{"id": c, "label": label} for c, label in COLUMNS],
         "tickets": [t.as_dict() for t in ordered],
@@ -522,6 +525,28 @@ def _remove_files(paths: LawPaths, project: Project, code: bool) -> str | None:
     dest = paths.trash / f"project-{project.id}-{time.strftime('%Y%m%d-%H%M%S')}"
     shutil.move(str(folder), dest)
     return str(dest)
+
+
+def _owner_chat(paths: LawPaths, project: Project) -> int | None:
+    """The Telegram chat for this project's gates: an adopted project has none yet, so the owner's."""
+    allowed = secrets.allowed_telegram_ids(secrets.read(paths.env_file))
+    return project.chat or (min(allowed) if allowed else None)
+
+
+async def approve(paths: LawPaths, store: JobStore, resolve: Callable[[Job], Job], pid: str) -> dict[str, Any]:
+    """The Console's Approve button: the same decision job as Telegram's /go or /allgood, reported in the chat.
+    Raises ValueError when no approval is waiting or the project already has a job running."""
+    project = Projects(paths).get(pid)
+    action = APPROVE.get(project.state)
+    if action is None:
+        raise ValueError(f"{project.name} is not waiting for approval")
+    if any(j.status in LIVE for j in await store.history(1000) if j.parent is None and _belongs(j, project.id)):
+        raise ValueError(f"{project.name} has a job running")
+    chat = _owner_chat(paths, project)
+    reply = {"chat_id": chat, "status_id": None, "file_field": None, "then": None} if chat else None
+    job = await store.submit(resolve(Job(kind="project_step", source="telegram" if chat else "console", reply_to=reply,
+                                         payload={"project": project.id, "action": action, "note": "", "chat": chat})))
+    return {"job": job.id, "action": action}
 
 
 async def delete_project(paths: LawPaths, store: JobStore, pid: str, *, code: bool = False) -> dict[str, Any]:
