@@ -28,6 +28,7 @@ DELIVERABLES = {
     "architecture": ("architect", "system design, technology choices or ADRs"),
     "mac_task": ("operator", "something done in apps on this Mac: music, settings, downloads, browsing"),
 }
+REVISE_ACTIONS = {"awaiting_go": "nogo", "awaiting_verification": "changes", "done": "changes", "parked": "resume"}
 OWNER_WORDS = "\n\nThe owner's exact words (they win over anything above that differs):\n{words}"
 PROJECT_TOOL: dict[str, Any] = {
     "type": "function",
@@ -47,6 +48,25 @@ PROJECT_TOOL: dict[str, Any] = {
                                          "research and a proposal PDF first, for a full engagement.")},
             },
             "required": ["name", "summary", "details"],
+        },
+    },
+}
+REVISE_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "revise_project",
+        "description": ("Redo or change a project LAW already has: its agents write a new version of the plan or "
+                        "proposal and new tickets, which replace the old ones on the Console, then it stops for the "
+                        "user's go. During a build, the working agent gets the change and updates its tickets."),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "project": {"type": "string", "description": "The project's name or folder name."},
+                "changes": {"type": "string",
+                            "description": "What the user wants redone or changed, with every detail."},
+                "proposal": {"type": "boolean", "description": "true when the user asks for a proposal document."},
+            },
+            "required": ["project", "changes"],
         },
     },
 }
@@ -157,13 +177,13 @@ async def answer(rt: Runtime, role: str, messages: list[dict[str, Any]], ctx: Co
     model_id = model or rt.model_id(role)
     on_thought = ctx.thought if ctx is not None else None
     tools = [calc.TOOL_SPEC] if "python" in r.tools else []
-    tools += [AGENT_TOOL, PROJECT_TOOL] if agents is not None else []
+    tools += [AGENT_TOOL, PROJECT_TOOL, REVISE_TOOL] if agents is not None else []
 
     async def run_tool(name: str, args: dict[str, Any]) -> str:
         if name == "run_python" and "python" in r.tools:
             return await calc.run_python(rt.paths.runtime / "calc" / "bin" / "python", rt.paths.tmp / "calc",
                                          str(args.get("code", "")))
-        if name in {"start_agent", "start_project"} and agents is not None:
+        if name in {"start_agent", "start_project", "revise_project"} and agents is not None:
             return await agents({**args, "_tool": name})
         return f"error: unknown tool {name}"
 
@@ -236,7 +256,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         """`start_agent` for this chat message: queues one agent task that reports to the same chat."""
         async def start_project(args: dict[str, Any], chat: int | None, reply: dict[str, Any] | None) -> str:
             from law.app import resolver
-            from law.projects import TemplateError, parse_template
+            from law.projects import Projects, TemplateError, parse_template
             from law.queue.jobs import Job
 
             summary = " ".join(str(args.get("summary", "")).split())
@@ -247,12 +267,46 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 fields = parse_template(template)
             except TemplateError as exc:
                 return f"error: {exc}"
+            if any(p.id == fields["repo"] for p in Projects(rt.paths).all()):
+                return f"error: project {fields['repo']} already exists; use revise_project to redo it"
             job = await ctx.store.submit(resolver(rt)(Job(
                 kind="project_new", payload={"fields": fields, "chat": chat, "mode": mode}, source=ctx.job.source,
                 reply_to=reply)))
             started.append(job.id)
             await ctx.progress(f"🚀 started project {fields['name']}: job {job.id}")
             return f"started project job {job.id}: it writes the plan and tickets, then waits for the user's go"
+
+        async def revise_project(args: dict[str, Any], chat: int | None, reply: dict[str, Any] | None) -> str:
+            from law import board
+            from law.app import resolver
+            from law.project_memory import ProjectMemory
+            from law.projects import Projects
+            from law.queue.jobs import Job
+
+            changes = str(args.get("changes", "")).strip()
+            if not changes:
+                return "error: changes is empty"
+            try:
+                project = Projects(rt.paths).get(str(args.get("project", "")))
+            except KeyError as exc:
+                return f"error: {str(exc).strip(chr(39) + chr(34))}"
+            words = str(ctx.job.payload.get("prompt", "")).strip()
+            if len(words) >= MIN_WORDS and words not in changes:
+                changes += OWNER_WORDS.format(words=words)
+            action = REVISE_ACTIONS.get(project.state)
+            if action is None:  # agents are at work on it: the one on it changes its own tickets at its next action
+                ProjectMemory(Path(project.dir)).add_note(changes)
+                board.add_note(rt.paths, project.id, changes, author="owner (Telegram)")
+                return (f"noted: the agent working on {project.name} gets this at its next action and updates its "
+                        "tickets; no new job was started")
+            job = await ctx.store.submit(resolver(rt)(Job(
+                kind="project_step", source=ctx.job.source, reply_to=reply,
+                payload={"project": project.id, "action": action, "note": changes, "chat": chat,
+                         "proposal": bool(args.get("proposal"))})))
+            started.append(job.id)
+            await ctx.progress(f"🚀 redoing {project.name}: job {job.id}")
+            return (f"started job {job.id}: agents write version {project.version + 1} and its tickets, then wait for "
+                    "the user's go")
 
         async def start(args: dict[str, Any]) -> str:
             from law.app import resolver
@@ -264,6 +318,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             reply = {"chat_id": chat, "status_id": None, "file_field": None, "then": None} if chat else None
             if args.get("_tool") == "start_project":
                 return await start_project(args, chat, reply)
+            if args.get("_tool") == "revise_project":
+                return await revise_project(args, chat, reply)
             kind = str(args.get("deliverable", "")).strip()
             request = str(args.get("request", "")).strip()
             if kind not in DELIVERABLES:

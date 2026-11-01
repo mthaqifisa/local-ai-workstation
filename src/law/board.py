@@ -148,6 +148,8 @@ def _stage_group(spec: dict[str, Any], phase: str, version: int, qa_round: list[
         return f"approve-{gate}-{v}", title, "approval"
     if kind == "code_plan":
         return f"plan-{v}", f"Write the plan {v}", "proposal"
+    if kind == "project_tickets":
+        return f"tickets-{v}", f"Write the tickets {v}", "proposal"
     if phase == "bugfix":  # a /bugfix pipeline (fix, then QA retests) or a QA run (/qa)
         if p.get("qa_run"):
             run = str(p["qa_run"])

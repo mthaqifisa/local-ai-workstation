@@ -15,6 +15,8 @@ from law.handlers import core
 from law.handlers.base import Runtime
 from law.llm import LLM
 from law.paths import LawPaths
+from law.project_memory import ProjectMemory
+from law.projects import Project, Projects
 from law.queue.jobs import Job, Status
 from law.queue.scheduler import Capacity
 from law.queue.store import JobStore
@@ -157,6 +159,56 @@ async def test_a_finished_agent_does_not_hold_its_folder(setup, sandbox):
     done = await store.submit(resolver(rt)(Job(kind="task", payload={"role": "coder", "prompt": "fix", "dir": str(sandbox / "pantry")})))
     await store.finish(done, Status.DONE, result={})
     assert await core._agent_in(store, sandbox / "pantry") is None
+
+
+def _saved_project(rt: Any, state: str = "awaiting_go") -> Projects:
+    store = Projects(rt.paths)
+    store.save(Project(id="pantry-ios", name="Pantry-iOS", dir=str(rt.paths.projects / "pantry-ios"), summary="s",
+                       details="d", state=state, mode="code"))  # type: ignore[arg-type]
+    return store
+
+
+async def _ask(rt: Any, store: JobStore, w: Worker, prompt: str) -> None:
+    job = await store.submit(resolver(rt)(Job(kind="ask", payload={"prompt": prompt, "role": "assistant"})))
+    while (await store.require(job.id)).status != Status.DONE:
+        await w.schedule_once()
+        for t in list(w.tasks.values()):
+            await t
+
+
+async def test_tony_redoes_an_existing_project_through_its_own_flow(setup):
+    rt, store, w = setup
+    (rt.paths.projects / "pantry-ios").mkdir(parents=True)
+    (rt.paths.projects / "pantry-ios" / ".law").mkdir()
+    _saved_project(rt)
+    tool = {"name": "revise_project", "args": {"project": "pantry-ios", "changes": "redo it", "proposal": True}}
+    rt.llm.replies = [tool, "Agents are on it."]
+    await _ask(rt, store, w, "redo the proposal and tickets for the ios version please")
+    step = next(j for j in await store.history(10) if j.kind == "project_step")
+    assert step.payload["action"] == "nogo" and step.payload["proposal"] is True
+    assert "redo the proposal and tickets" in step.payload["note"]  # the owner's words reach the agents
+
+
+async def test_a_change_during_a_build_reaches_the_working_agent(setup):
+    rt, store, w = setup
+    folder = rt.paths.projects / "pantry-ios"
+    (folder / ".law").mkdir(parents=True)
+    _saved_project(rt, "developing")
+    rt.llm.replies = [{"name": "revise_project", "args": {"project": "pantry-ios", "changes": "add dark mode"}}, "Noted."]
+    await _ask(rt, store, w, "add dark mode")
+    assert not [j for j in await store.history(10) if j.kind == "project_step"]
+    assert "add dark mode" in ProjectMemory(folder).pending_notes()
+
+
+async def test_starting_a_project_again_points_tony_at_revise(setup):
+    rt, store, w = setup
+    (rt.paths.projects / "pantry-ios" / ".law").mkdir(parents=True)
+    _saved_project(rt)
+    tool = {"name": "start_project", "args": {"name": "pantry-ios", "summary": "s", "details": "d"}}
+    rt.llm.replies = [tool, "It exists already."]
+    await _ask(rt, store, w, "start the ios app")
+    assert not [j for j in await store.history(10) if j.kind == "project_new"]
+    assert "use revise_project" in rt.llm.bodies[1]["messages"][-1]["content"]
 
 
 async def test_an_agent_folder_outside_the_home_folder_is_refused(setup):

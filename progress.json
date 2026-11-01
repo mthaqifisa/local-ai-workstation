@@ -1,9 +1,9 @@
 {
   "stage": "C-user-requests",
-  "task": "Duplicate-job guards, Console approve button, read-only public Console",
+  "task": "Duplicate-job guards, approve button, read-only Console, Tony revise_project",
   "status": "done",
-  "next_step": "none pending from this request",
-  "timestamp": "2026-11-01T19:50:00",
+  "next_step": "owner asks Tony to redo pantry-ios once the web Pantry settles",
+  "timestamp": "2026-11-01T20:05:00",
   "files_touched": [
     "src/law/public_console.py",
     "src/law/board.py",
@@ -17,7 +17,9 @@
     "settings/registry.yaml",
     "settings/roles.yaml",
     "docs/adr/0022-read-only-public-console.md",
-    "docs/RUNBOOK.md"
+    "docs/RUNBOOK.md",
+    "src/law/handlers/project.py",
+    "src/law/app.py"
   ],
   "commands": [
     "uv run pytest -q tests/unit",

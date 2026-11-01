@@ -118,7 +118,7 @@ def test_new_project_makes_a_repo_and_runs_the_proposal_to_the_gate(tmp_path: Pa
     out = _run(rt, "project_new", {"fields": projects.parse_template(FILLED), "chat": 7})
     assert isinstance(out, Stages)
     kinds = [s["kind"] for s in out.specs]
-    assert kinds[0] == "task_translate" and "task_work" in kinds and kinds[-2:] == ["proposal_mail", "project_gate"]
+    assert kinds[0] == "task_translate" and "task_work" in kinds and kinds[-3:] == ["proposal_mail", "project_tickets", "project_gate"]
     folder = rt.paths.projects / "office-chat"
     assert (folder / ".git").is_dir() and (folder / "docs" / "proposal" / "assets").is_dir()
     # documents don't use the project's thinking level (that is for its code): sections are written with thinking
@@ -281,6 +281,41 @@ def test_a_no_go_on_a_code_plan_revises_the_plan(tmp_path: Path):
     out = _run(rt, "project_step", {"project": "office-chat", "action": "nogo", "note": "use Postgres"})
     assert [s["kind"] for s in out.specs] == ["code_plan", "project_gate"]
     assert store.get("office-chat").version == 2 and "use Postgres" in store.get("office-chat").request()
+
+
+def test_an_adopted_plan_can_become_a_first_proposal_with_new_tickets(tmp_path: Path):
+    rt = _rt(tmp_path)
+    store = projects.Projects(rt.paths)
+    p = store.create(projects.parse_template(CODE_FILLED), chat=7, mode="code")
+    p.state = "awaiting_go"
+    store.save(p)
+    Path(p.dir).mkdir(parents=True, exist_ok=True)
+    out = _run(rt, "project_step", {"project": "office-chat", "action": "nogo", "note": "replan", "proposal": True})
+    kinds = [s["kind"] for s in out.specs]
+    assert store.get("office-chat").mode == "project" and store.get("office-chat").version == 2
+    assert kinds[-2:] == ["project_tickets", "project_gate"]
+    refs = [s["payload"].get("spec_ref") for s in out.specs]
+    assert "proposal.research" in refs  # no document to revise: it researches and writes the first one
+
+
+def test_a_proposals_tickets_reach_the_build_section_before_the_go(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    rt = _rt(tmp_path)
+    store = projects.Projects(rt.paths)
+    p = store.create(projects.parse_template(FILLED), chat=7)
+    p.version = 2
+    store.save(p)
+    (Path(p.dir) / ".law").mkdir(parents=True, exist_ok=True)
+    assert _run(rt, "project_tickets", {"project": "office-chat"}).result == {}  # no document: the build writes them
+    (Path(p.dir) / "docs" / "proposal").mkdir(parents=True)
+    (Path(p.dir) / "docs" / "proposal" / "proposal.md").write_text("# The proposal")
+
+    async def reply(*_: Any, **__: Any) -> str:
+        return "### M1 Setup\n- [ ] OC-1 Repo (acceptance: builds)"
+
+    monkeypatch.setattr(project_handlers, "answer", reply)
+    _run(rt, "project_tickets", {"project": "office-chat"})
+    plan = (Path(p.dir) / ".law" / "PLAN.md").read_text()
+    assert "## Build version 2" in plan and "OC-1 Repo" in plan
 
 
 def test_email_resends_the_latest_document_and_unsent_gates_offer_it(tmp_path: Path):

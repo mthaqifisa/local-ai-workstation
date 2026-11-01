@@ -267,9 +267,12 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
 
     def _proposal(project: Project) -> list[dict[str, Any]]:
         # documents use the writer's and researcher's own thinking level; the project's applies to its code
-        stages = proposal_stages(rt, project.request(), Path(project.dir), OUT, version=project.version,
-                                 feedback=project.feedback, depth=project.proposal, extra={"project": project.id})
-        return [*stages, _gate(project, "proposal")]
+        folder = Path(project.dir)
+        # a later version with no document yet (an adopted project) is a first proposal: research it, nothing to revise
+        version = project.version if (folder / OUT / "proposal.md").exists() else 1
+        stages = proposal_stages(rt, project.request(), folder, OUT, version=version, feedback=project.feedback,
+                                 depth=project.proposal, extra={"project": project.id})
+        return [*stages, {"kind": "project_tickets", "payload": {"project": project.id}}, _gate(project, "proposal")]
 
     def _plan(project: Project) -> list[dict[str, Any]]:
         """Code-only projects: a short plan in the chat instead of research, a proposal and email."""
@@ -330,6 +333,21 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                                                      "researching and writing proposal v1"))
         return Stages(_first_phase(project))
 
+    async def project_tickets(ctx: Context) -> Outcome:
+        """The proposal's tickets, on the board before the owner's go, so the go covers both. The build sessions work
+        from them; without any, the first session writes them (DEV_SPEC)."""
+        project = store.get(str(ctx.job.payload["project"]))
+        document = Path(project.dir) / OUT / "proposal.md"
+        if not document.exists():
+            return Done({})
+        await ctx.progress("🗂 writing the tickets for the board")
+        tickets = (await answer(rt, "translator", [{"role": "user", "content": CODE_TICKETS.format(
+            plan=document.read_text(), version=project.version,
+            key=_base(project)["spec_args"]["key"])}], ctx)).strip()
+        if LEFT.search(tickets):
+            ProjectMemory(Path(project.dir)).add_build_section(f"## Build version {project.version}\n\n{tickets}\n")
+        return Done({})
+
     async def code_plan(ctx: Context) -> Outcome:
         """The plan the owner approves in the chat; it is the brief every build session works from."""
         project = store.get(str(ctx.job.payload["project"]))
@@ -356,6 +374,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         try:
             project = store.get(str(p["project"]))
             phase = decide(project, str(p["action"]), str(p.get("note", "")))
+            if p.get("proposal") and phase == "proposal":
+                project.mode = "project"  # the owner asked for a proposal document, not only a plan
         except (KeyError, ValueError) as exc:
             # a refused decision (wrong moment, e.g. an old Go button; unknown project) is information, not a
             # failure: no Retry / Skip
@@ -487,5 +507,6 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         return Done({"answer": text, "gate": {"project": project.id, "actions": actions}})
 
     return {"project_new": project_new, "project_step": project_step, "project_gate": project_gate,
-            "code_plan": code_plan, "project_bugfix": project_bugfix, "project_bug_report": project_bug_report,
+            "code_plan": code_plan, "project_tickets": project_tickets, "project_bugfix": project_bugfix,
+            "project_bug_report": project_bug_report,
             "project_qa": project_qa}
