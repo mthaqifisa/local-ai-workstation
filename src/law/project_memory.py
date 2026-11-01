@@ -9,6 +9,7 @@ restarted job resumes the same session; it is machine-local and git-ignored. Not
 from __future__ import annotations
 
 import json
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -23,8 +24,10 @@ SEEDS = {
 INSTRUCTIONS = """This project keeps its working memory in {folder}/ (like .claude/). Use it:
 - First read {folder}/PROMPT.md (the brief), then {folder}/PROGRESS.md and {folder}/PLAN.md if they have content.
   If earlier work exists, continue from the next unchecked step; do not start over or re-read the whole codebase.
-- Before any work, write this task's to-do list in {folder}/PLAN.md: numbered steps with checkboxes (`- [ ]`) and
-  a gate for each, small enough that each finishes in one step. Record findings in {folder}/RESEARCH.md.
+- Before any work, add this task's to-do list to {folder}/PLAN.md under a new "## Task <date> <title>" heading:
+  numbered steps with checkboxes (`- [ ]`) and a gate for each, small enough that each finishes in one step. Keep
+  everything already in the file: a "## Build version N" section is the project's ticket board. Record findings in
+  {folder}/RESEARCH.md.
 - After every step, update {folder}/PROGRESS.md: what was done, the gate output, the exact next step. Tick the step
   in {folder}/PLAN.md. Write findings and results to files as you go, never only at the end: your context can be
   summarised at any time, and what is not on disk is lost.
@@ -42,6 +45,9 @@ RESUME = ("Your previous session in this project was interrupted. Read {folder}/
 COMMITTED = ("PLAN.md", "PROGRESS.md", "RESEARCH.md", "REQUESTS.md", "PROMPT.md", "ENVIRONMENT.md", "env.sh", "BUGS.md",
              "project.json", "check.sh")
 GITIGNORE = "*\n!.gitignore\n" + "".join(f"!{name}\n" for name in COMMITTED)
+
+BUILD_SECTION = re.compile(r"^## Build version \d+.*?(?=^#{1,2} |\Z)", re.MULTILINE | re.DOTALL)
+
 
 class ProjectMemory:
     def __init__(self, project: Path) -> None:
@@ -65,6 +71,32 @@ class ProjectMemory:
         prompt, body = self.dir / "PROMPT.md", f"\n\n{(brief or request).strip()}\n"
         if not (prompt.exists() and prompt.read_text().partition("\n")[2] == body[1:]):
             prompt.write_text(f"# Brief (job {job_id}, {stamp}){body}")
+
+    def plan_text(self) -> str:
+        plan = self.dir / "PLAN.md"
+        return plan.read_text() if plan.exists() else ""
+
+    def keep_build_sections(self, before: str) -> bool:
+        """Put back any `## Build version N` section a session removed from PLAN.md: those sections are the Console
+        board (seen 2026-10-30: a Pantry task replaced the file with its to-do list and 158 tickets left the board).
+        Returns True when something was restored."""
+        now = self.plan_text()
+        lost = [s for s in BUILD_SECTION.findall(before) if s.partition("\n")[0].strip() not in now]
+        if not lost:
+            return False
+        (self.dir / "PLAN.md").write_text("\n\n".join([now.rstrip(), *(s.rstrip() for s in lost)]) + "\n")
+        return True
+
+    def add_build_section(self, section: str) -> None:
+        heading = section.partition("\n")[0]
+        now = self.plan_text()
+        if heading not in now:
+            (self.dir / "PLAN.md").write_text(f"{now.rstrip()}\n\n{section}")
+
+    def pending_notes(self) -> str:
+        """Owner notes no agent has taken yet."""
+        path = self.dir / "NOTES.md"
+        return path.read_text().strip() if path.exists() else ""
 
     def instructions(self) -> str:
         return INSTRUCTIONS.format(folder=FOLDER)

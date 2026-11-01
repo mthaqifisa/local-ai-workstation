@@ -94,3 +94,24 @@ def test_owner_notes_are_delivered_once_and_recorded(tmp_path: Path) -> None:
     assert note is not None and "PEM files" in note and "p12" in note
     assert mem.take_notes() is None  # once
     assert "owner note to the agent" in (tmp_path / FOLDER / "REQUESTS.md").read_text()
+
+
+def test_a_session_cannot_remove_the_board_tickets(tmp_path: Path) -> None:
+    memory = ProjectMemory(tmp_path)
+    memory.prepare("j1", "r", None)
+    plan = tmp_path / ".law" / "PLAN.md"
+    before = "# Plan\n\n## Build version 1\n\n### M1 API\n- [x] P-1 Health\n\n## Later\nnotes\n"
+    plan.write_text("# PLAN: icons\n- [ ] 1 buttons\n")
+    assert memory.keep_build_sections(before)
+    assert "- [x] P-1 Health" in plan.read_text() and "1 buttons" in plan.read_text()
+    assert not memory.keep_build_sections(before)  # already there: a split inside the section changes nothing
+
+
+def test_pending_notes_show_until_an_agent_takes_them(tmp_path: Path) -> None:
+    memory = ProjectMemory(tmp_path)
+    memory.prepare("j1", "r", None)
+    assert memory.pending_notes() == ""
+    memory.add_note("use icons")
+    assert memory.pending_notes() == "use icons"
+    memory.take_notes()
+    assert memory.pending_notes() == ""

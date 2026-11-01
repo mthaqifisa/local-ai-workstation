@@ -72,7 +72,8 @@ async def test_a_qa_bug_fails_the_round_even_when_the_code_review_passes(tmp_pat
     from law.handlers import tasks
 
     project = tmp_path / "shop"
-    project.mkdir()
+    (project / "qa").mkdir(parents=True)
+    (project / "qa" / "checkout.sh").write_text("true\n")
     prompts: list[str] = []
 
     async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
@@ -153,7 +154,7 @@ async def test_qa_only_run_skips_the_code_review_and_alerts_a_new_blocker(tmp_pa
         agents.append(cmd[cmd.index("--agent") + 1])
         bugs.add(project, "Home page is blank", f"Severity: blocker\nEvidence: {shot}", reporter="QA")
         bugs.add(project, "Button text cut off", "Severity: minor", reporter="QA")
-        return '{"type": "text", "part": {"type": "text", "text": "{\\"summary\\": \\"blank home\\"}"}}'
+        return '{"type": "text", "part": {"type": "text", "text": "{\\"tested\\": [\\"home: fail\\"], \\"summary\\": \\"blank home\\"}"}}'
 
     def fake_send(env_file: Path, files: list[Path], message: str, transport: Any = None) -> int:
         sent.append((files, message))
@@ -167,7 +168,7 @@ async def test_qa_only_run_skips_the_code_review_and_alerts_a_new_blocker(tmp_pa
     done = await tasks.make_handlers(_review_rt(tmp_path))["task_review"](_ctx(payload))
     review = done.result["review"]
     assert agents == ["qa"]  # no code review in a QA-only run
-    assert review["score"] < 4 and review["qa"]["open"][0].startswith("BUG-1 (open, blocker")
+    assert review["score"] < 4 and review["qa"]["open"][1].startswith("BUG-1 (open, blocker")
     assert any("BUG-2" in i for i in review["issues"]) and not any("BUG-2" in i for i in review["qa"]["open"])
     assert len(sent) == 1 and sent[0][0] == [shot] and "blocker" in sent[0][1] and "Home page is blank" in sent[0][1]
 
@@ -177,12 +178,13 @@ async def test_a_minor_bug_alone_does_not_fail_the_round(tmp_path: Path, monkeyp
     from law.handlers import tasks
 
     project = tmp_path / "shop"
-    project.mkdir()
+    (project / "qa").mkdir(parents=True)
+    (project / "qa" / "labels.sh").write_text("true\n")
 
     async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
         if cmd[cmd.index("--agent") + 1] == "qa":
             bugs.add(project, "Label slightly off", "Severity: minor", reporter="QA")
-            reply = '{"summary": "fine"}'
+            reply = '{"tested": ["labels: pass"], "summary": "fine"}'
         else:
             reply = '{"score": 5, "issues": [], "summary": "clean"}'
         return '{"type": "text", "part": {"type": "text", "text": ' + json.dumps(reply) + '}}'
@@ -193,3 +195,60 @@ async def test_a_minor_bug_alone_does_not_fail_the_round(tmp_path: Path, monkeyp
                "_carry": {}}
     done = await tasks.make_handlers(_review_rt(tmp_path))["task_review"](_ctx(payload))
     assert done.result["review"]["score"] == 5 and done.result["review"]["qa"]["minor"]
+
+
+async def test_qa_without_evidence_cannot_pass(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """2026-10-29: a QA session stopped mid-sentence, no bugs were on file, and Pantry got 5/5 without any test."""
+    from law.handlers import project as _registers_project_specs  # noqa: F401
+    from law.handlers import tasks
+
+    project = tmp_path / "shop"
+    project.mkdir()
+    agents: list[str] = []
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        agents.append(cmd[cmd.index("--agent") + 1])
+        reply = "I am continuing with M1 now." if agents[-1] == "qa" else '{"score": 5, "issues": [], "summary": "ok"}'
+        return '{"type": "text", "part": {"type": "text", "text": ' + json.dumps(reply) + '}}'
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    payload = {"prompt": "x", "dir": str(project), "role": "coder", "project": "shop", "version": 1,
+               "rubric_ref": "project.review", "spec_args": {"name": "Shop", "out": "docs/proposal", "version": 1},
+               "_carry": {}}
+    done = await tasks.make_handlers(_review_rt(tmp_path))["task_review"](_ctx(payload))
+    review = done.result["review"]
+    assert agents.count("qa") == 2  # once more before giving up
+    assert review["score"] < 4 and "QA evidence missing: no test results" in review["issues"][0]
+
+
+async def test_a_design_is_checked_by_a_model_that_can_see(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from law.handlers import project as _registers_project_specs  # noqa: F401
+    from law.handlers import tasks
+
+    project = tmp_path / "shop"
+    (project / "qa").mkdir(parents=True)
+    (project / "qa" / "a.sh").write_text("true\n")
+    (project / "docs" / "design" / "reference").mkdir(parents=True)
+    (project / "docs" / "design" / "ui-spec.md").write_text("# UI\n")
+    (project / "docs" / "design" / "reference" / "look.webp").write_bytes(b"x")
+    prompts: dict[str, str] = {}
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        agent = cmd[cmd.index("--agent") + 1]
+        prompts[agent] = cmd[-1]
+        if agent == "designer":
+            bugs.add(project, "No bottom nav", "Severity: major", reporter="QA")
+            reply = '{"screens": ["Home: fail"], "summary": "Home is missing"}'
+        elif agent == "qa":
+            reply = '{"tested": ["add: pass"], "summary": "works"}'
+        else:
+            reply = '{"score": 5, "issues": [], "summary": "ok"}'
+        return '{"type": "text", "part": {"type": "text", "text": ' + json.dumps(reply) + '}}'
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    payload = {"prompt": "x", "dir": str(project), "role": "coder", "project": "shop", "version": 1,
+               "rubric_ref": "project.review", "spec_args": {"name": "Shop", "out": "docs/proposal", "version": 1},
+               "_carry": {}}
+    done = await tasks.make_handlers(_review_rt(tmp_path))["task_review"](_ctx(payload))
+    assert "docs/design/reference/look.webp" in prompts["designer"] and "390 x 844" in prompts["designer"]
+    assert done.result["review"]["score"] < 4 and "No bottom nav" in done.result["review"]["issues"][0]

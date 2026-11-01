@@ -204,3 +204,33 @@ async def test_the_deliverable_picks_the_agent(setup, deliverable, role):
         assert not tasks and "error: deliverable must be one of" in rt.llm.bodies[1]["messages"][-1]["content"]
     else:
         assert [t.payload["role"] for t in tasks] == [role]
+
+
+async def _chat(setup: Any, prompt: str, tool: dict[str, Any]) -> Any:
+    rt, store, w = setup
+    rt.llm.replies = [tool, "On it."]
+    job = await store.submit(resolver(rt)(Job(kind="ask", payload={"prompt": prompt, "role": "assistant"},
+                                              source="telegram", reply_to={"chat_id": 42, "status_id": 7,
+                                                                           "file_field": None, "then": None})))
+    for _ in range(100):  # stops at the chat's end: what it queued is checked, not run
+        if (await store.require(job.id)).status == Status.DONE:
+            break
+        await w.schedule_once()
+        for t in list(w.tasks.values()):
+            await t
+    return await store.require((await store.require(job.id)).result["agent_job"])
+
+
+async def test_the_brief_keeps_the_owners_own_words(setup):
+    """2026-10-30: the chat model's brief invented a library and browser storage the app did not have."""
+    words = "Use icons instead of words for the buttons, and let me upload a photo"
+    agent = await _chat(setup, words, {"name": "start_agent", "args": {
+        "deliverable": "software", "request": "Refactor using html5-qrcode and localStorage"}})
+    assert agent.payload["prompt"].endswith(words) and "exact words" in agent.payload["prompt"]
+
+
+async def test_a_new_app_starts_as_a_project_that_waits_for_the_go(setup):
+    project = await _chat(setup, "Start a new project called pantry-ios with tickets", {
+        "name": "start_project", "args": {"name": "pantry-ios", "summary": "Native\npantry", "details": "SwiftUI app"}})
+    assert project.kind == "project_new" and project.payload["mode"] == "code" and project.payload["chat"] == 42
+    assert project.payload["fields"]["repo"] == "pantry-ios" and project.payload["fields"]["summary"] == "Native pantry"

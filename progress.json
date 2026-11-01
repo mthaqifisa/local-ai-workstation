@@ -1,18 +1,25 @@
 {
   "stage": "C-user-requests",
-  "task": "review of the day's v6 changes",
+  "task": "Pantry output review and setup fixes",
   "status": "done",
-  "next_step": "monitor Pantry P-29",
-  "timestamp": "2026-10-29T09:25:52",
+  "next_step": "owner approves the Pantry rework message to Tony",
+  "timestamp": "2026-11-01T18:52:00",
   "files_touched": [
-    "src/law/telegram_bot.py",
+    "src/law/install/steps.py",
+    "src/law/handlers/tasks.py",
+    "src/law/handlers/project.py",
+    "src/law/handlers/core.py",
+    "src/law/projects.py",
     "src/law/project_memory.py",
-    "docs/RUNBOOK.md",
-    "tests/unit/test_telegram_bot.py",
-    "tests/unit/test_project_memory.py"
+    "src/law/board.py",
+    "src/law/cli.py",
+    "src/law/agent_status.py",
+    "settings/roles.yaml",
+    "docs/RUNBOOK.md"
   ],
   "commands": [
     "uv run pytest -q tests/unit",
-    "./install.sh"
+    "./install.sh",
+    "law adopt ~/SourceCode/Pantry-iOS"
   ]
 }

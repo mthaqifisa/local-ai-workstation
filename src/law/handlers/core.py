@@ -27,6 +27,28 @@ DELIVERABLES = {
     "architecture": ("architect", "system design, technology choices or ADRs"),
     "mac_task": ("operator", "something done in apps on this Mac: music, settings, downloads, browsing"),
 }
+OWNER_WORDS = "\n\nThe owner's exact words (they win over anything above that differs):\n{words}"
+PROJECT_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "start_project",
+        "description": ("Start a new app or product as a LAW project, which appears on the Console's project page. "
+                        "It stops for the user's go before any code. Returns the job id."),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "The project's name, as the user gave it."},
+                "summary": {"type": "string", "description": "One sentence: what it is."},
+                "details": {"type": "string", "description": "Everything the user asked for, with every detail."},
+                "stack": {"type": "string", "description": "The technology, if the user or the chat settled it."},
+                "mode": {"type": "string", "enum": ["code", "project"],
+                         "description": ("code: a short plan and tickets for the user's go, no documents; project: "
+                                         "research and a proposal PDF first, for a full engagement.")},
+            },
+            "required": ["name", "summary", "details"],
+        },
+    },
+}
 AGENT_TOOL: dict[str, Any] = {
     "type": "function",
     "function": {
@@ -52,6 +74,7 @@ AGENT_TOOL: dict[str, Any] = {
         },
     },
 }
+MIN_WORDS = 20  # shorter messages ("yes", "go on") add nothing to a brief
 HISTORY_CHARS = 8000  # conversation the judge sees as context
 
 RUBRIC = """Score the RESPONSE to the REQUEST from 1 to 5.
@@ -131,14 +154,15 @@ async def answer(rt: Runtime, role: str, messages: list[dict[str, Any]], ctx: Co
     r = rt.roles.get(role)
     model_id = model or rt.model_id(role)
     on_thought = ctx.thought if ctx is not None else None
-    tools = ([calc.TOOL_SPEC] if "python" in r.tools else []) + ([AGENT_TOOL] if agents is not None else [])
+    tools = [calc.TOOL_SPEC] if "python" in r.tools else []
+    tools += [AGENT_TOOL, PROJECT_TOOL] if agents is not None else []
 
     async def run_tool(name: str, args: dict[str, Any]) -> str:
         if name == "run_python" and "python" in r.tools:
             return await calc.run_python(rt.paths.runtime / "calc" / "bin" / "python", rt.paths.tmp / "calc",
                                          str(args.get("code", "")))
-        if name == "start_agent" and agents is not None:
-            return await agents(args)
+        if name in {"start_agent", "start_project"} and agents is not None:
+            return await agents({**args, "_tool": name})
         return f"error: unknown tool {name}"
 
     async def ask_at(effort: str) -> str:
@@ -194,12 +218,36 @@ def review_skip(rt: Runtime, ctx: Context, role: str, text: str, agent_job: str 
 def make_handlers(rt: Runtime) -> dict[str, Any]:
     def agent_starter(ctx: Context, started: list[str]) -> AgentStarter:
         """`start_agent` for this chat message: queues one agent task that reports to the same chat."""
+        async def start_project(args: dict[str, Any], chat: int | None, reply: dict[str, Any] | None) -> str:
+            from law.app import resolver
+            from law.projects import TemplateError, parse_template
+            from law.queue.jobs import Job
+
+            summary = " ".join(str(args.get("summary", "")).split())
+            mode = "project" if args.get("mode") == "project" else "code"
+            template = (f"name: {args.get('name', '')}\nstack: {args.get('stack', '')}\nsummary: {summary}\n"
+                        f"details: {args.get('details', '')}")
+            try:
+                fields = parse_template(template)
+            except TemplateError as exc:
+                return f"error: {exc}"
+            job = await ctx.store.submit(resolver(rt)(Job(
+                kind="project_new", payload={"fields": fields, "chat": chat, "mode": mode}, source=ctx.job.source,
+                reply_to=reply)))
+            started.append(job.id)
+            await ctx.progress(f"🚀 started project {fields['name']}: job {job.id}")
+            return f"started project job {job.id}: it writes the plan and tickets, then waits for the user's go"
+
         async def start(args: dict[str, Any]) -> str:
             from law.app import resolver
             from law.queue.jobs import Job
 
             if started:  # one agent per message; a retried model call must not start a second one
                 return f"already started job {started[0]} for this message"
+            chat = (ctx.job.reply_to or {}).get("chat_id")
+            reply = {"chat_id": chat, "status_id": None, "file_field": None, "then": None} if chat else None
+            if args.get("_tool") == "start_project":
+                return await start_project(args, chat, reply)
             kind = str(args.get("deliverable", "")).strip()
             request = str(args.get("request", "")).strip()
             if kind not in DELIVERABLES:
@@ -207,6 +255,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             role = DELIVERABLES[kind][0]
             if not request:
                 return "error: request is empty"
+            words = str(ctx.job.payload.get("prompt", "")).strip()
+            if len(words) >= MIN_WORDS and words not in request:  # the chat model adds guesses: keep the source
+                request += OWNER_WORDS.format(words=words)
             payload: dict[str, Any] = {"role": role, "prompt": request}
             folder = str(args.get("folder") or "").strip()
             if folder:
@@ -219,8 +270,6 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 path = rt.paths.outputs / "agents" / ctx.job.id
                 path.mkdir(parents=True, exist_ok=True)
                 payload["dir"] = str(path)
-            chat = (ctx.job.reply_to or {}).get("chat_id")
-            reply = {"chat_id": chat, "status_id": None, "file_field": None, "then": None} if chat else None
             job = await ctx.store.submit(resolver(rt)(Job(kind="task", payload=payload, source=ctx.job.source,
                                                           reply_to=reply)))
             started.append(job.id)

@@ -81,6 +81,13 @@ version, installed version, how it is selected. Commit `.law/`.
 
 """ + ENV_PLATFORMS
 
+CODE_TICKETS = """Split this agreed plan into tickets for the project board. Reply with Markdown only, nothing before
+or after it: one level-3 heading per milestone ("### M1 Data layer"), and under each, small tickets, one per line:
+"- [ ] {key}-1 Title (acceptance: what proves it works)". Number the tickets in one sequence across the milestones.
+
+The plan (version {version}):
+{plan}"""
+
 DEV_SPEC = """Build {name} version {version} as specified in {spec_file}{scope}. The tools are ready
 (.law/ENVIRONMENT.md); do not change versions without updating it. Do not re-check the environment, the installed
 tools or the library versions the environment stage recorded: start on the work, and look into a tool only when a
@@ -92,6 +99,9 @@ Work like a team on a Jira board, in .law/PLAN.md:
   list small tickets as checkboxes with an ID and acceptance criteria, e.g.
   "- [ ] {key}-3 Join rejects a second username from the same device (acceptance: unit + integration test)".
   A ticket is one focused change and one commit; a milestone ends with a passing build and tests.
+- A design document or reference (docs/design/) is a requirement: every screen and component it names gets a ticket.
+  A UI ticket is done when you have run the product, opened the screen at a phone viewport (390 x 844) with real data,
+  looked at the screenshot and it matches the design; tests passing alone do not show that.
 - Keep tickets small: one endpoint, one part of a screen or one script, a few files, at most about two hours of
   work. A ticket that turns out bigger is split in .law/PLAN.md into "{key}-<n>.1", "{key}-<n>.2", ... (they
   replace its line); then do the first part.
@@ -332,6 +342,11 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         if not plan:
             raise Fatal("the planner returned no plan")
         memory.prepare(ctx.job.parent or ctx.job.id, project.request(), plan)  # .law/PROMPT.md = the agreed plan
+        await ctx.progress("🗂 writing the tickets for the board")
+        tickets = (await answer(rt, "translator", [{"role": "user", "content": CODE_TICKETS.format(
+            plan=plan, version=project.version, key=_base(project)["spec_args"]["key"])}], ctx)).strip()
+        if LEFT.search(tickets):  # the board shows them before the go; the build sessions work from them
+            memory.add_build_section(f"## Build version {project.version}\n\n{tickets}\n")
         return Done({"plan": plan})
 
     async def project_step(ctx: Context) -> Outcome:
@@ -353,6 +368,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             return Stages(_first_phase(project))
         if phase == "develop":
             await ctx.progress(f"🛠 starting development of v{project.version}")
+            await _prepare_repo(ctx, project)  # an adopted project may have no git repository yet
             return Stages(_develop(project))
         if phase == "push":
             await run_cmd(ctx, ["git", "push", "-u", "origin", "HEAD"], cwd=Path(project.dir), timeout_s=600)
@@ -457,13 +473,15 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             project.state = "awaiting_verification"
             project.log("built", f"v{project.version}, review {score}")
             left = LEFT.findall(build_section(Path(project.dir), project.version) or "")
+            held = ProjectMemory(Path(project.dir)).pending_notes()
+            waiting = f"\n\n📝 Not built yet, your notes during the handover:\n{held}" if held else ""
             status = (f"⚠️ {len(left)} milestone(s) not finished: " + "; ".join(left[:5]) + "\n\n") if left else ""
             handover = ("the handover document (how to run and use it, with screenshots) is "
                         + ("in your email and here" if carry.get("emailed") else "attached here (email not sent)"))
             text = (f"✅ **{project.name} v{project.version}** is built. Independent review: {score}"
                     f"{' (' + review.get('summary', '') + ')' if review.get('summary') else ''}.\n\n{status}"
                     f"To try it, {handover if carry.get('pdf') else 'see README.md in `' + project.dir + '`'}; "
-                    "progress is in `.law/PROGRESS.md`.\n\nIs it good, or what should change?")
+                    f"progress is in `.law/PROGRESS.md`.{waiting}\n\nIs it good, or what should change?")
             actions = ["allgood", "changes", *unsent]
         store.save(project)
         return Done({"answer": text, "gate": {"project": project.id, "actions": actions}})

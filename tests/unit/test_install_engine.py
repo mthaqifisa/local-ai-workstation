@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from law import registry, roles, secrets
 from law.install import engine
-from law.install.steps import Ctx, EnvProfile, OpenCodeConfig, Secrets, Skeleton
+from law.install.steps import COLIMA_START, Colima, Ctx, EnvProfile, OpenCodeConfig, Secrets, Skeleton
 from law.paths import LawPaths
 from law.sysapi import Result, SysAPI
 
@@ -583,3 +585,28 @@ def test_colima_step_repairs_the_docker_context(ctx: Ctx):
     step._fix_context()
     assert ["docker", "context", "create", "colima", "--docker", f"host={sock}"] in fake.calls
     assert step._context_ok() and step.verify() == []
+
+
+def test_colima_starts_past_a_stale_pid_file_and_leaves_a_live_one(ctx: Ctx, tmp_path: Path):
+    """After a reboot macOS reuses the pid in vz.pid for another program, and Colima refuses to start."""
+    assert Colima(ctx).agent().args[:3] == ["/bin/sh", "-c", COLIMA_START]
+    lima = tmp_path / "_lima" / "colima"
+    lima.mkdir(parents=True)
+    (lima / "vz.pid").write_text(str(os.getpid()))  # alive, but not limactl
+    (lima / "ha.pid").write_text("999999")  # gone
+    script = tmp_path / "limactl"  # a process whose command line says limactl
+    script.write_text("#!/bin/sh\nsleep 30\n")
+    script.chmod(0o755)
+    live = subprocess.Popen([str(script)])
+    try:
+        (lima / "vz.pid").write_text(str(os.getpid()))
+        run = subprocess.run(["/bin/sh", "-c", COLIMA_START, "x", "echo", "started"], capture_output=True, text=True,
+                             env={"COLIMA_HOME": str(tmp_path), "PATH": os.environ["PATH"]}, check=True)
+        assert run.stdout.strip() == "started" and not list(lima.glob("*.pid"))
+        (lima / "ha.pid").write_text(str(live.pid))
+        subprocess.run(["/bin/sh", "-c", COLIMA_START, "x", "true"], check=True,
+                       env={"COLIMA_HOME": str(tmp_path), "PATH": os.environ["PATH"]})
+        assert (lima / "ha.pid").exists()
+    finally:
+        live.kill()
+        live.wait()

@@ -17,6 +17,7 @@ from law import bugs, deliver, specs
 from law.handlers.base import Runtime, Stalled, Steered, run_cmd
 from law.handlers.core import PASS_SCORE, answer, parse_verdict
 from law.project_memory import FOLDER, ProjectMemory, project_listing
+from law.projects import Projects
 from law.queue.worker import JOB_TIMEOUT_S, Context, Done, Fatal, Outcome, Stages
 
 # Roles whose output is code or files get a translated brief, an independent review and one fix pass by default.
@@ -404,14 +405,16 @@ QA_CODE_NUDGE = ("QA tests the product, not the code: do not read or search the 
                  "README and the running product (browser, HTTP API, commands), and report what a user sees.")
 QA_TASK = """Test {name} version {version}, the product in {folder}, as an independent user would.
 
-Requirements: {folder}/.law/PROMPT.md (the brief) and {folder}/{spec_file} (its acceptance criteria). How to run
-it: the README. The bug list is {folder}/.law/BUGS.md (statuses: open, fixed, verified, reopened).
+Requirements: {folder}/.law/PROMPT.md (the brief), {folder}/{spec_file} (its acceptance criteria) and every feature
+or change the owner asked for in {folder}/.law/REQUESTS.md (each one is a requirement). How to run it: the README.
+The bug list is {folder}/.law/BUGS.md (statuses: open, fixed, verified, reopened).
 
 0. Run the regression pack first: every check in {folder}/qa/ (how to run them is in {folder}/qa/README.md). A
    check that fails is a bug: reopen its bug, or file a new one.
 1. Retest: for every bug that is open, fixed or reopened, repeat its steps. Set its status word in the heading to
    verified if it is gone, or reopened if it is still there, and add a line "Retest <date>: <result>".
-2. Then test every requirement and acceptance criterion, and the edges a user hits. For each new bug append:
+2. Then test every requirement and acceptance criterion, and the edges a user hits, on the running product with the
+   data already in it as well as your own test data. For each new bug append:
    ## BUG-<next number> · open · QA · <YYYY-MM-DD HH:MM>
    <one-line title of what goes wrong>
    Severity: blocker (a core requirement fails) | major (a requirement works wrongly) | minor (cosmetic, or an edge
@@ -421,6 +424,49 @@ it: the README. The bug list is {folder}/.law/BUGS.md (statuses: open, fixed, ve
    covers) and keep {folder}/qa/README.md saying how to run them all with one command. Checks drive the running
    product only (browser, HTTP, commands), never the source.
 4. Reply with JSON only: {{"tested": ["<requirement>: pass|fail"], "summary": "<one sentence>"}}"""
+
+
+QA_NO_REPORT = ("\n\nAn earlier QA session ended without its report, so nothing was verified. Work through the steps "
+                "above in order, and end with the JSON report.")
+NO_EVIDENCE = ("QA evidence missing: {what}. Nothing here proves the product works; run QA again and read why the "
+               "session ended early.")
+DESIGN_TASK = """Check how {name} version {version}, the running product in {folder}, looks against its design: you
+are the design reviewer, and you can see images. Design: {design}. Owner's requests: {folder}/.law/REQUESTS.md.
+
+1. Start the product as its README says (it may be running already). List the screens and components the design names.
+2. Open every screen in a headless browser at a phone viewport (390 x 844), with the product's real data and with one
+   item in each state. Save each screenshot under $TMPDIR, then open the image and look at it. Open any reference image
+   the same way.
+3. Compare what you see, one item at a time: is each screen and component there, and do its layout, density, sizes and
+   wording match? Count how many items fit on one screen against the design. Do images show where the design has them?
+4. Each screen or component that is missing or clearly different is a bug. Append it to {folder}/.law/BUGS.md as:
+   ## BUG-<next number> · open · QA · <YYYY-MM-DD HH:MM>
+   <one-line title>
+   Severity: major (missing or wrong against the design) | minor (small visual difference)
+   Steps: ... Expected: <the design's section> Actual: ... Evidence: <the screenshot path>
+5. Reply with JSON only: {{"screens": ["<screen or component>: pass|fail"], "summary": "<one sentence>"}}"""
+
+
+def design_docs(folder: Path) -> list[str]:
+    """The project's design documents and reference images, relative to it."""
+    root = folder / "docs" / "design"
+    if not root.is_dir():
+        return []
+    found = (f for f in root.rglob("*") if f.suffix.lower() in {".md", ".png", ".jpg", ".jpeg", ".webp", ".svg"})
+    return sorted(str(f.relative_to(folder)) for f in found)
+
+
+def json_report(reply: str) -> dict[str, Any]:
+    found = re.search(r"\{.*\}", reply, re.DOTALL)
+    try:
+        report = json.loads(found.group(0)) if found else {}
+    except json.JSONDecodeError:
+        return {}
+    return report if isinstance(report, dict) else {}
+
+
+def qa_pack_kept(folder: Path) -> bool:
+    return any(f.is_file() and f.name != "README.md" for f in (folder / "qa").rglob("*"))
 
 
 def reads_product_code(summary: str, project: Path) -> bool:
@@ -616,7 +662,10 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             nonlocal digs, lookups, blind_edits, reads, probes, told_law, told_probe, told_shell_write
             if finished is not None and finished():
                 return TICKET_DONE
-            note = memory.take_notes() if memory is not None else None
+            # a handover writer only documents: a change request waits for an agent that can build it (seen 2026-10-30:
+            # the owner's icon and photo requests became "known limitations" in the handover document)
+            holds_notes = ctx.job.payload.get("spec_ref") == "project.handover"
+            note = memory.take_notes() if memory is not None and not holds_notes else None
             if note:
                 return OWNER_NOTE.format(note=note)
             if role == "qa" and reads_product_code(summary, workdir):
@@ -861,7 +910,14 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         memory = _memory(ctx, p)
         if p.get("milestone"):
             return await _build_tickets(ctx, p, memory)
+        plan_before = memory.plan_text() if memory is not None else ""
         text = await _agent(ctx, p["role"], _scoped(p, memory), _workdir(p), memory=memory)
+        if memory is not None and memory.keep_build_sections(plan_before):
+            await ctx.progress("LAW put back the build tickets this session removed from .law/PLAN.md")
+        record = _workdir(p) / ".law" / "project.json"
+        if record.is_file() and not p.get("project"):  # a project an agent scaffolded by hand still reaches the board
+            with contextlib.suppress(OSError, ValueError):
+                Projects(rt.paths).adopt(_workdir(p))
         return Done({"answer": text, "dir": str(_workdir(p))})
 
     async def _gate_problem(ctx: Context, folder: Path, *, after_ticket: bool = True) -> str:
@@ -954,15 +1010,25 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         spec_file = a.get("spec_file") or f"{a.get('out', 'docs/proposal')}/proposal.md"
         before = {b.id for b in bugs.load(folder)}
         await ctx.progress("🧪 QA: testing the product as a user (black box)")
-        reply = await _agent(ctx, "qa", QA_TASK.format(name=a.get("name", folder.name), version=p.get("version", 1),
-                                                         folder=folder, spec_file=spec_file), folder, writes=False)
-        found = re.search(r"\{.*\}", reply, re.DOTALL)
-        report: dict[str, Any] = {}
-        if found:
-            try:
-                report = json.loads(found.group(0))
-            except json.JSONDecodeError:
-                report = {}
+        task = QA_TASK.format(name=a.get("name", folder.name), version=p.get("version", 1), folder=folder,
+                              spec_file=spec_file)
+        reply = await _agent(ctx, "qa", task, folder, writes=False)
+        report = json_report(reply)
+        if not report.get("tested"):  # seen 2026-10-29: a session stopped mid-sentence and counted as "no bugs", 5/5
+            await ctx.progress("🧪 QA ended without a report: testing again")
+            reply = await _agent(ctx, "qa", task + QA_NO_REPORT, folder, writes=False)
+            report = json_report(reply)
+        missing = [] if report.get("tested") else ["no test results"]
+        if not qa_pack_kept(folder):
+            missing.append("no regression checks in qa/")
+        docs = design_docs(folder)
+        if docs:  # QA's model cannot see images, so the designer (a vision model) checks the look
+            await ctx.progress("🎨 design review: the screens against the design")
+            shown = await _agent(ctx, "designer", DESIGN_TASK.format(
+                name=a.get("name", folder.name), version=p.get("version", 1), folder=folder,
+                design=", ".join(docs)), folder, writes=False)
+            if not json_report(shown).get("screens"):
+                missing.append("no design review of the screens")
         open_bugs = bugs.unresolved(folder)
         blocking = [b for b in open_bugs if b.severity in bugs.BLOCKING]
         summary = str(report.get("summary") or reply.strip()[-300:])
@@ -970,7 +1036,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         new_blockers = [b for b in blocking if b.id not in before and b.severity == "blocker"]
         if new_blockers:
             await _alert_owner(a.get("name", folder.name), new_blockers)
-        return {"open": bugs.as_issues(blocking), "minor": bugs.as_issues([b for b in open_bugs if b not in blocking]),
+        evidence = [NO_EVIDENCE.format(what=", ".join(missing))] if missing else []
+        return {"open": [*evidence, *bugs.as_issues(blocking)],
+                "minor": bugs.as_issues([b for b in open_bugs if b not in blocking]),
                 "tested": [str(t) for t in report.get("tested", [])][:40], "summary": summary}
 
     async def _alert_owner(name: str, found: list[bugs.Bug]) -> None:

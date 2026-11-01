@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -11,7 +12,7 @@ import pytest
 
 from law import projects, secrets, specs
 from law.handlers import project as project_handlers
-from law.handlers.tasks import agent_env, plan_complete, project_env
+from law.handlers.tasks import agent_env, build_section, plan_complete, project_env
 from law.paths import LawPaths
 from law.queue.worker import Done, Stages
 
@@ -304,3 +305,25 @@ def test_dev_and_fix_stages_say_how_apps_call_law():
 
     note = law_services()
     assert "host.docker.internal" in note and "fast model `" in note and "timeout" in note and "507" in note
+
+
+def test_adopt_brings_a_hand_made_project_to_the_board(tmp_path: Path) -> None:
+    paths = LawPaths(home=tmp_path / "LAW", repo=tmp_path, user_home=tmp_path)
+    folder = tmp_path / "Pantry-iOS"
+    (folder / ".law").mkdir(parents=True)
+    (folder / ".law" / "PLAN.md").write_text("# PLAN\n- [x] 1 scaffold\n")
+    (folder / ".law" / "project.json").write_text(json.dumps({
+        "id": "pantry-ios", "name": "Pantry-iOS", "dir": "/wrong", "summary": "s", "details": "d", "state": "planning",
+        "chat": 0, "tickets": [{"id": "P-01", "title": "Setup", "phase": 1, "phase_name": "Foundation",
+                                "description": "Make it", "acceptance_criteria": ["builds", "runs"]}]}))
+    store = projects.Projects(paths)
+    assert store.all() == []
+    adopted = store.adopt(folder)
+    assert (adopted.state, adopted.mode, adopted.dir, adopted.chat) == ("awaiting_go", "code", str(folder), None)
+    assert [p.id for p in store.all()] == ["pantry-ios"]
+    section = build_section(folder, 1)
+    assert section and "- [ ] P-01 Setup" in section and "### M1 Foundation" in section
+    assert "Acceptance: builds; runs" in section
+    assert "P-01 Setup" in (folder / ".law" / "PROMPT.md").read_text()
+    assert projects.decide(adopted, "go") == "develop"
+    assert store.adopt(folder).id == "pantry-ios"  # twice is harmless

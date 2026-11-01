@@ -121,6 +121,17 @@ rm -rf ~/LAW             # remove all machine-local data (models, outputs, secre
 
 ## Troubleshooting
 
+Docker services down after a restart: `tail ~/LAW/logs/colima.log`. The Colima launchd agent clears pid files that no
+longer belong to `limactl`, the cause of "vz driver is running but host agent is not".
+
+A project made by hand (it has `.law/project.json`) and missing from Console → Projects: `law adopt <folder>`. It shows
+its tickets and waits for your `/go <project>`. Agent tasks do this themselves when they finish.
+
+QA fails a round that has no evidence: no test report, no checks in `qa/`, or, for a project with `docs/design/`, no
+design review of the screens. The designer role does that review because QA's model cannot see images. Owner notes sent
+during the handover wait for the next build session, and the verify message lists them.
+
+
 | Symptom | Check | Fix |
 |---|---|---|
 | `law doctor` shows a service down | `law services logs <name>` | `law install` repairs it; or `law services restart <name>` |

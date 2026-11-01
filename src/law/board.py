@@ -483,6 +483,11 @@ async def build(paths: LawPaths, store: JobStore, pid: str) -> dict[str, Any]:
     await _stage_tickets(store, project, roots, tickets, dev_jobs, dev_order)
     await _plan_tickets(store, project, tickets, dev_jobs, dev_order)
     _bug_tickets(project, tickets)
+    if project.state == "awaiting_go" and not any(t.column == "approval" for t in tickets.values()):
+        gate = Ticket(f"approve-plan-v{project.version}", f"Go / no go: plan v{project.version}", "approval",
+                      "Planning", -1)  # an adopted plan has no gate job
+        gate.column, gate.state = "approval", "waiting"
+        tickets[gate.id] = gate
     general = _attach_notes(paths, project, tickets)
     ordered = sorted(tickets.values(), key=lambda k: k.order)
     return {

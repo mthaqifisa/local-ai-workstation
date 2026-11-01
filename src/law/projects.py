@@ -18,7 +18,7 @@ import json
 import re
 import time
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, Field
 
@@ -186,6 +186,34 @@ class Projects:
             raise KeyError(pid)
         self.index_file.write_text(json.dumps(index, indent=2, sort_keys=True) + "\n")
 
+    def adopt(self, folder: Path) -> Project:
+        """Bring in a project an agent scaffolded by hand: the owner's Console shows only indexed, valid records (seen
+        2026-10-30: Pantry-iOS had state "planning" and was never indexed, so it never appeared). Its planned tickets
+        become a build section, which the board and the build sessions read; it then waits for the owner's go."""
+        from law.project_memory import ProjectMemory
+
+        record = folder / ".law" / "project.json"
+        data = json.loads(record.read_text())
+        if data.get("id") in self._index():
+            return self.get(str(data["id"]))
+        planned = data.pop("tickets", None) or []
+        data["dir"] = str(folder)
+        data["chat"] = data.get("chat") or None
+        if data.get("state") not in get_args(State):
+            data["state"] = "awaiting_go"
+        if not (folder / "docs" / "proposal").is_dir():
+            data["mode"] = "code"  # no proposal to build from: the plan below is the agreed brief
+        project = Project.model_validate(data)
+        project.log("adopted", f"{len(planned)} planned tickets")
+        memory = ProjectMemory(folder)
+        section = build_tickets(planned, project.version)
+        brief = f"{project.request()}\n\n{section}" if planned else None
+        memory.prepare(f"adopt-{project.id}", project.request(), brief)
+        if planned:
+            memory.add_build_section(section)
+        self.save(project)
+        return project
+
     def create(self, fields: dict[str, str], chat: int | None, mode: Mode = "project") -> Project:
         folder = self.paths.projects / fields["repo"]
         if fields["repo"] in self._index():
@@ -196,6 +224,23 @@ class Projects:
                           summary=fields["summary"], details=fields["details"], chat=chat)
         project.log("created")
         return project
+
+
+def build_tickets(tickets: list[dict[str, Any]], version: int = 1) -> str:
+    """Planned tickets as a `.law/PLAN.md` build section, one milestone per phase."""
+    lines = [f"## Build version {version}"]
+    phase = None
+    for t in tickets:
+        name = t.get("phase_name") or f"Phase {t.get('phase', 1)}"
+        if name != phase:
+            phase = name
+            lines += ["", f"### M{t.get('phase', len(lines))} {name}"]
+        lines.append(f"- [ ] {t['id']} {t.get('title', '')}".rstrip())
+        if t.get("description"):
+            lines.append(f"  {t['description']}")
+        if t.get("acceptance_criteria"):
+            lines.append("  Acceptance: " + "; ".join(t["acceptance_criteria"]))
+    return "\n".join(lines) + "\n"
 
 
 ALLOWED: dict[str, set[str]] = {

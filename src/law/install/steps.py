@@ -746,6 +746,18 @@ def lan_hostname(sysapi: SysAPI) -> str:
     return f"{res.out.strip()}.local" if res.ok and res.out.strip() else "localhost"
 
 
+# A reboot can leave Lima's pid files behind, and macOS soon reuses the number: Colima then sees "vz driver is running
+# but host agent is not" and refuses to start (seen 2026-10-30: 2 days down, pid 1096 was appplaceholdersyncd). Only a
+# pid that really is limactl counts.
+COLIMA_START = """lima="$COLIMA_HOME/_lima/colima"
+for file in vz.pid ha.pid; do
+  pid=$(cat "$lima/$file" 2>/dev/null) || continue
+  ps -p "$pid" -o command= 2>/dev/null | grep -q limactl || rm -f "$lima/$file"
+done
+exec "$@"
+"""
+
+
 class Colima:
     """The Docker VM, kept alive by a launchd agent (colima start --foreground)."""
 
@@ -758,6 +770,7 @@ class Colima:
         m = self.c.reg.machine.colima
         label = self.c.reg.services["colima"].label or "com.law6.colima"
         return launchd.Agent(label, [
+            "/bin/sh", "-c", COLIMA_START, "colima-start",
             "/opt/homebrew/bin/colima", "start", "--foreground", "--cpus", str(m.cpus),
             "--memory", str(m.memory_gb), "--disk", str(m.disk_gb), "--vm-type", "vz",
             "--mount-type", "virtiofs"], env={"COLIMA_HOME": str(self.c.paths.home / "colima")})

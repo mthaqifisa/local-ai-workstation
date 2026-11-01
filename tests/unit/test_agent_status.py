@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import fakeredis
@@ -78,3 +79,15 @@ async def test_stopped_jobs_in_a_folder_with_newer_work_are_hidden(tmp_path: Pat
     shown = {s["title"]: s for s in await st.statuses(store, {"active": True})}
     assert set(shown) == {"new run", "elsewhere"} and shown["elsewhere"]["error_line"] == "bad"
     assert st.last_line("Traceback\n  File x\nValueError: boom") == "ValueError: boom"
+
+
+async def test_a_keyword_finds_a_job_that_finished_hours_ago():
+    """2026-10-30: `/jobs pantry` said nothing matched, four hours after a Pantry job finished."""
+    store = JobStore(fakeredis.FakeAsyncRedis(decode_responses=True))
+    job = await store.submit(Job(kind="task", payload={"role": "coder", "dir": "/x/pantry"}, lane="none"))
+    assert await store.claim(job)
+    await store.finish(job, Status.DONE, result={})
+    done = await store.require(job.id)
+    done.finished = time.time() - 4 * 3600
+    await store.save(done)
+    assert [s["id"] for s in await st.statuses(store, {"active": False}, "pantry")] == [job.id]

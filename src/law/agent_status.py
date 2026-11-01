@@ -186,7 +186,7 @@ async def statuses(store: JobStore, model: dict[str, Any], query: str = "", rece
     # failures stay a day (they need a decision); cancels are deliberate, so only an hour
     stopped = [j for j in jobs if (j.status in {Status.FAILED, Status.DEAD} and age(j) < recent_s)
                or (j.status is Status.CANCELLED and age(j) < 3600)]
-    finished = [j for j in jobs if j.status is Status.DONE and now - (j.finished or j.created) < 3600] if query else []
+    finished = [j for j in jobs if j.status is Status.DONE and age(j) < recent_s] if query else []
     picked = [await job_status(store, j, model, now) for j in (live + stopped + finished)[:limit]]
     # a job that stopped is superseded once a newer one works in the same folder (e.g. a project restarted)
     busy = {s["project"] for s in picked if s["health"] not in STOPPED and s["project"]}

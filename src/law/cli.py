@@ -135,6 +135,15 @@ def qa(project: str, quiet: bool = False) -> None:
 
 
 @app.command()
+def adopt(folder: Path) -> None:
+    """Add a project an agent scaffolded by hand (.law/project.json) to the Console, waiting for the owner's go."""
+    from law import projects
+
+    project = projects.Projects(LawPaths.from_env()).adopt(folder.expanduser().resolve())
+    con.print(f"{project.name} is on the board ({project.state}): {project.dir}")
+
+
+@app.command()
 def bugfix(project: str, bug: Annotated[list[str] | None, typer.Argument()] = None, quiet: bool = False) -> None:
     """Report a bug (or, with no text, take every open one): the coder fixes it and QA retests the product."""
     from law import bugs, projects
