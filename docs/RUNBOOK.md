@@ -6,6 +6,8 @@
 |---|---|
 | Health + LAN addresses | `law doctor` |
 | Live stats, jobs (cancel), personas, settings | LAW Console: `http://<mac-name>.local:8100` |
+| Approve a plan or build | Console, Projects: the button in Waiting for approval (same as `/go` or `/allgood`) |
+| See the Console from the internet (read only) | VS Code Ports panel: forward **8110**, keep visibility Private. Never forward 8100: it has no login and can change everything (ADR-0022) |
 | One-line status | `law status` |
 | Recent jobs | `law jobs` |
 | Talk to Tony | Just type in Telegram: Tony remembers the recent conversation (`/new` starts over), answers short questions in seconds, and hands work that needs files, code, documents or apps to an agent that reports in the same chat (ADR-0017) |

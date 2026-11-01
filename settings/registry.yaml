@@ -30,6 +30,7 @@ ports:
   llm_public: 8000      # Caddy -> oMLX (no credentials needed on the LAN)
   llm_internal: 8001    # oMLX, loopback only (oMLX requires a key off-loopback; Caddy injects it)
   law_api: 8100         # law job API (CLI, Telegram, dashboards)
+  law_public: 8110      # read-only Console, loopback only: the one port safe to forward (ADR-0022)
   open_webui: 3000
   homepage: 3010
   portainer: 9000      # Docker management (its own admin login)

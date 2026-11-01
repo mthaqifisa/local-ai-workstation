@@ -96,6 +96,10 @@
   .k-dev { border-left-color: var(--accent); } .k-qa { border-left-color: var(--warn); } .k-bugfix { border-left-color: var(--bad); }
   .k-proposal, .k-docs { border-left-color: #b48cff; } .k-approval { border-left-color: var(--ok); } .k-setup { border-left-color: var(--muted); }
   .approve { width: 100%; margin-bottom: 8px; }
+  /* The read-only gateway (ADR-0022) has no route behind these; this only keeps the page honest. */
+  html[data-readonly] :is(nav button[data-tab="services"], nav button[data-tab="storage"], nav button[data-tab="personas"],
+    nav button[data-tab="settings"], [data-act], [data-cancel], [data-retry], [data-approve], [data-del-note], #proj-delete,
+    #agent-q, #d-note, #d-add, #d-agent-wrap) { display: none !important; }
   .tag { padding: 1px 7px; border-radius: 99px; border: 1px solid var(--line); font-size: 11px; }
   .drawer-bg { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); z-index: 5; display: none; }
   .drawer-bg.show { display: block; }

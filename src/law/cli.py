@@ -339,6 +339,13 @@ def serve() -> None:
 
 
 @app.command()
+def public() -> None:
+    """Run the read-only Console for port forwarding (used by the com.law6.public service)."""
+    from law.public_console import serve_public
+    serve_public(_paths())
+
+
+@app.command()
 def worker() -> None:
     """Run the job worker (used by the com.law6.worker service)."""
     from law.worker_main import main

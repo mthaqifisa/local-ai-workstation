@@ -44,6 +44,7 @@ class Ports(_Strict):
     llm_public: int
     llm_internal: int
     law_api: int
+    law_public: int
     open_webui: int
     homepage: int
     portainer: int

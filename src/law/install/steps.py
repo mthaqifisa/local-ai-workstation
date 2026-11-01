@@ -476,6 +476,7 @@ class Services:
                           env=env_common, reads_registry=True),
             launchd.Agent(reg.services["worker"].label or "com.law6.worker", [str(venv_bin / "law"), "worker"],
                           env=env_common, reads_registry=True),
+            launchd.Agent("com.law6.public", [str(venv_bin / "law"), "public"], env=env_common, reads_registry=True),
         ]
         values = secrets.read(p.env_file)
         if values.get("LAW_TELEGRAM_TOKEN"):

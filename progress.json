@@ -1,25 +1,26 @@
 {
   "stage": "C-user-requests",
-  "task": "Pantry output review and setup fixes",
+  "task": "Duplicate-job guards, Console approve button, read-only public Console",
   "status": "done",
-  "next_step": "owner approves the Pantry rework message to Tony",
-  "timestamp": "2026-11-01T18:52:00",
+  "next_step": "none pending from this request",
+  "timestamp": "2026-11-01T19:50:00",
   "files_touched": [
-    "src/law/install/steps.py",
-    "src/law/handlers/tasks.py",
-    "src/law/handlers/project.py",
-    "src/law/handlers/core.py",
-    "src/law/projects.py",
-    "src/law/project_memory.py",
+    "src/law/public_console.py",
     "src/law/board.py",
+    "src/law/console.py",
+    "src/law/static/console.html",
+    "src/law/telegram_bot.py",
+    "src/law/handlers/core.py",
     "src/law/cli.py",
-    "src/law/agent_status.py",
+    "src/law/registry.py",
+    "src/law/install/steps.py",
+    "settings/registry.yaml",
     "settings/roles.yaml",
+    "docs/adr/0022-read-only-public-console.md",
     "docs/RUNBOOK.md"
   ],
   "commands": [
     "uv run pytest -q tests/unit",
-    "./install.sh",
-    "law adopt ~/SourceCode/Pantry-iOS"
+    "./install.sh"
   ]
 }
