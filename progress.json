@@ -3,7 +3,7 @@
   "task": "Duplicate-job guards, approve button, read-only Console, Tony revise_project",
   "status": "done",
   "next_step": "owner asks Tony to redo pantry-ios once the web Pantry settles",
-  "timestamp": "2026-11-01T20:05:00",
+  "timestamp": "2026-11-01T19:52:00",
   "files_touched": [
     "src/law/public_console.py",
     "src/law/board.py",
