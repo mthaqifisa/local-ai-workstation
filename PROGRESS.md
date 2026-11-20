@@ -301,3 +301,12 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - 2026-11-01 18:52 Pantry review (owner request): Colima had crash-looped since the 30 Oct reboot on a stale vz.pid (all Docker services down); start wrapper clears non-limactl pid files, replayed OK. QA false 5/5 (no evidence) now fails the round; designer reviews screens against docs/design/. Task sessions cannot remove PLAN.md build sections. Tony: start_project tool, owner's words kept in briefs. Notes held during handover. /jobs <keyword> finds jobs finished today. pantry-ios adopted with `law adopt` (17 tickets on the board, awaiting go).
 - 2026-11-01 19:47 One Pantry message arrived twice (two Telegram updates) and queued two coders; owner cancelled 4b69c21d2668. Telegram drops an identical long message for ten minutes unless the first failed; start_agent refuses a folder with a live agent; Tony promises only what a tool did. Console: Approve button in Waiting for approval. Read-only Console for port forwarding on 127.0.0.1:8110 (ADR-0022).
 - 2026-11-01 19:52 Tony can redo an existing project (revise_project): a new plan or proposal version with new tickets, then the owner's go; during a build the change goes to the working agent. A project with no proposal gets a researched first one; proposals now write their tickets before the go.
+
+### Sanitize the public repo (owner brief 2026-11-20; brief kept outside the repo)
+- [x] P1 Safety and backup: owner cancelled the stuck Telegram coder job (b5f0e91be22e); worker stopped; all branches pushed; mirror bundle in ~/LAW/backups/
+- [x] P2 Branch tips: v2/v3/v3.1 setup scripts take MASTER_EMAIL from the environment or .env (no default; v2 workspace path from $AI_WORKSPACE); v5 example subnet 192.168.1.x; v4 logs and the v6 tip need no tip change
+- [ ] P3 History rewrite on a fresh mirror (mailmap + replace-text), quoted SHAs remapped
+- [ ] P4 Verification report, force-push (owner yes), re-verify from GitHub
+- [ ] P5 GitHub cached views / PR refs: owner picks support request or recreate
+- [ ] P6 Guards: .gitleaks.toml + tests, pre-commit/pre-push/CI/law save, law.paths.display, CLAUDE.md privacy section; worker back up
+- 2026-11-20 22:50 Sanitize P1-P2: worker stopped; backup bundle law-repo-pre-sanitize-20261120.bundle (373 commits); tip fixes pushed on v2, v3, v3.1, v5 (v5 phase-5 tests 36 passed).

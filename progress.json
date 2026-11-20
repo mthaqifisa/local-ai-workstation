@@ -1,28 +1,16 @@
 {
-  "stage": "C-user-requests",
-  "task": "Duplicate-job guards, approve button, read-only Console, Tony revise_project",
-  "status": "done",
-  "next_step": "owner asks Tony to redo pantry-ios once the web Pantry settles",
-  "timestamp": "2026-11-01T19:52:00",
+  "stage": "S-sanitize",
+  "task": "Sanitize Phase 3: history rewrite",
+  "status": "in_progress",
+  "next_step": "Sanitize P3: fresh mirror -> filter-repo with mailmap/replacements in ~/LAW/cache/tmp/sanitize, keep commit-map, remap quoted SHAs on v6",
+  "timestamp": "2026-11-20T22:50:49",
   "files_touched": [
-    "src/law/public_console.py",
-    "src/law/board.py",
-    "src/law/console.py",
-    "src/law/static/console.html",
-    "src/law/telegram_bot.py",
-    "src/law/handlers/core.py",
-    "src/law/cli.py",
-    "src/law/registry.py",
-    "src/law/install/steps.py",
-    "settings/registry.yaml",
-    "settings/roles.yaml",
-    "docs/adr/0022-read-only-public-console.md",
-    "docs/RUNBOOK.md",
-    "src/law/handlers/project.py",
-    "src/law/app.py"
+    "PROGRESS.md",
+    "progress.json"
   ],
   "commands": [
-    "uv run pytest -q tests/unit",
-    "./install.sh"
+    "law cancel b5f0e91be22e",
+    "launchctl bootout gui/$UID/com.law6.worker",
+    "git push (v2, v3, v3.1, v5 tip fixes)"
   ]
 }
