@@ -305,8 +305,9 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 ### Sanitize the public repo (owner brief 2026-11-20; brief kept outside the repo)
 - [x] P1 Safety and backup: owner cancelled the stuck Telegram coder job (b5f0e91be22e); worker stopped; all branches pushed; mirror bundle in ~/LAW/backups/
 - [x] P2 Branch tips: v2/v3/v3.1 setup scripts take MASTER_EMAIL from the environment or .env (no default; v2 workspace path from $AI_WORKSPACE); v5 example subnet 192.168.1.x; v4 logs and the v6 tip need no tip change
-- [ ] P3 History rewrite on a fresh mirror (mailmap + replace-text), quoted SHAs remapped
+- [x] P3 History rewrite on a fresh mirror (mailmap + replace-text), quoted SHAs remapped (47 in PROGRESS.md + .gitleaksignore)
 - [ ] P4 Verification report, force-push (owner yes), re-verify from GitHub
 - [ ] P5 GitHub cached views / PR refs: owner picks support request or recreate
 - [ ] P6 Guards: .gitleaks.toml + tests, pre-commit/pre-push/CI/law save, law.paths.display, CLAUDE.md privacy section; worker back up
 - 2026-11-20 22:50 Sanitize P1-P2: worker stopped; backup bundle law-repo-pre-sanitize-20261120.bundle (373 commits); tip fixes pushed on v2, v3, v3.1, v5 (v5 phase-5 tests 36 passed).
+- 2026-11-20 22:55 Sanitize P3: filter-repo rewrote 378 commits; report ~/LAW/logs/sanitize-report-20261120.md: 0 content/message hits, identities noreply only, gitleaks clean (allow-listed test line), 531 tests + ruff + mypy pass. Awaiting the owner's yes for the force-push.

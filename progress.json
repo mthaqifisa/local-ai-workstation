@@ -1,16 +1,15 @@
 {
   "stage": "S-sanitize",
-  "task": "Sanitize Phase 3: history rewrite",
-  "status": "in_progress",
-  "next_step": "Sanitize P3: fresh mirror -> filter-repo with mailmap/replacements in ~/LAW/cache/tmp/sanitize, keep commit-map, remap quoted SHAs on v6",
-  "timestamp": "2026-11-20T22:50:49",
+  "task": "Sanitize Phase 4: force-push",
+  "status": "waiting_owner",
+  "next_step": "Sanitize P4: on the owner's yes, force-push rewrite.git heads, re-clone from GitHub, rerun checks 1-4",
+  "timestamp": "2026-11-20T22:54:17",
   "files_touched": [
     "PROGRESS.md",
-    "progress.json"
+    ".gitleaksignore"
   ],
   "commands": [
-    "law cancel b5f0e91be22e",
-    "launchctl bootout gui/$UID/com.law6.worker",
-    "git push (v2, v3, v3.1, v5 tip fixes)"
+    "git filter-repo --mailmap --replace-text --replace-message",
+    "remap_shas.py commit-map"
   ]
 }
