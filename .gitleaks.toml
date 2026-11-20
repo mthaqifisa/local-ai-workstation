@@ -1,0 +1,93 @@
+# gitleaks config for this public repo: the default secret rules plus privacy rules.
+# Used by the pre-commit and pre-push hooks (.githooks/), CI and `law save`.
+# Rules never name the owner's real values; they match the shape and allow the generic examples.
+# Go RE2 syntax: no lookahead, so exceptions are allowlist regexes on the match.
+
+title = "LAW v6"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "personal-email"
+description = "An email address that is not a placeholder or a GitHub noreply address"
+regex = '''[A-Za-z0-9][A-Za-z0-9._%+-]*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b'''
+tags = ["privacy"]
+[[rules.allowlists]]
+regexTarget = "match"
+regexes = [
+  '''@example\.(?:com|org|net)$''',
+  '''@[A-Za-z0-9.-]+\.example$''',
+  '''@users\.noreply\.github\.com$''',
+  '''^noreply@github\.com$''',
+  '''^noreply@anthropic\.com$''',
+  '''^git@github\.com$''',
+  # Python decorators in escaped JSON/log text (a literal backslash-n, then "@app.route"), not addresses
+  '''^n@(?:app|router|bp|api)\.(?:route|get|post|put|patch|delete|websocket)$''',
+  # Obvious test placeholders (and a token-in-URL redaction test)
+  '''^(?:me|a|b)@x\.com$''',
+  '''^a@b\.com$''',
+  '''^test@test\.com$''',
+  '''^secret@github\.com$''',
+]
+
+[[rules]]
+id = "home-path"
+description = "A real macOS or Linux home folder (use ~, $HOME or Path.home())"
+# The reported secret is the user name (group 1): gitleaks' default global allowlist skips anything that
+# looks like a whole /home/... path, which would hide this rule.
+regex = '''(?:/(?:Users|home)/|-Users-)([A-Za-z0-9._][A-Za-z0-9._-]*)'''
+secretGroup = 1
+tags = ["privacy"]
+[[rules.allowlists]]
+regexTarget = "match"
+regexes = [
+  '''^(?:/Users|/home)/(?:you|runner|x|user|username|Shared)$''',
+  '''^-Users-you(?:-|$)''',
+]
+[[rules.allowlists]]
+description = "v4 agent logs: a model-invented example path, not a real user"
+paths = ['''^enhancement/results/''']
+regexTarget = "match"
+regexes = ['''^/Users/(?:andy)$''']  # the group keeps this file clean under its own rule
+condition = "AND"
+
+[[rules]]
+id = "mac-hostname"
+description = "A Mac's network name (use my-mac.local)"
+regex = '''[A-Za-z0-9-]+s-MacBook[A-Za-z0-9-]*|[A-Za-z0-9-]+\.local\b'''
+tags = ["privacy"]
+[[rules.allowlists]]
+regexTarget = "match"
+regexes = [
+  '''(?i)^(?:my-?mac(?:book)?|mac)\.local$''',
+  # Python/Java attributes and properties, not hosts (threading.local, maven.repo.local)
+  '''^(?:threading|_thread|repo|self)\.local$''',
+]
+
+[[rules]]
+id = "lan-address"
+description = "A private (RFC 1918) LAN address other than the generic examples"
+regex = '''\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})(?:/\d{1,2})?\b'''
+tags = ["privacy"]
+[[rules.allowlists]]
+regexTarget = "match"
+regexes = [
+  '''^192\.168\.1\.\d{1,3}(?:/\d{1,2})?$''',
+  '''^10\.0\.0\.0/8$''',
+  '''^172\.16\.0\.0/12$''',
+  '''^192\.168\.0\.0/16$''',
+]
+[[rules.allowlists]]
+description = "Test fixtures may use the generic 10.0.0.x / 10.1.2.x examples"
+paths = ['''^tests/''']
+regexTarget = "match"
+regexes = ['''^10\.(?:0\.0|1\.2)\.\d{1,3}$''']
+condition = "AND"
+
+# v4-era QA log: a deliberate 'Bearer wrong-token' rejection test, not a secret.
+# A path allowlist survives history rewrites, unlike a commit-SHA fingerprint.
+[[allowlists]]
+description = "v4 QA log: deliberate wrong-token test request"
+targetRules = ["curl-auth-header"]
+paths = ['''^enhancement/results/qa_phase5_v1\.txt$''']

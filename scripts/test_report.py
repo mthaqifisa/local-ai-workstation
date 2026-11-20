@@ -17,6 +17,9 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO / "src"))
+from law.privacy import scrub  # noqa: E402 - the repo's own package, importable once src/ is on the path
+
 LAW_HOME = Path(os.environ.get("LAW_HOME", Path.home() / "LAW"))
 ART = LAW_HOME / "outputs" / "test-artifacts"
 VENV_BIN = LAW_HOME / "runtime" / "law-venv" / "bin"
@@ -62,7 +65,7 @@ def main() -> int:
     eval_rows = latest_per_case(evals)
     sources = ", ".join(f"`{e.name}`" for e in evals) or None
 
-    (ART / "report.json").write_text(json.dumps({"layers": rows, "eval": eval_rows}, indent=2))
+    (ART / "report.json").write_text(json.dumps({"layers": rows, "eval": eval_rows}, indent=2))  # ~/LAW only
     write_markdown(rows, eval_rows, sources)
     return 0 if all(r["ok"] for r in rows) else 1
 
@@ -106,7 +109,8 @@ def write_markdown(rows: list[dict[str, object]], eval_rows: list[dict[str, obje
                          f"{judge} | {e['seconds']} |")
     else:
         lines.append("No eval run found. Run `law eval` first.")
-    (REPO / "docs" / "TEST-REPORT.md").write_text("\n".join(lines) + "\n")
+    # The report is committed to a public repo: no home paths, owner email or Telegram IDs (CLAUDE.md, Privacy).
+    (REPO / "docs" / "TEST-REPORT.md").write_text(scrub("\n".join(lines) + "\n"))
 
 
 if __name__ == "__main__":

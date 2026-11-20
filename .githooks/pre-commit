@@ -1,0 +1,12 @@
+#!/bin/sh
+# Block a commit that would put personal data or secrets into the public repo.
+set -eu
+. "$(git rev-parse --show-toplevel)/.githooks/privacy.sh"
+law_need_gitleaks
+law_check_email "$(git var GIT_AUTHOR_IDENT | sed -n 's/.*<\(.*\)>.*/\1/p')" author
+law_check_email "$(git var GIT_COMMITTER_IDENT | sed -n 's/.*<\(.*\)>.*/\1/p')" committer
+if ! gitleaks git --pre-commit --staged --no-banner --redact --log-level error \
+        --config "$(law_root)/.gitleaks.toml" "$(law_root)"; then
+    printf >&2 'privacy: staged changes contain personal data or a secret (see above). Fix them; do not allow-list them.\n'
+    exit 1
+fi

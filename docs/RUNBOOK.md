@@ -168,3 +168,10 @@ python3 scripts/test_report.py   # every layer, incl. live integration; writes d
 ```
 
 After changing `src/`, `law install --only services` restarts the API, worker and Telegram bot.
+
+The repo is public, so its hooks keep personal data out (ADR-0023). `law install` points git at `.githooks/`:
+pre-commit and commit-msg run gitleaks with `.gitleaks.toml` (default secret rules plus email, home-path, Mac-hostname
+and LAN-address rules), and pre-push re-checks every pushed commit and refuses any author or committer other than
+the GitHub noreply address. CI (`.github/workflows/privacy.yml`) runs the same checks over all history. Use
+`law.paths.display()` / `law.privacy.scrub()` for anything written into committed files. If a hook blocks you, fix
+the content rather than adding an allowlist entry.

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Git LFS (core.hooksPath points here, so Git does not run .git/hooks).
+command -v git-lfs >/dev/null 2>&1 || { printf >&2 'This repository uses Git LFS but git-lfs is not on PATH.\n'; exit 2; }
+git lfs post-merge "$@"

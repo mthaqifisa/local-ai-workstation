@@ -1,0 +1,33 @@
+#!/bin/sh
+# Last check before anything reaches GitHub: content, messages and author/committer of every pushed commit.
+# Then hand the same ref list to Git LFS.
+set -eu
+. "$(git rev-parse --show-toplevel)/.githooks/privacy.sh"
+law_need_gitleaks
+remote="$1"
+zero=0000000000000000000000000000000000000000
+refs=$(cat)
+while read -r _lref lsha _rref rsha; do
+    [ -n "${lsha:-}" ] || continue
+    [ "$lsha" = "$zero" ] && continue  # branch deletion
+    if [ "$rsha" != "$zero" ] && git cat-file -e "$rsha^{commit}" 2>/dev/null; then
+        range="$rsha..$lsha"
+    else
+        range="$lsha --not --remotes=$remote"
+    fi
+    # shellcheck disable=SC2086  # range is several git-log arguments on purpose
+    for email in $(git log --format='%ae%n%ce' $range | sort -u); do
+        law_check_email "$email" "a pushed commit's author/committer"
+    done
+    # shellcheck disable=SC2086
+    git log --format='%B' $range | law_scan_stdin "a pushed commit message"
+    if ! gitleaks git --no-banner --redact --log-level error --config "$(law_root)/.gitleaks.toml" \
+            --log-opts="$range" "$(law_root)"; then
+        printf >&2 'privacy: pushed commits contain personal data or a secret (see above).\n'
+        exit 1
+    fi
+done <<REFS
+$refs
+REFS
+command -v git-lfs >/dev/null 2>&1 || { printf >&2 'This repository uses Git LFS but git-lfs is not on PATH.\n'; exit 2; }
+printf '%s\n' "$refs" | git lfs pre-push "$@"

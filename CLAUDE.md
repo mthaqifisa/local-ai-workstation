@@ -28,8 +28,19 @@
 ## Security
 - User decision: all services bind to 0.0.0.0, open to the LAN, no login. Runtime agents have full machine access (no approval gates).
 - Telegram bot answers only allow-listed Telegram user IDs (it is internet-reachable).
-- Docker socket is not exposed over TCP. Secrets only in `~/LAW/state/.env` (0600); gitleaks in pre-commit.
+- Docker socket is not exposed over TCP. Secrets only in `~/LAW/state/.env` (0600); gitleaks in pre-commit, pre-push, CI and `law save`.
 - The "Ask the user before" list applies to this build session, not to the runtime agents.
+
+## Privacy (public repo)
+- This repo is public. Never commit: the owner's email, macOS username or any `/Users/<name>` / `/home/<name>` path,
+  Mac hostnames (`*.local`, `*s-MacBook*`), home LAN addresses, Telegram user/chat IDs, or anything from `~/LAW/state/`.
+- Paths in code are always dynamic: `Path.home()` / `law.paths` in Python, `"$HOME"` in shell. In docs and committed
+  logs/reports, write `~/...`. Examples use `you@example.com`, `my-mac.local`, `192.168.1.x`.
+- Personal values (email, allow-listed IDs) are read at runtime from `~/LAW/state/.env` or `~/LAW/state/handover.env`, never defaulted in code.
+- Commits use only `thaqif <34667065+mthaqifisa@users.noreply.github.com>`. gitleaks (`.gitleaks.toml`) runs in
+  pre-commit, pre-push, CI and `law save`. A finding blocks the commit; fix the content, don't allow-list it,
+  unless the owner agrees.
+- Runtime agents that write into this repo follow the same rules (use `law.paths.display()` for paths).
 
 ## Long-running work
 - Foreground commands ≤ 10 min; downloads, soaks and model loads run in the background with logs in `~/LAW/logs/`.

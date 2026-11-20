@@ -1,0 +1,6 @@
+#!/bin/sh
+# Commit messages are public too.
+set -eu
+. "$(git rev-parse --show-toplevel)/.githooks/privacy.sh"
+law_need_gitleaks
+law_scan_stdin "the commit message" < "$1"

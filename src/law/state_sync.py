@@ -14,6 +14,7 @@ import json
 import re
 import shutil
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -95,27 +96,37 @@ class OpenWebUI:
         return added
 
 
-def secret_hits(folder: Path, gitleaks: str | None = None) -> list[str]:
-    """Secret-looking strings in the export (own patterns plus gitleaks when installed)."""
+def secret_hits(folder: Path, gitleaks: str | None = None, config: Path | None = None) -> list[str]:
+    """Secret-looking strings in the export (own patterns plus gitleaks when installed).
+
+    `config` is the repo's `.gitleaks.toml`, which adds the privacy rules (emails, home paths, hostnames, LAN IPs).
+    """
     hits = [f"{f.name}: {m.group(0)[:12]}…" for f in sorted(folder.glob("*.json"))
             for m in SECRET.finditer(f.read_text())]
     tool = gitleaks or shutil.which("gitleaks")
     if tool:
-        res = subprocess.run([tool, "dir", "--no-banner", "--exit-code", "1", str(folder)],
+        cmd = [tool, "dir", "--no-banner", "--redact", "--exit-code", "1",
+               *(["--config", str(config)] if config else [])]
+        res = subprocess.run([*cmd, str(folder)],
                              capture_output=True, text=True, check=False)
         if res.returncode == 1:
             hits.append("gitleaks: " + (res.stdout + res.stderr).strip()[-300:])
     return hits
 
 
-def save(api: OpenWebUI, target: Path, staging: Path) -> list[str]:
-    """Export into `target` (settings/openwebui). Returns the files written; raises on any secret."""
+def save(api: OpenWebUI, target: Path, staging: Path, *, scrub: Callable[[str], str] | None = None,
+         config: Path | None = None) -> list[str]:
+    """Export into `target` (settings/openwebui). Returns the files written; raises on any secret.
+
+    `scrub` removes personal data (home folder, owner email) before the scan; `config` is the repo's gitleaks config.
+    """
     if staging.exists():
         shutil.rmtree(staging)
     staging.mkdir(parents=True)
     for kind, records in api.export().items():
-        (staging / f"{kind}.json").write_text(json.dumps(records, indent=2, ensure_ascii=False) + "\n")
-    hits = secret_hits(staging)
+        text = json.dumps(records, indent=2, ensure_ascii=False) + "\n"
+        (staging / f"{kind}.json").write_text(scrub(text) if scrub else text)
+    hits = secret_hits(staging, config=config)
     if hits:
         raise StateError("not saved, possible secrets in the export:\n" + "\n".join(hits))
     target.mkdir(parents=True, exist_ok=True)

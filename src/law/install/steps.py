@@ -1200,9 +1200,37 @@ class ApiTools:
         return self.plan()
 
 
+class GitHooks:
+    """Point the repo at its committed hooks (.githooks/): gitleaks privacy rules on commit and push, plus Git LFS."""
+
+    name = "git-hooks"
+    WANT = ".githooks"
+
+    def __init__(self, c: Ctx) -> None:
+        self.c = c
+        self.repo = c.paths.repo
+
+    def _active(self) -> bool:
+        return (self.repo / ".git").exists() and (self.repo / self.WANT / "pre-commit").is_file()
+
+    def plan(self) -> list[str]:
+        if not self._active():
+            return []
+        cur = self.c.sys.run(["git", "-C", str(self.repo), "config", "--local", "--get", "core.hooksPath"])
+        return [] if cur.ok and cur.out.strip() == self.WANT else [f"git hooks path -> {self.WANT}"]
+
+    def apply(self) -> None:
+        res = self.c.sys.run(["git", "-C", str(self.repo), "config", "--local", "core.hooksPath", self.WANT])
+        if not res.ok:
+            raise RuntimeError(res.out[-500:])
+
+    def verify(self) -> list[str]:
+        return self.plan()
+
+
 def default_steps(c: Ctx) -> list[Step]:
     return [
-        Skeleton(c), EnvProfile(c), Secrets(c), Brew(c), LawVenv(c), CalcEnv(c), DocTools(c), ApiTools(c),
+        Skeleton(c), EnvProfile(c), Secrets(c), Brew(c), GitHooks(c), LawVenv(c), CalcEnv(c), DocTools(c), ApiTools(c),
         MediaTools(c), Models(c), MediaModels(c), OpenCodeConfig(c), Services(c), OmlxSettings(c), ComfyUIStep(c),
         Colima(c), Compose(c), OpenWebUIState(c),
     ]

@@ -468,14 +468,15 @@ def save(commit: Annotated[bool, typer.Option("--commit/--no-commit")] = True) -
     """Export Open WebUI presets, prompts, tools and knowledge definitions into the repo (secret-scanned)."""
     import subprocess
 
-    from law import registry
+    from law import privacy, registry
     from law.state_sync import OpenWebUI, StateError
     from law.state_sync import save as do_save
     p = _paths()
     reg = registry.load(p.registry_file)
     target = p.repo / "settings" / "openwebui"
     try:
-        files = do_save(OpenWebUI(f"http://127.0.0.1:{reg.ports.open_webui}"), target, p.tmp / "openwebui-export")
+        files = do_save(OpenWebUI(f"http://127.0.0.1:{reg.ports.open_webui}"), target, p.tmp / "openwebui-export",
+                        scrub=lambda text: privacy.scrub(text, p), config=privacy.gitleaks_config(p.repo))
     except StateError as exc:
         con.print(f"[red]{exc}[/red]")
         raise typer.Exit(1) from exc

@@ -3,12 +3,26 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 
 def _repo_default() -> Path:
     return Path(__file__).resolve().parents[2]
+
+
+def display(value: str | os.PathLike[str], home: Path | None = None) -> str:
+    """A path (or text containing paths) as it may appear in committed files: the home folder becomes `~`.
+
+    Use it wherever a path is written into the repo (reports, evals, trained/), which is public.
+    Only whole path components match: home `/h/ann` leaves `/h/anna` alone.
+    """
+    text = os.fspath(value)
+    root = os.fspath(home if home is not None else Path(os.environ.get("HOME", str(Path.home())))).rstrip("/")
+    if not root:
+        return text
+    return re.sub(re.escape(root) + r"(?![A-Za-z0-9._-])", "~", text)
 
 
 @dataclass(frozen=True)
