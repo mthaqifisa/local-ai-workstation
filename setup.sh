@@ -32,7 +32,8 @@ LAUNCH_DIR="$HOME/Library/LaunchAgents"
 
 DOCS_WORKSPACE="${HOME}/OneDrive/AI-Agent"
 CODE_WORKSPACE="${HOME}/SourceCode"
-MASTER_EMAIL="you@example.com"
+# No default: set MASTER_EMAIL in the environment, or --bootstrap asks (require_master_email).
+MASTER_EMAIL="${MASTER_EMAIL:-}"
 
 COLIMA_CPU="${COLIMA_CPU:-8}"
 COLIMA_MEM="${COLIMA_MEM:-16}"
@@ -96,6 +97,19 @@ ensure_env_file() {
     chmod 600 "$ENV_FILE"
 }
 get_env() { ensure_env_file; sed -n "s/^$1=//p" "$ENV_FILE" | head -n1; }
+# The owner's address is never defaulted in code: take it from the environment,
+# the existing .env, or ask once; fail early with a clear message otherwise.
+require_master_email() {
+    [ -n "$MASTER_EMAIL" ] || MASTER_EMAIL="$(get_env MASTER_EMAIL)"
+    if [ -z "$MASTER_EMAIL" ] && [ -t 0 ]; then
+        printf "Email address for proposals and documents: "; read -r MASTER_EMAIL
+    fi
+    if [ -z "$MASTER_EMAIL" ]; then
+        err "MASTER_EMAIL is not set. Run: MASTER_EMAIL=you@example.com $0 --bootstrap"
+        exit 1
+    fi
+    export MASTER_EMAIL
+}
 set_env() {
     ensure_env_file
     local key="$1" val="$2" tmp; tmp="$(mktemp)"
@@ -1237,6 +1251,7 @@ USG
 
 case "${1:---help}" in
     --bootstrap)
+        require_master_email
         preflight
         setup_xcode_clt
         setup_homebrew
