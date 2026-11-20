@@ -15,7 +15,7 @@ if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
 #    IDE     (manual)        qwen3.6:27b       ~22 GB only during /pause
 #
 #  OUTPUT BASE (OneDrive-synced):
-#    $HOME/Library/CloudStorage/OneDrive-Personal/AI-Agent
+#    $AI_WORKSPACE (default: ~/Library/CloudStorage/OneDrive-Personal/AI-Agent)
 #    Every document delivered 3 ways: email + Telegram + saved in that folder.
 #
 #  WORKFLOW (Agile):
@@ -39,8 +39,9 @@ LAUNCH_DIR="$HOME/Library/LaunchAgents"
 # Falls back to ~/AI at runtime if OneDrive isn't installed/signed in.
 AI_WORKSPACE="${AI_WORKSPACE:-$HOME/Library/CloudStorage/OneDrive-Personal/AI-Agent}"
 
-# Where Ada emails proposals (and all docs are emailed).
-MASTER_EMAIL="${MASTER_EMAIL:-you@example.com}"
+# Where Ada emails proposals (and all docs are emailed). No default: set
+# MASTER_EMAIL in the environment, or the installer asks for it (require_master_email).
+MASTER_EMAIL="${MASTER_EMAIL:-}"
 
 COLIMA_CPU="${COLIMA_CPU:-4}"
 COLIMA_MEM="${COLIMA_MEM:-8}"
@@ -85,6 +86,19 @@ ensure_env_file() {
     chmod 600 "$ENV_FILE"
 }
 get_env() { ensure_env_file; sed -n "s/^$1=//p" "$ENV_FILE" | head -n1; }
+# The owner's address is never defaulted in code: take it from the environment,
+# the existing .env, or ask once; fail early with a clear message otherwise.
+require_master_email() {
+    [ -n "$MASTER_EMAIL" ] || MASTER_EMAIL="$(get_env MASTER_EMAIL)"
+    if [ -z "$MASTER_EMAIL" ] && [ -t 0 ]; then
+        printf "Email address for proposals and documents: "; read -r MASTER_EMAIL
+    fi
+    if [ -z "$MASTER_EMAIL" ]; then
+        err "MASTER_EMAIL is not set. Run: MASTER_EMAIL=you@example.com $0"
+        exit 1
+    fi
+    export MASTER_EMAIL
+}
 set_env() {
     ensure_env_file
     local key="$1" val="$2" tmp; tmp="$(mktemp)"
@@ -658,7 +672,7 @@ roles:
       - Everything local. No cloud, no data leaves the machine.
       - Concise but complete. One clear message per turn. Real reasoning, not filler.
       - All team output lives in the master's OneDrive folder:
-        $HOME/Library/CloudStorage/OneDrive-Personal/AI-Agent
+        __AI_WORKSPACE__
         (proposals/ projects/ reports/ screenshots/ trends/). Every document is
         delivered three ways: emailed, sent to Telegram, and saved there to sync.
         Reference real paths there, never invented ones.
@@ -756,7 +770,7 @@ roles:
       - If a requirement is unclear or you need a decision, reach out to the master via
         Orion rather than guessing. Precision over assumption.
 
-      All your output saves to $HOME/Library/CloudStorage/OneDrive-Personal/AI-Agent
+      All your output saves to __AI_WORKSPACE__
       and is also emailed and sent to Telegram.
 
   leo:
@@ -792,7 +806,7 @@ roles:
       - When fully done and verified, end with exactly: DEPLOYMENT COMPLETE
         followed by a summary of what was built and how to run it.
 
-      All your output saves to $HOME/Library/CloudStorage/OneDrive-Personal/AI-Agent
+      All your output saves to __AI_WORKSPACE__
       and is also emailed and sent to Telegram.
 
   nova:
@@ -826,7 +840,7 @@ roles:
         | Expected vs Actual | Affected area (UI/backend) | Evidence.
       - If everything passes, end with exactly: ALL TESTS PASSED
 
-      All your output saves to $HOME/Library/CloudStorage/OneDrive-Personal/AI-Agent
+      All your output saves to __AI_WORKSPACE__
       and is also emailed and sent to Telegram.
 
   cipher:
@@ -858,7 +872,7 @@ roles:
       - Never assist in attacking systems the master doesn't own or isn't authorized to
         test, and never help with illegal activity. Authorization is mandatory, always.
 
-      All your output saves to $HOME/Library/CloudStorage/OneDrive-Personal/AI-Agent
+      All your output saves to __AI_WORKSPACE__
       and is also emailed and sent to Telegram.
 
   vox:
@@ -894,8 +908,14 @@ roles:
         positioning, and a lean go-to-market the master could run solo.
 
       You send ideas to the master via Telegram (with images for reference) and they are
-      also saved to $HOME/Library/CloudStorage/OneDrive-Personal/AI-Agent/trends.
+      also saved to __AI_WORKSPACE__/trends.
 TEAMEOF
+    AI_WORKSPACE="$AI_WORKSPACE" python3 - "$AD/team.yaml" <<'WSEOF'
+import os, sys
+p = sys.argv[1]
+t = open(p).read().replace("__AI_WORKSPACE__", os.environ["AI_WORKSPACE"])
+open(p, "w").write(t)
+WSEOF
     ok "team.yaml written (enhanced personas)."
 
     # ── orchestrator.py — always regenerate ──────────────────────────────────
@@ -919,7 +939,7 @@ load_dotenv(os.path.join(HOME, ".env"))
 WORKSPACE = os.environ.get("AI_WORKSPACE",
     os.path.join(os.path.expanduser("~"),
                  "Library/CloudStorage/OneDrive-Personal/AI-Agent"))
-MASTER_EMAIL = os.environ.get("MASTER_EMAIL", "you@example.com")
+MASTER_EMAIL = os.environ["MASTER_EMAIL"]
 GW   = f"http://localhost:{os.environ.get('PORT_GATEWAY','4000')}/v1"
 SX   = f"http://localhost:{os.environ.get('PORT_SEARXNG','8888')}/search"
 PF   = os.path.join(HOME, "projects.json")
@@ -3432,6 +3452,7 @@ do_reset() {
 # =============================================================================
 run_install() {
     hr; log "Local AI Development Team — installer"; hr
+    require_master_email
     preflight
     setup_workspace
     setup_xcode_clt
