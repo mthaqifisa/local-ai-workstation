@@ -46,3 +46,19 @@ def test_metrics(jc: ModuleType) -> None:
 def test_switch_rule(jc: ModuleType, cand: dict, ok: bool) -> None:
     current = {"catch_pct": 70, "false_fail_pct": 10, "agreement_pct": 90, "median_s": 30}
     assert jc.switch(cand, current) is ok
+
+
+def test_verdict_waits_while_omlx_is_busy(jc: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    import asyncio
+
+    calls = iter([RuntimeError("Server error '507 Insufficient Storage'"), '{"score": 4, "issues": [], "summary": "ok"}'])
+
+    async def fake_answer(*_a: object, **_k: object) -> str:
+        item = next(calls)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    monkeypatch.setattr(jc, "answer", fake_answer)
+    monkeypatch.setattr(jc, "BUSY_WAIT_S", 0)
+    assert asyncio.run(jc._verdict(None, [], "j")) == (4, None)

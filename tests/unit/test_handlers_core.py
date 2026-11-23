@@ -78,6 +78,7 @@ async def test_weak_draft_is_revised_with_judge_feedback(setup):
     assert done.result["verdict"]["score"] == 2 and done.result["revised"] is True
     revise_prompt = rt.llm.calls[-1][1]
     assert "missing risk section" in revise_prompt
+    assert "do not mention a previous version" in revise_prompt  # the user never saw the draft (Telegram 2026-11-23)
 
 
 async def test_judge_uses_a_different_model_family_than_the_generator(setup):

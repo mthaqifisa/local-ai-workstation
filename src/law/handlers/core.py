@@ -407,7 +407,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         await ctx.progress(f"revising (review score {verdict['score']}/5)")
         feedback = "\n".join(f"- {i}" for i in verdict["issues"]) or "- improve correctness and completeness"
         prompt = (f"Request:\n{ctx.job.payload['prompt']}\n\nYour previous answer:\n{carry['answer']}\n\n"
-                  f"A reviewer found these problems:\n{feedback}\n\nWrite the improved, complete answer.")
+                  f"A reviewer found these problems:\n{feedback}\n\nWrite the improved, complete answer. The user saw "
+                  "neither the previous answer nor the review: answer the request directly as your only reply, and "
+                  "do not mention a previous version, a correction, the reviewer or these problems.")
         text = await answer(rt, role, build_messages(rt, role, prompt, ctx.job.payload.get("history"),
                                                      _images(ctx.job.payload)), ctx, model=job_model(rt, ctx, role))
         return Done({"answer": text, "verdict": verdict, "revised": True})

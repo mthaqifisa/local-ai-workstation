@@ -97,6 +97,23 @@ def dump(data: dict[str, Any]) -> str:
     return yaml.dump(data, Dumper=_Literal, sort_keys=False, allow_unicode=True, width=120)
 
 
+BUSY_WAIT_S, BUSY_TRIES = 60, 30
+
+
+async def _verdict(rt: Runtime, messages: list[dict[str, Any]], judge: str) -> tuple[int, str | None]:
+    """One verdict. oMLX answers 507 while another model is busy and can't be unloaded (LAW's own jobs go through the
+    scheduler; this script does not), so wait for it instead of recording a failure."""
+    for _ in range(BUSY_TRIES):
+        try:
+            verdict = parse_verdict(await answer(rt, "reviewer", messages, model=judge))
+            return int(verdict["score"]), None
+        except Exception as exc:  # a failed verdict is recorded, not fatal
+            if "507" not in str(exc):
+                return 0, f"{type(exc).__name__}: {exc}"
+            await asyncio.sleep(BUSY_WAIT_S)
+    return 0, "oMLX stayed busy with another model"
+
+
 async def run(judge: str, repeats: int, pass_score: int) -> Path:
     rt = Runtime.load(LawPaths.from_env())
     items = yaml.safe_load(SET_FILE.read_text())["items"]
@@ -107,11 +124,7 @@ async def run(judge: str, repeats: int, pass_score: int) -> Path:
             messages = [{"role": "system", "content": rt.roles.system_prompt("reviewer")},
                         {"role": "user", "content": prompt}]
             t0 = time.monotonic()
-            try:
-                verdict = parse_verdict(await answer(rt, "reviewer", messages, model=judge))
-                score, error = int(verdict["score"]), None
-            except Exception as exc:  # a failed verdict is recorded, not fatal
-                score, error = 0, f"{type(exc).__name__}: {exc}"
+            score, error = await _verdict(rt, messages, judge)
             rows.append({"repeat": rep, "id": item["id"], "kind": item["kind"], "score": score,
                          "passed": score >= pass_score, "seconds": round(time.monotonic() - t0, 1), "error": error})
             print(f"{judge} r{rep} {item['id']}: {score}", flush=True)
