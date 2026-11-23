@@ -318,7 +318,8 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - [x] E1 Pins + runtime upgrade: registry `pins:` (OpenCode 1.18.7 via npm, oMLX 0.8.0), Open WebUI 0.12.5 by digest, doctor version check (ADR-0024)
 - [x] E2 Speculative decoding: DFlash 2 on the 27B 8-bit, 2.6-2.8x decode on code, golden 10/10, owner yes (ADR-0025)
 - [ ] E3 fast-lane 4-bit; E4 coder-fast DFlash
-- [ ] Digital Bank book via Tony (/rnd project in ~/RnD/digital-bank, brief there), monitored every 2 h
+- [ ] Chapter-1 trial of the Digital Bank book (/rnd), verified before anything else
+- [ ] Digital Bank book via Tony (/rnd, ~/RnD/digital-bank) LAST: after all pending items, the HTML page, cache and model cleanup; stop-fix-restart on any issue; monitored every 2 h
 - [x] E8 lead-note approval: drafts on the 2nd stall, Telegram Approve/Edit/Drop, 60 min = drop, rate every 10 (ADR-0026)
 - [ ] E5 judge A/B, E6 OpenCode 2 (gated), E7 finish P7/P8
 - [x] Tony self-healing (missing packages) and self-improvement loop: propose, build on a branch, Apply/Reject on Telegram (ADR-0027)
