@@ -1,9 +1,9 @@
 {
   "stage": "E-enhance-v6.1",
-  "task": "E1 done; E2 benchmarks",
+  "task": "E2",
   "status": "in_progress",
-  "next_step": "E2: baseline bench (27B, 4K+32K, then 64K), quantize oQ8e+MTP, DFlash2 + MTP benches, report table to owner",
-  "timestamp": "2026-11-23T11:21:47",
+  "next_step": "Golden eval with DFlash on the 27B 8-bit (log ~/LAW/logs/e2-eval-dflash.log), then ADR-0025 and the owner's cut-over yes",
+  "timestamp": "2026-11-23T17:39:36",
   "files_touched": [
     "settings/registry.yaml",
     "Brewfile",
