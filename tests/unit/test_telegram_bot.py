@@ -317,3 +317,20 @@ def test_an_agents_documents_are_attached(tmp_path):
     assert [f.name for f in telegram_bot.deliverables(job)] == ["memo.md"]
     assert telegram_bot.deliverables({**job, "kind": "ask"}) == []
     assert telegram_bot.deliverables({**job, "payload": {"dir": str(folder), "project": "p"}}) == []
+
+
+def test_files_the_agent_sent_itself_are_not_attached_again(tmp_path, monkeypatch):
+    import time as _t
+
+    from law import deliver
+
+    folder = tmp_path / "out"
+    folder.mkdir()
+    (folder / "a.pdf").write_text("a")
+    (folder / "b.md").write_text("b")
+    log = tmp_path / "data" / deliver.SENT_LOG
+    deliver.record_sent(log, [folder / "a.pdf"])
+    real = deliver.already_sent
+    monkeypatch.setattr(deliver, "already_sent", lambda _p: real(log))
+    job = {"kind": "task", "started": _t.time() - 60, "payload": {"dir": str(folder)}}
+    assert [f.name for f in telegram_bot.deliverables(job)] == ["b.md"]

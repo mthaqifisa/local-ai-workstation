@@ -49,7 +49,26 @@ def to_telegram(env_file: Path, files: list[Path], message: str = "",
                     data["caption"] = message[:CAPTION_LIMIT]
                 with path.open("rb") as fh:
                     _ok(client.post("/sendDocument", data=data, files={"document": (path.name, fh)}))
+    record_sent(env_file.parent.parent / "data" / SENT_LOG, files)
     return len(chats)
+
+
+SENT_LOG = "telegram-sent.txt"
+
+
+def record_sent(log: Path, files: list[Path]) -> None:
+    """Files `law send` delivered, so Tony does not attach them again with the agent's answer."""
+    if files:
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with log.open("a") as out:
+            out.writelines(f"{path.resolve()}\n" for path in files)
+
+
+def already_sent(log: Path) -> set[str]:
+    try:
+        return set(log.read_text().split("\n")[-2000:]) - {""}
+    except OSError:
+        return set()
 
 
 def _ok(response: httpx.Response) -> None:

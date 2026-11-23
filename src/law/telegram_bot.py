@@ -21,7 +21,7 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from law import board, bugs, improve, lead, projects, registry, secrets
+from law import board, bugs, deliver, improve, lead, projects, registry, secrets
 from law.paths import LawPaths, display
 from law.project_memory import ProjectMemory
 from law.tg_format import to_telegram_html
@@ -1062,11 +1062,12 @@ def deliverables(job: dict[str, Any]) -> list[Path]:
     if job.get("kind") != "task" or not payload.get("dir") or payload.get("project"):
         return []
     folder, since = Path(str(payload["dir"])), float(job.get("started") or job.get("created") or 0)
+    sent = deliver.already_sent(LawPaths.from_env().data / deliver.SENT_LOG)  # the agent sent these itself
     skip = {".law", ".git", "node_modules", ".venv", "venv", "__pycache__", "build", "dist"}
     found = []
     for f in folder.rglob("*") if folder.is_dir() else []:
         if (f.is_file() and f.suffix.lower() in DOC_SUFFIXES and not skip & set(f.relative_to(folder).parts)
-                and since <= f.stat().st_mtime and f.stat().st_size <= DOC_MAX_BYTES):
+                and since <= f.stat().st_mtime and f.stat().st_size <= DOC_MAX_BYTES and str(f.resolve()) not in sent):
             found.append(f)
     return sorted(found, key=lambda f: f.stat().st_mtime, reverse=True)[:DOCS_SENT]
 
