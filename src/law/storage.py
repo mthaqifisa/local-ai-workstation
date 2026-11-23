@@ -22,6 +22,16 @@ if TYPE_CHECKING:
     from law.queue.store import JobStore
 
 OTHER = ("pip", "puppeteer", "opencode", "playwright", "torch")
+OUTPUT_FOLDERS = ("agents", "docs", "images", "audio", "video")  # bench/ and judge/ are evidence for the ADRs
+OUTPUT_KEEP_DAYS = 7
+
+
+def _trash_days(paths: LawPaths) -> int:
+    try:
+        from law import registry
+        return registry.load(paths.registry_file).retention.trash_days
+    except Exception:  # a label only: fall back to the default
+        return 7
 
 
 @dataclass
@@ -90,7 +100,21 @@ def items(paths: LawPaths, restart_llm: Callable[[], None]) -> list[CacheItem]:
             else:
                 item.unlink(missing_ok=True)
 
+    outputs = [paths.outputs / f for f in OUTPUT_FOLDERS]
+
+    def trash_old_outputs() -> None:
+        """Generated files older than a week go to ~/LAW/trash (emptied after `retention.trash_days`)."""
+        now, dest = time.time(), paths.trash / f"outputs-{time.strftime('%Y%m%d-%H%M%S')}"
+        for folder in outputs:
+            for item in folder.iterdir() if folder.is_dir() else []:
+                if now - item.stat().st_mtime > OUTPUT_KEEP_DAYS * 86400:
+                    (dest / folder.name).mkdir(parents=True, exist_ok=True)
+                    shutil.move(str(item), dest / folder.name / item.name)
+
     return [
+        CacheItem("outputs", "Generated files older than a week (agent documents, images, audio, video)",
+                  f"moved to the trash, deleted after {_trash_days(paths)} days; the last week's files stay",
+                  outputs, trash_old_outputs),
         CacheItem("llm_prompt_cache", "Model prompt cache (oMLX)", "slower first answers until it refills; "
                   "the model restarts, so only when nothing is running", [omlx_cache], clear_omlx, needs_idle=True),
         CacheItem("uv", "Python packages (uv)", "re-downloaded on the next install or agent build",

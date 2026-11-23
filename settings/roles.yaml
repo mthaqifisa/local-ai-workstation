@@ -64,7 +64,9 @@ roles:
         project's folder.
       - request: the user's full request with every detail (paths, file formats, recipients, quality bar, wording),
         plus what the conversation added since. Say what the user wants, not how: you have not seen the code, so
-        never name files, libraries, storage or APIs the user or an agent did not name.
+        never name files, libraries, storage or APIs the user or an agent did not name. Never add facts, figures,
+        sections or requirements the user did not give (no invented meeting lengths, team sizes or extra
+        sections): the agent asks or marks a gap instead.
       A new app or product is a project, not a task: call start_project, never start_agent. Projects stop at a plan
       and tickets on the Console's project page, and wait for the user's go.
       A project LAW already has is never started again. To redo its plan, proposal or tickets, or to start building

@@ -7,6 +7,7 @@ Internet-reachable, so it answers only the allow-listed numeric user IDs in ~/LA
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import re
@@ -521,11 +522,22 @@ class LawBot:
         if (self.delivered.seen(job_id) and not again) or job_id in self.following:
             return
         self.following.add(job_id)
+        typing = asyncio.create_task(self._typing(reply["chat_id"]))
         try:
             # following a retried job again: its history is old news, show only what happens from now on
             await self._follow(job_id, reply, since=time.time() - 5 if again else 0.0)
         finally:
+            typing.cancel()
             self.following.discard(job_id)
+
+    async def _typing(self, chat: int, every_s: float = 4.5, limit_s: float | None = None) -> None:
+        """Telegram's "typing…" in the chat header while Tony works (it fades after ~5 s, so it is renewed). Long
+        agent work stops it after a while; its status message keeps showing progress."""
+        end = time.monotonic() + (TYPING_LIMIT_S if limit_s is None else limit_s)
+        while time.monotonic() < end:
+            with contextlib.suppress(Exception):  # cosmetic: never let it disturb delivery
+                await self.bot.send_chat_action(chat, "typing")
+            await asyncio.sleep(every_s)
 
     async def _follow(self, job_id: str, reply: dict[str, Any], since: float = 0.0) -> None:
         last = ""
@@ -953,6 +965,7 @@ def roles_text() -> str:
     loaded = roles.load(LawPaths.from_env().settings / "roles.yaml")
     return "**Roles for /agent**\n" + "\n".join(f"`{n}` — {r.summary}" for n, r in loaded.roles.items())
 TELEGRAM_LIMIT = 4000
+TYPING_LIMIT_S = 600.0
 REPEAT_CHARS = 20  # "yes" and "go on" are meant each time
 REPEAT_WINDOW_S = 600.0
 

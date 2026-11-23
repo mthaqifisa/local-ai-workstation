@@ -77,3 +77,21 @@ def test_prune_sessions_deletes_only_old_ones(tmp_path: Path, monkeypatch: pytes
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     assert storage.prune_sessions(paths, 14, now) == 1 and deleted == ["ses_old"]
+
+
+def test_old_outputs_go_to_the_trash_and_recent_ones_stay(tmp_path: Path):
+    paths = LawPaths(repo=REPO, home=tmp_path / "LAW", user_home=tmp_path)
+    old_doc, new_img = paths.outputs / "agents" / "abc", paths.outputs / "images" / "new.png"
+    old_doc.mkdir(parents=True)
+    (old_doc / "memo.md").write_text("memo")
+    new_img.parent.mkdir(parents=True)
+    new_img.write_bytes(b"png")
+    bench = paths.outputs / "bench" / "old.json"
+    bench.parent.mkdir(parents=True)
+    bench.write_text("{}")
+    week_ago = time.time() - 8 * 86400
+    for f in (old_doc, bench):
+        os.utime(f, (week_ago, week_ago))
+    storage.clear(paths, ["outputs"], lambda: None, busy=True)  # safe while jobs run: only week-old files move
+    assert not old_doc.exists() and new_img.exists() and bench.exists()
+    assert list(paths.trash.glob("outputs-*/agents/abc/memo.md"))

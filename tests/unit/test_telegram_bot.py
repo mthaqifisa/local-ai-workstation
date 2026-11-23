@@ -288,3 +288,16 @@ def test_a_double_send_is_told_from_a_new_request(text: str, chat: int, status: 
     job = {"kind": "ask", "parent": None, "status": status, "created": 1000.0, "payload": {"prompt": text},
            "reply_to": {"chat_id": 7}}
     assert telegram_bot.is_repeat([job], chat, text, 1000.0 + age) is repeat
+
+
+async def test_typing_is_shown_and_renewed_until_the_limit():
+    from types import SimpleNamespace
+
+    sent: list[tuple[int, str]] = []
+
+    async def action(chat: int, kind: str) -> None:
+        sent.append((chat, kind))
+
+    bot = SimpleNamespace(bot=SimpleNamespace(send_chat_action=action))
+    await telegram_bot.LawBot._typing(bot, 7, every_s=0.01, limit_s=0.035)  # type: ignore[arg-type]
+    assert sent and all(s == (7, "typing") for s in sent) and len(sent) >= 2
