@@ -374,3 +374,20 @@ def test_repo_may_sit_in_one_group_folder_and_keeps_a_flat_id(tmp_path: Path) ->
     for bad in ("R&D/x", "Digital Bank", "a/b/c", "../x"):
         with pytest.raises(TemplateError):
             parse_template(f"name: x\nsummary: s\nrepo: {bad}\ndetails: d")
+
+
+def test_a_document_project_is_built_by_the_writer_with_book_rules():
+    from law.handlers.project import DOC_RULES
+    from law.projects import TemplateError, parse_template
+
+    fields = parse_template("name: Digital Bank\nkind: document\nsummary: a book\ndetails: chapters")
+    assert fields["kind"] == "document"
+    with pytest.raises(TemplateError, match="kind"):
+        parse_template("name: X\nkind: poem\nsummary: s\ndetails: d")
+    args = {"name": "Digital Bank", "version": 1, "out": "docs", "key": "DB", "kind": "document"}
+    dev = specs.resolve({"spec_ref": "project.dev", "spec_args": args}) or ""
+    assert DOC_RULES.strip()[:40] in dev and "host.docker.internal" not in dev
+    review = specs.resolve({"rubric_ref": "project.review", "spec_args": args}, "rubric") or ""
+    assert "chapter of a book" in review
+    soft = specs.resolve({"spec_ref": "project.dev", "spec_args": {**args, "kind": "software"}}) or ""
+    assert "host.docker.internal" in soft

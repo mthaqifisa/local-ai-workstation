@@ -809,7 +809,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 if left and (await _gate_problem(ctx, workdir, after_ticket=False)).startswith(UNCOMMITTED_HEAD):
                     message, what = COMMIT_NUDGE.format(files=", ".join(left[:10])), "tick and commit"
                 await ctx.progress(f"⚠️ nothing saved for {stall_min:.0f} min: nudging the agent to {what}")
-                if ticket and role == "coder" and strikes >= 2:
+                if ticket and role in ("coder", "writer") and strikes >= 2:
                     _draft_lead_note(ctx, role, workdir, ticket, list(recent))
                 cmd = [*base, "--session", sid, message]
 

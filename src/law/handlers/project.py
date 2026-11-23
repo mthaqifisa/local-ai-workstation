@@ -197,6 +197,29 @@ REVIEW_CONTEXT = """
 The specification is {spec_file} (version {version}); the milestones are in .law/PLAN.md. Check the delivered
 scope against them, and run the build and tests yourself."""
 
+DOC_RULES = """
+
+This is a document project (a book, report or guide). Its tickets are chapters and sub-chapters, not features:
+- One ticket = one chapter or sub-chapter in its own Markdown file (e.g. book/07-ledger.md) with its citations and
+  its diagrams (Mermaid source next to it, rendered to PNG). Write it completely in one session.
+- Read only what the ticket needs: the outline, .law/STYLE.md and the sources for this chapter. Do not re-read other
+  chapters; .law/STYLE.md holds the voice, the glossary terms and decisions every chapter must follow (add to it
+  when you decide something others must match).
+- `.law/check.sh` is the gate: it builds the whole PDF and HTML from the sources and fails on a build error, a
+  missing image or citation, a diagram wider than the A4 text width, or a broken internal link. The UI and
+  test-suite rules above do not apply; after the gate, look at the rendered pages of your chapter
+  (pdftoppm page images) and fix what reads or looks wrong.
+- Cosmetic details get two tries; then keep what works and move on."""
+
+DOC_RUBRIC = """You are reviewing a chapter of a book for a demanding professional reader. Score it 1-5:
+5 = accurate, complete for its scope, every claim cited, clear for both a beginner and an expert, diagrams correct
+and readable within the page; 4 = solid, cosmetic issues only; 3 = one material gap, error, uncited claim or
+unreadable diagram; 2 = several; 1 = wrong or missing.
+Check facts and numbers against the cited sources, consistency with .law/STYLE.md and the outline, that the
+rendered pages look right (run .law/check.sh and look at the page images), and that nothing is padding.
+Reply with JSON only: {"score": <1-5>, "issues": ["<file:section problem and fix>"], "summary": "<one sentence>"}"""
+
+
 def spec_file(a: dict[str, Any]) -> str:
     """What development builds from: the proposal (full projects) or the agreed plan in .law/ (code-only)."""
     return str(a.get("spec_file") or f"{a['out']}/proposal.md")
@@ -236,12 +259,13 @@ def dev_spec(a: dict[str, Any]) -> str:
     v = int(a["version"])
     scope = "" if v == 1 or a.get("spec_file") else f', including its section "What changed in version {v}"'
     spec = DEV_SPEC.format(name=a["name"], version=v, spec_file=spec_file(a), scope=scope, key=a["key"])
-    return spec + law_services()
+    return spec + (DOC_RULES if a.get("kind") == "document" else law_services())
 
 
 @specs.register("project.fix")
 def fix_spec(a: dict[str, Any]) -> str:
-    return FIX_SPEC.format(spec_file=spec_file(a), version=a["version"]) + law_services()
+    return FIX_SPEC.format(spec_file=spec_file(a), version=a["version"]) + (
+        DOC_RULES if a.get("kind") == "document" else law_services())
 
 
 @specs.register("project.handover")
@@ -253,7 +277,8 @@ def handover_spec(a: dict[str, Any]) -> str:
 def review_rubric(a: dict[str, Any]) -> str:
     from law.handlers.tasks import CODE_RUBRIC
 
-    return CODE_RUBRIC + REVIEW_CONTEXT.format(spec_file=spec_file(a), version=a["version"])
+    rubric = DOC_RUBRIC if a.get("kind") == "document" else CODE_RUBRIC
+    return rubric + REVIEW_CONTEXT.format(spec_file=spec_file(a), version=a["version"])
 
 
 LEFT = re.compile(r"^\s*- \[ \]\s*(.+)$", re.MULTILINE)  # unticked milestones in a build section
@@ -287,7 +312,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 "key": re.sub(r"[^A-Z]", "", project.name.title())[:4] or "PRJ"}  # ticket prefix: "Lan Chat" -> LC
         if project.mode == "code":
             args["spec_file"] = ".law/PROMPT.md (the agreed plan)"
-        return {"prompt": project.request(), "dir": project.dir, "role": "coder", "version": v,
+        role = "writer" if project.kind == "document" else "coder"  # a book needs the writer's PDF and diagram rules
+        args["kind"] = project.kind
+        return {"prompt": project.request(), "dir": project.dir, "role": role, "version": v,
                 "effort": project.effort, "project": project.id, "spec_args": args}
 
     def _develop(project: Project) -> list[dict[str, Any]]:

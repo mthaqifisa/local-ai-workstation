@@ -45,12 +45,13 @@ INTROS: dict[str, str] = {
              "next message, fill it in and send it back. " + _FIELDS_HELP + "."),
 }
 TEMPLATES: dict[str, str] = {
-    "project": "/project new\nname:\nrepo:\nrepo_url:\nstack:\nthinking: medium\nproposal: brief\nsummary:\n"
-               "details:\n",
-    "code": "/code new\nname:\nrepo:\nrepo_url:\nstack:\nthinking: medium\nsummary:\ndetails:\n",
+    "project": "/project new\nname:\nrepo:\nrepo_url:\nstack:\nkind: software\nthinking: medium\n"
+               "proposal: brief\nsummary:\ndetails:\n",
+    "code": "/code new\nname:\nrepo:\nrepo_url:\nstack:\nkind: software\nthinking: medium\nsummary:\ndetails:\n",
 }
 TEMPLATE_INTRO, TEMPLATE = INTROS["project"], TEMPLATES["project"]  # the full project is the default
-FIELDS = ("name", "repo", "repo_url", "stack", "thinking", "proposal", "summary", "details")
+FIELDS = ("name", "repo", "repo_url", "stack", "kind", "thinking", "proposal", "summary", "details")
+KINDS = ("software", "document")  # document: a book, report or guide, built by the writer agent
 DEPTHS = ("brief", "full")
 
 
@@ -72,6 +73,7 @@ class Project(BaseModel):
     stack: str = ""
     thinking: str = "medium"
     mode: Mode = "project"  # project: proposal, handover and email; code: a short plan in the chat, no documents
+    kind: Literal["software", "document"] = "software"  # document: built by the writer agent (books, reports)
     proposal: str = "brief"  # proposal depth: brief or full
     summary: str
     details: str
@@ -123,6 +125,10 @@ def parse_template(text: str) -> dict[str, str]:
     if depth not in DEPTHS:
         raise TemplateError("proposal must be brief or full")
     fields["proposal"] = depth
+    kind = (fields.get("kind") or "software").lower()
+    if kind not in KINDS:
+        raise TemplateError("kind must be software or document")
+    fields["kind"] = kind
     group, _, name = (fields.get("repo") or slugify(fields["name"])).strip("/").rpartition("/")
     repo = f"{group}/{name.lower()}" if group else name.lower()
     if not NAME_RE.match(name.lower()) or (group and not GROUP_RE.match(group)):
@@ -230,6 +236,7 @@ class Projects:
             raise TemplateError(f"a project named {pid} already exists; pick another repo name")
         project = Project(id=pid, name=fields["name"], dir=str(folder),
                           repo_url=fields.get("repo_url", ""), stack=fields.get("stack", ""),
+                          kind=fields.get("kind", "software"),  # type: ignore[arg-type]
                           thinking=fields["thinking"], mode=mode, proposal=fields.get("proposal", "brief"),
                           summary=fields["summary"], details=fields["details"], chat=chat)
         project.log("created")

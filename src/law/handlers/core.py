@@ -48,6 +48,9 @@ PROJECT_TOOL: dict[str, Any] = {
                 "folder": {"type": "string",
                            "description": ("Only if the user named one: the folder under ~/SourceCode, e.g. "
                                            "RnD/digital-bank. Leave empty to derive it from the name.")},
+                "kind": {"type": "string", "enum": ["software", "document"],
+                         "description": ("document for a book, report or guide (PDF/HTML, diagrams); software for "
+                                         "an app or service.")},
                 "mode": {"type": "string", "enum": ["code", "project"],
                          "description": ("code: a short plan and tickets for the user's go, no documents; project: "
                                          "research and a proposal PDF first, for a full engagement.")},
@@ -382,7 +385,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             summary = " ".join(str(args.get("summary", "")).split())
             mode = "project" if args.get("mode") == "project" else "code"
             folder = str(args.get("folder") or "").strip()
-            template = (f"name: {args.get('name', '')}\nstack: {args.get('stack', '')}\nsummary: {summary}\n"
+            template = (f"name: {args.get('name', '')}\nstack: {args.get('stack', '')}\n"
+                        f"kind: {args.get('kind') or 'software'}\nsummary: {summary}\n"
                         + (f"repo: {folder}\n" if folder else "")  # before details, which takes the rest
                         + f"details: {args.get('details', '')}")
             try:
