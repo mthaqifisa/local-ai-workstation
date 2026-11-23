@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 import os
 import re
@@ -348,6 +350,11 @@ def job_model(rt: Runtime, ctx: Context, role: str) -> str:
     return resource.removeprefix("llm:") if resource.startswith("llm:") else rt.model_id(role)
 
 
+BESIDE_AGENT = "answered beside a running agent step; the reviewer model is not loaded"
+LATE_FLAG = ("⚠️ The independent review of my answer to \"{prompt}\" (scored {score}/5) found problems:\n{issues}\n"
+             "Ask me again if you need it corrected.")
+
+
 def review_skip(rt: Runtime, ctx: Context, role: str, text: str, agent_job: str | None) -> str | None:
     """Why this chat answer goes out without the independent review (ADR-0017), or None to review it."""
     if agent_job:
@@ -356,7 +363,7 @@ def review_skip(rt: Runtime, ctx: Context, role: str, text: str, agent_job: str 
     if quick and len(text) <= quick and not _images(ctx.job.payload):
         return "short reply"
     if job_model(rt, ctx, role) != rt.model_id(role):
-        return "answered beside a running agent step; the reviewer model is not loaded"
+        return BESIDE_AGENT
     return None
 
 
@@ -504,6 +511,15 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         if not (p.get("quality", True) and root):
             return Done({"answer": text, **agent_job})
         skip = review_skip(rt, ctx, role, text, started[0] if started else None)
+        if skip == BESIDE_AGENT:  # answer now; review later, when the reviewer can load, and flag a weak answer
+            from law.app import resolver
+            from law.queue.jobs import Job, Priority
+
+            await ctx.store.submit(resolver(rt)(Job(
+                kind="judge", priority=Priority.BATCH, source=ctx.job.source,
+                payload={"prompt": p["prompt"], "history": history, "facts": facts, "late": True,
+                         "_carry": {"answer": text}})))
+            skip = "deferred: reviewed when the reviewer model can load"
         if skip:
             return Done({"answer": text, "revised": False, "review": f"skipped: {skip}", **agent_job})
         # the draft is written; the independent review (another model family) and a revision only if it is weak
@@ -527,7 +543,16 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         text = await answer(rt, "reviewer", build_messages(
             rt, "reviewer",
             f"{RUBRIC}\n\n{context}REQUEST:\n{ctx.job.payload['prompt']}\n\nRESPONSE:\n{carry['answer']}"), ctx)
-        return Done({"verdict": parse_verdict(text)})
+        verdict = parse_verdict(text)
+        if ctx.job.payload.get("late") and verdict["score"] < PASS_SCORE:  # the answer went out unreviewed: say so
+            from law import deliver
+
+            issues = "\n".join(f"- {i}" for i in verdict.get("issues") or []) or f"- {verdict.get('summary', '')}"
+            prompt = " ".join(str(ctx.job.payload["prompt"]).split())[:80]
+            with contextlib.suppress(deliver.DeliveryError):  # no Telegram: the verdict stays in the job's result
+                await asyncio.to_thread(deliver.to_telegram, rt.paths.env_file, [],
+                                        LATE_FLAG.format(prompt=prompt, score=verdict["score"], issues=issues))
+        return Done({"verdict": verdict})
 
     async def revise(ctx: Context) -> Outcome:
         carry = ctx.job.payload["_carry"]

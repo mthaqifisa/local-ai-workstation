@@ -836,3 +836,18 @@ def test_send_file_attaches_only_real_files_in_home(sandbox):
     assert attach(paths, str(sandbox / "nope.pdf"), files).startswith("error: no such file")
     assert attach(paths, "/etc/hosts", files).startswith("error: give an absolute path")
     assert attach(paths, "memo.md", files).startswith("error")
+
+
+async def test_an_answer_beside_an_agent_is_reviewed_later_and_flagged(setup, monkeypatch):
+    from law import deliver
+    from law.handlers import core
+
+    rt, store, w = setup
+    monkeypatch.setattr(core, "review_skip", lambda *a: core.BESIDE_AGENT)
+    sent: list[str] = []
+    monkeypatch.setattr(deliver, "to_telegram", lambda env, files, message="": sent.append(message) or 1)
+    done = await run_ask(rt, store, w, [2])
+    assert done.result["review"].startswith("skipped: deferred")
+    late = [j for j in await store.history(20) if j.kind == "judge" and j.payload.get("late")]
+    assert len(late) == 1 and late[0].status.terminal and late[0].result["verdict"]["score"] == 2
+    assert sent and "scored 2/5" in sent[0] and "missing risk section" in sent[0]
