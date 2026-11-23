@@ -50,6 +50,7 @@ def test_run_metrics(bench: ModuleType) -> None:
     r = bench.Run("code", 4096, prompt_tokens=4000, completion_tokens=501, ttft_s=2.0, total_s=12.0)
     assert r.prefill_tps == 2000 and r.decode_tps == 50
     assert bench.Run("code", 4096).decode_tps == 0
+    assert bench.Run("toolcall", 4096, 4000, 38, 13.0, 13.001).decode_tps == 0  # one-chunk tool call: no decode
 
 
 def test_first_tool_call_parses_and_rejects_bad_json(bench: ModuleType) -> None:
@@ -78,4 +79,4 @@ def test_summary_and_report_skip_failed_runs(bench: ModuleType, tmp_path: Path) 
         {"label": res.label, "model": res.model, "started": res.started, "omlx_version": res.omlx_version,
          "runs": [r.__dict__ for r in res.runs]}))
     table = bench.render(bench.load_results(tmp_path))
-    assert "| baseline | m | 0.8.0 | code | 4K | 33.3 |" in table and "| 3/4 |" in table
+    assert "| baseline | m | 0.8.0 | code | 4K | 33.3 |" in table and "| 3/4 | - |" in table

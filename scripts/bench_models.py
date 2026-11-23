@@ -54,6 +54,9 @@ class Run:
 
     @property
     def decode_tps(self) -> float:
+        """0 for tool calls: oMLX sends a parsed tool call as one chunk at the end, so there's no decode window."""
+        if self.workload == "toolcall":
+            return 0.0
         gen = self.total_s - self.ttft_s
         return (self.completion_tokens - 1) / gen if gen > 0 and self.completion_tokens > 1 else 0.0
 
@@ -176,11 +179,11 @@ class Omlx:
         return run
 
 
-def summarize(runs: list[Run]) -> dict[str, float]:
+def summarize(runs: list[Run]) -> dict[str, Any]:
     ok = [r for r in runs if not r.error]
     if not ok:
         return {"n": 0}
-    return {"n": len(ok), "decode_tps": round(statistics.median(r.decode_tps for r in ok), 1),
+    return {"n": len(ok), "decode_tps": round(statistics.median(r.decode_tps for r in ok), 1) or "-",
             "prefill_tps": round(statistics.median(r.prefill_tps for r in ok), 1),
             "ttft_s": round(statistics.median(r.ttft_s for r in ok), 2),
             "peak_mem_gb": max(r.peak_mem_gb for r in ok)}
@@ -198,9 +201,13 @@ def render(results: list[Result]) -> str:
     lines = ["# Model benchmarks", "",
              f"Generated {time.strftime('%Y-%m-%d %H:%M')} by `scripts/bench_models.py report` from raw results in "
              "`~/LAW/outputs/bench/`. Do not edit by hand. Medians of the timed runs; memory is the peak oMLX "
-             "reported for loaded models. Protocol: ADR-0025.", "",
-             "| Config | Model | oMLX | Workload | Context | Decode tok/s | Prefill tok/s | TTFT s | Peak GB | Runs |",
-             "|---|---|---|---|---|---|---|---|---|---|"]
+             "reported for loaded models. Tool-call rows have no decode figure (the call arrives as one chunk), "
+             "so their TTFT is the whole turn; the Calls column says whether every run made the baseline's call. "
+             "Protocol: ADR-0025.", "",
+             "| Config | Model | oMLX | Workload | Context | Decode tok/s | Prefill tok/s | TTFT s | Peak GB | Runs "
+             "| Calls |",
+             "|---|---|---|---|---|---|---|---|---|---|---|"]
+    ref = next((r.tool_call for res in results for r in res.runs if r.tool_call), None)
     for res in results:
         groups: dict[tuple[str, int], list[Run]] = {}
         for r in res.runs:
@@ -209,7 +216,8 @@ def render(results: list[Result]) -> str:
             s = summarize(runs)
             lines.append(f"| {res.label} | {res.model} | {res.omlx_version} | {wl} | {ctx // 1024}K | "
                          f"{s.get('decode_tps', '-')} | {s.get('prefill_tps', '-')} | {s.get('ttft_s', '-')} | "
-                         f"{s.get('peak_mem_gb', '-')} | {int(s['n'])}/{len(runs)} |")
+                         f"{s.get('peak_mem_gb', '-')} | {int(s['n'])}/{len(runs)} | "
+                         f"{('ok' if tool_calls_stable(runs, ref) else 'CHANGED') if wl == 'toolcall' else '-'} |")
     return scrub("\n".join(lines) + "\n")
 
 
