@@ -2,7 +2,9 @@
 
 Policy (ADR-0009):
 1. Effective priority = class - floor(wait / aging_s), floored at 0 (starvation-free).
-2. Heavy lane: one job at a time. Within the best effective class prefer the resident model
+2. Heavy lane: one job at a time. Within the best effective class a job waiting over `starve_s` goes first (oldest
+   first), so a request needing another model is not passed forever by an agent pipeline's next step on the loaded
+   one (2026-11-23: an image waited 40+ min behind a writer agent's stages). Otherwise prefer the resident model
    (avoids a swap), then the model with the most queued work (batches swaps), then FIFO.
 3. Light lane: run concurrently while slots and the memory budget allow.
 4. Jobs with lane "none" (pure I/O, e.g. web search) start immediately up to their slot limit.
@@ -27,6 +29,7 @@ class Capacity:
     none_slots: int = 8
     shared_slots: int = 2
     aging_s: float = 300.0
+    starve_s: float = 900.0
 
 
 @dataclass
@@ -70,9 +73,11 @@ def pick(queued: list[Job], running: Running, resident: str | None, cap: Capacit
         if heavy:
             demand = Counter(j.resource for j in heavy)
 
-            def key(j: Job) -> tuple[int, int, int, float]:
-                return (effective_class(j, now, cap.aging_s), 0 if j.resource == resident else 1,
-                        -demand[j.resource], j.enqueued)
+            def key(j: Job) -> tuple[int, int, int, int, float]:
+                starving = j.wait_seconds(now) > cap.starve_s
+                return (effective_class(j, now, cap.aging_s), 0 if starving else 1,
+                        0 if j.resource == resident or starving else 1, 0 if starving else -demand[j.resource],
+                        j.enqueued)
 
             best = min(heavy, key=key)
             light_gb = sum(j.mem_gb for j in running.light)

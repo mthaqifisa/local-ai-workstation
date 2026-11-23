@@ -137,3 +137,11 @@ def test_a_chat_never_shares_a_media_model():
 def test_an_idle_heavy_lane_runs_a_chat_on_its_own_model():
     started = pick([chat("llm:fast")], Running(), "llm:agent", CAP, NOW)
     assert [j.resource for j in started] == ["llm:fast"]
+
+
+def test_a_long_waiting_job_beats_the_resident_models_next_step():
+    image = job("image:qwen", age=CAP.starve_s + 60)  # needs a swap; waited over the limit
+    next_stage = job("llm:resident", age=5)  # an agent pipeline's next step on the loaded model
+    assert pick([next_stage, image], Running(), "llm:resident", CAP, NOW)[0] is image
+    fresh_image = job("image:qwen", age=60)
+    assert pick([next_stage, fresh_image], Running(), "llm:resident", CAP, NOW)[0] is next_stage  # swaps still batched
