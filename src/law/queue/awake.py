@@ -3,7 +3,9 @@
 macOS idle-sleeps a laptop on battery after a minute or two; an agent step then freezes mid-request and
 resumes only when someone wakes the machine (seen 2026-10-21: a coder step paused 31 minutes). While any
 job runs, the worker holds a `caffeinate` assertion: -i prevents idle sleep (on battery too), -s prevents
-system sleep on AC power, and -w ties it to the worker so a crashed worker never leaves the Mac awake.
+system sleep on AC power, -d keeps the display on (computer-use agents work from screenshots; a dark screen gives
+them nothing to see) and -w ties it to the worker so a crashed worker never leaves the Mac awake. With no job the
+display and the Mac may sleep, which spares the screen (2026-11-23 hardware-wear review).
 Closing the lid on battery still sleeps the Mac (macOS allows that only with sudo pmset); see docs/RUNBOOK.md.
 """
 
@@ -18,7 +20,7 @@ from collections.abc import Sequence
 def caffeinate_argv() -> list[str] | None:
     """The assertion command for this process, or None where `caffeinate` does not exist (not macOS)."""
     tool = shutil.which("caffeinate")
-    return [tool, "-i", "-s", "-w", str(os.getpid())] if tool else None
+    return [tool, "-i", "-s", "-d", "-w", str(os.getpid())] if tool else None
 
 
 class KeepAwake:

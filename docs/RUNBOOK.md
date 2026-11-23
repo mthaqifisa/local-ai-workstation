@@ -105,7 +105,26 @@ law restore-state       # add the saved ones that are missing on this Mac (also 
 du -sh ~/LAW/*          # where the space goes
 ```
 
-Models are the bulk (about 200 GB). Generated media accumulates in `~/LAW/outputs/`; delete what you don't need.
+Models are the bulk (about 200 GB). Generated files accumulate in `~/LAW/outputs/`: Console → Storage →
+"Generated files older than a week" moves them to the trash (emptied after 7 days).
+
+## Hardware wear
+
+Checked 2026-11-23 on the M5 Pro (1 TB SSD, 64 GB):
+
+| Part | Reading | What LAW does |
+|---|---|---|
+| SSD | 2% of rated life used, 0 integrity errors, 100% spare; about 190 GB written per day over the last 11 days (model downloads and quantizing included) | The oMLX prompt cache is capped at 20 GB; unused models and media are deleted; at this rate the SSD lasts decades |
+| Battery | 100% capacity after 48 cycles; macOS holds it at 80% on AC | Leave the charge limit on while the Mac stays plugged in |
+| Display | Was kept on day and night by a keep-awake command | LAW keeps the display awake only while a job runs (computer use needs it); otherwise it may sleep |
+
+Check again:
+
+```bash
+smartctl -a disk0 | grep -E "Percentage Used|Data Units Written|Media and Data"   # brew install smartmontools
+system_profiler SPPowerDataType | grep -E "Cycle Count|Condition|Maximum Capacity"
+ioreg -c IOBlockStorageDriver -r -w0 | grep -o '"Bytes (Write)"=[0-9]*'            # bytes written since boot
+```
 
 ## Fresh Mac or after a format
 

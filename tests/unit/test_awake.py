@@ -44,7 +44,7 @@ def test_assertion_restarts_if_it_died_and_is_a_no_op_without_caffeinate():
 def test_caffeinate_command_is_tied_to_this_process():
     argv = caffeinate_argv()
     if argv is not None:
-        assert argv[1:] == ["-i", "-s", "-w", str(os.getpid())]
+        assert argv[1:] == ["-i", "-s", "-d", "-w", str(os.getpid())]
 
 
 async def test_worker_holds_the_assertion_only_while_a_job_runs():
