@@ -94,6 +94,10 @@ class LlmModel(_Strict):
     # the vendor's sampling with thinking on, and with it off ("instruct"); a role's own temperature applies only
     # to a model without them
     sampling: dict[Literal["thinking", "instruct"], Sampling] = Field(default_factory=dict)
+    # speculative decoding: the id of another llm_models entry that drafts for this one (oMLX's dflash_draft_model)
+    draft: str | None = None
+    # per-model oMLX settings (keys of its model_settings.json, e.g. dflash_enabled), applied by `law install`
+    omlx: dict[str, bool | int | float | str] = Field(default_factory=dict)
 
     def sampling_for(self, effort: str | None) -> Sampling | None:
         """The recommended sampling at a thinking level ("off" is the instruct mode)."""
@@ -199,6 +203,8 @@ class Registry(_Strict):
         for m in self.llm_models:
             if m.mem_gb > self.machine.model_budget_gb:
                 raise ValueError(f"model {m.id} needs {m.mem_gb} GB > budget {self.machine.model_budget_gb}")
+            if m.draft is not None and (m.draft not in ids or m.draft == m.id):
+                raise ValueError(f"model {m.id}: draft {m.draft!r} is not another llm_models entry")
         return self
 
     def hf_repos_in_use(self) -> set[str]:

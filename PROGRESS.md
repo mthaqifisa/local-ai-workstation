@@ -316,10 +316,12 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 
 ### v6.1 enhancements (owner brief 2026-11-20; brief kept outside the repo)
 - [x] E1 Pins + runtime upgrade: registry `pins:` (OpenCode 1.18.7 via npm, oMLX 0.8.0), Open WebUI 0.12.5 by digest, doctor version check (ADR-0024)
-- [ ] E2/E3 Speculative decoding (27B MTP vs DFlash 2) and fast-lane 4-bit: benchmarks, owner yes for cut-over
+- [x] E2 Speculative decoding: DFlash 2 on the 27B 8-bit, 2.6-2.8x decode on code, golden 10/10, owner yes (ADR-0025)
+- [ ] E3 fast-lane 4-bit; E4 coder-fast DFlash
 - [ ] Digital Bank book via Tony (project RnD/digital-bank), monitored every 2 h
 - [x] E8 lead-note approval: drafts on the 2nd stall, Telegram Approve/Edit/Drop, 60 min = drop, rate every 10 (ADR-0026)
 - [ ] E5 judge A/B, E6 OpenCode 2 (gated), E7 finish P7/P8
 - [ ] README + HTML documentation page (docs/index.html) once stable
 - 2026-11-23 11:25 E1 done: oMLX 0.8.0 (needed Xcode MetalToolchain for the custom kernels), Open WebUI 0.12.5, OpenCode pinned 1.18.7; thinking-off re-measured (template switch and reasoning_effort none both work); install re-run 0 changes; doctor healthy; integration 10/10 (stale ADR-0017 test fixed); golden eval 10/10. Projects may sit in one group folder (RnD/digital-bank). README ports table. bench_models.py ready.
 - 2026-11-23 13:05 E8: lead notes reach a stuck coder only after the owner approves or edits them on Telegram (ADR-0026); E2 baseline benchmarked, MTP quant building.
+- 2026-11-23 19:10 E2 done: DFlash 2 live on the 27B (27.3/24.6/22.1 tok/s code at 4K/32K/64K vs 9.7/9.0/8.4), tool calls unchanged, golden 10/10; registry `draft:`/`omlx:` applied by install; MTP quant deleted (28 GB).

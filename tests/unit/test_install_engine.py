@@ -430,6 +430,44 @@ def test_omlx_disk_cache_cap_and_idle_unload_are_set_idempotently(ctx: Ctx):
     assert ctx.sys.kicked == ["com.law6.omlx"] and step.plan() == []
 
 
+def test_omlx_per_model_settings_and_draft_are_merged(ctx: Ctx):
+    import json
+
+    from law.install.steps import OmlxSettings
+
+    class Kick(FakeSys):
+        def launchd_kickstart(self, label: str) -> Result:
+            return Result(0, "")
+
+    ctx.sys = Kick()
+    first = ctx.reg.llm_models[0]
+    target = first.model_copy(update={"draft": "draft-x", "omlx": {"dflash_enabled": True, "dflash_block_size": 4}})
+    models = [target, first.model_copy(update={"id": "draft-x", "roles": [], "lane": "light"})]
+    ctx.reg = ctx.reg.model_copy(update={"llm_models": models})
+    step = OmlxSettings(ctx)
+    step.file.parent.mkdir(parents=True, exist_ok=True)
+    step.file.write_text(json.dumps({"cache": {"ssd_cache_max_size": "20GB"},
+                                     "idle_timeout": {"idle_timeout_seconds": 300}}))
+    step.model_file.write_text(json.dumps({"version": 1, "models": {target.id: {"temperature": 1.0}}}))
+    assert f"set oMLX {target.id}.dflash_enabled = True" in step.plan()
+    step.apply()
+    saved = json.loads(step.model_file.read_text())["models"][target.id]
+    assert saved["temperature"] == 1.0 and saved["dflash_block_size"] == 4  # other keys kept
+    assert saved["dflash_draft_model"] == str(ctx.paths.llm_models / "draft-x") and step.plan() == []
+
+
+def test_registry_rejects_an_unknown_draft():
+    import pytest as _pytest
+
+    from law import registry
+
+    reg = registry.load(Path(__file__).resolve().parents[2] / "settings" / "registry.yaml")
+    data = reg.model_dump(by_alias=True)
+    data["llm_models"][0]["draft"] = "no-such-model"
+    with _pytest.raises(ValueError, match="draft"):
+        registry.Registry.model_validate(data)
+
+
 def test_openwebui_state_restores_only_when_saved_files_change(ctx: Ctx):
     from law.install.steps import OpenWebUIState
 

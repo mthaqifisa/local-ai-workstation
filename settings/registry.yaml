@@ -75,6 +75,19 @@ llm_models:
     sampling:  # huggingface.co/Qwen/Qwen3.8-27B (2026-10-26); its benchmark scores use the thinking set
       thinking: {temperature: 1.0, top_p: 0.95, top_k: 20, min_p: 0.0, presence_penalty: 0.0}
       instruct: {temperature: 0.7, top_p: 0.8, top_k: 20, min_p: 0.0, presence_penalty: 1.5}
+    # DFlash speculative decoding (ADR-0025, 2026-11-23): 2.6-2.8x decode on code, ~2x on prose, same tool calls,
+    # golden eval 10/10; peak 33.6 GB (was 31.0). The draft runs 4-bit inside oMLX.
+    draft: qwen3.8-27b-dflash2
+    omlx: {dflash_enabled: true, dflash_block_size: 4, dflash_draft_quant_enabled: true,
+           dflash_draft_quant_weight_bits: 4, dflash_draft_quant_group_size: 64}
+  - id: qwen3.8-27b-dflash2
+    repo: z-lab/Qwen3.8-27B-DFlash2
+    revision: 50307d4c4cde6860d4eee73e2547cd786fe8e8a4
+    license: apache-2.0
+    disk_gb: 3.8
+    mem_gb: 3
+    lane: light
+    roles: []  # not served on its own: drafts tokens for qwen3.8-27b-8bit
   - id: qwen3-coder-next-4bit
     repo: lmstudio-community/Qwen3-Coder-Next-MLX-4bit
     revision: 03cba26036330b7553d252c1f3fb899f16cc5ea5

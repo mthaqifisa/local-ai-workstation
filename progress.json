@@ -1,26 +1,15 @@
 {
   "stage": "E-enhance-v6.1",
   "task": "E2",
-  "status": "in_progress",
-  "next_step": "Golden eval with DFlash on the 27B 8-bit (log ~/LAW/logs/e2-eval-dflash.log), then ADR-0025 and the owner's cut-over yes",
-  "timestamp": "2026-11-23T17:39:36",
+  "status": "done",
+  "next_step": "E5 judge A/B (Gemma vs Glimmer), then E3/E4",
+  "timestamp": "2026-11-23T18:13:10",
   "files_touched": [
     "settings/registry.yaml",
-    "Brewfile",
-    "compose.yaml",
     "src/law/registry.py",
     "src/law/install/steps.py",
-    "src/law/doctor.py",
-    "src/law/llm.py",
-    "src/law/projects.py",
-    "src/law/handlers/core.py",
-    "scripts/bench_models.py",
-    "trained/bench/toolcall-pantry.json",
-    "tests/",
-    "README.md",
-    "docs/adr/0001-llm-runtime.md",
-    "docs/adr/0008-installer.md",
-    "docs/adr/0024-runtime-pins-v6-1.md"
+    "tests/unit/test_install_engine.py",
+    "docs/adr/0025-speculative-decoding-dflash.md"
   ],
   "commands": [
     "brew upgrade jundot/omlx/omlx",

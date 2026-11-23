@@ -393,7 +393,7 @@ class Models:
 
     def _models(self) -> list[tuple[str, str, str]]:
         return [(m.id, m.repo, m.revision) for m in self.c.reg.llm_models
-                if self.c.profile == "full" or m.lane == "light"]
+                if self.c.profile == "full" or (m.lane == "light" and m.roles)]  # a draft serves a heavy model
 
     def _marker(self, model_id: str) -> Path:
         return self.c.paths.llm_models / model_id / ".law-complete"
@@ -956,7 +956,8 @@ class OmlxSettings:
 
     Without a cap ("auto") long agent sessions grew the cache to 61 GB in one evening (measured 2026-10-20). Without
     an idle unload a cancelled or finished agent left its model holding ~29 GB until the next model swap (seen
-    2026-10-21). Changing the file restarts oMLX so the settings take effect.
+    2026-10-21). Per-model settings (each registry model's `omlx` keys and its `draft`) go into model_settings.json,
+    e.g. DFlash speculative decoding on the 27B (ADR-0025). Changing either file restarts oMLX so they take effect.
     """
 
     name = "omlx-settings"
@@ -964,6 +965,24 @@ class OmlxSettings:
     def __init__(self, c: Ctx) -> None:
         self.c = c
         self.file = c.paths.runtime / "omlx" / "settings.json"
+        self.model_file = c.paths.runtime / "omlx" / "model_settings.json"
+
+    def _want_models(self) -> dict[str, dict[str, object]]:
+        out: dict[str, dict[str, object]] = {}
+        for m in self.c.reg.llm_models:
+            want: dict[str, object] = dict(m.omlx)
+            if m.draft:
+                want["dflash_draft_model"] = str(self.c.paths.llm_models / m.draft)
+            if want:
+                out[m.id] = want
+        return out
+
+    def _model_changes(self) -> list[str]:
+        if not self.model_file.exists():
+            return []  # oMLX creates it on first start; the next run applies the settings
+        models = json.loads(self.model_file.read_text()).get("models", {})
+        return [f"set oMLX {mid}.{key} = {value}" for mid, want in self._want_models().items()
+                for key, value in want.items() if models.get(mid, {}).get(key) != value]
 
     def _want(self) -> dict[str, object]:
         m = self.c.reg.machine
@@ -975,14 +994,20 @@ class OmlxSettings:
             return []  # oMLX creates it on first start; the next run applies the settings
         doc = json.loads(self.file.read_text())
         return [f"set oMLX {key} = {value}" for key, value in self._want().items()
-                if doc.get(key.split(".")[0], {}).get(key.split(".")[1]) != value]
+                if doc.get(key.split(".")[0], {}).get(key.split(".")[1]) != value] + self._model_changes()
 
     def apply(self) -> None:
-        doc = json.loads(self.file.read_text())
-        for key, value in self._want().items():
-            section, field = key.split(".")
-            doc.setdefault(section, {})[field] = value
-        self.file.write_text(json.dumps(doc, indent=2) + "\n")
+        if self.file.exists():
+            doc = json.loads(self.file.read_text())
+            for key, value in self._want().items():
+                section, field = key.split(".")
+                doc.setdefault(section, {})[field] = value
+            self.file.write_text(json.dumps(doc, indent=2) + "\n")
+        if self.model_file.exists():
+            doc = json.loads(self.model_file.read_text())
+            for mid, want in self._want_models().items():
+                doc.setdefault("models", {}).setdefault(mid, {}).update(want)
+            self.model_file.write_text(json.dumps(doc, indent=2) + "\n")
         label = self.c.reg.services["omlx"].label or "com.law6.omlx"
         self.c.sys.launchd_kickstart(label)
 
