@@ -393,6 +393,16 @@ SHELL_WRITE = re.compile(r"(?:\bcat\b[^|;&]*>>?\s*\S+[^|;&]*<<|<<-?\s*['\"]?\w+[
 SHELL_WRITE_NUDGE = ("Change files with the edit and write tools, not with shell commands (cat > or >> with a "
                      "heredoc, sed -i, tee). Redo that change with the edit tool if it is not right, then carry on.")
 PROBE_LIMIT = 2  # probe writes in one session before LAW calls time
+# Writers loop on cosmetic details through numbered test files or files in a temp folder (seen 2026-11-23: a
+# one-page checklist PDF was done at minute 13, then 17 test files t1.typ..t17.typ over 80 min chasing a ☐ glyph).
+DOC_PROBE = re.compile(r"(?:cat\s*>|tee|✏️ \w+)\s+\S*(?:/(?:tmp|cache/tmp)/\S*|(?<![\w.-])(?:t|test|try|tmp)\d+\.\w+)")
+DOC_PROBE_LIMIT = 3
+DOC_PROBE_NUDGE = ("You are trying variations in test files. Stop: keep the version that already works, put it in "
+                   "the deliverable, delete the test files and finish the remaining steps of your plan. A cosmetic "
+                   "detail is not worth more tries.")
+WRAP_MINUTES = 45  # a one-off document task (not a project ticket) past this is polishing
+WRAP_NUDGE = ("You have worked {minutes} minutes on this task. Finish now with what works: complete the deliverable, "
+              "check it once, deliver it and stop. Note anything left as \"could improve: ...\" in your answer.")
 PROBE_NUDGE = ("You are writing probe files to debug one problem. Time-box it now: if this approach has not worked "
                "after about 30 minutes or 3 attempts, take the simplest fallback that meets the ticket (a check of "
                "what the code depends on instead of a test the environment cannot run, the nearest passing example, "
@@ -662,11 +672,11 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             return summary
 
         digs = lookups = blind_edits = reads = probes = 0
-        told_law = told_probe = told_shell_write = False
+        told_law = told_probe = told_shell_write = told_wrap = False
         opened: dict[str, int] = {}  # file -> times read since it was last edited
 
         def steer(summary: str) -> str | None:
-            nonlocal digs, lookups, blind_edits, reads, probes, told_law, told_probe, told_shell_write
+            nonlocal digs, lookups, blind_edits, reads, probes, told_law, told_probe, told_shell_write, told_wrap
             if finished is not None and finished():
                 return TICKET_DONE
             # a handover writer only documents: a change request waits for an agent that can build it (seen 2026-10-30:
@@ -682,6 +692,15 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 from law.handlers.project import law_services
 
                 return LAW_INTERNALS_NUDGE + law_services()
+            if role in DOC_ROLES:
+                if not told_wrap and not ctx.job.payload.get("project") and time.time() - started > WRAP_MINUTES * 60:
+                    told_wrap = True
+                    return WRAP_NUDGE.format(minutes=int((time.time() - started) // 60))
+                if DOC_PROBE.search(summary):
+                    probes += 1
+                    if probes % DOC_PROBE_LIMIT == 0:  # again every few: one reminder was not enough on 2026-11-23
+                        return DOC_PROBE_NUDGE
+                return None
             if role != "coder":
                 return None
             if summary.startswith("▶") and RUNS_CHECKS.search(summary):
