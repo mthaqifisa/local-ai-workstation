@@ -321,9 +321,11 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - [ ] Digital Bank book via Tony (project RnD/digital-bank), monitored every 2 h
 - [x] E8 lead-note approval: drafts on the 2nd stall, Telegram Approve/Edit/Drop, 60 min = drop, rate every 10 (ADR-0026)
 - [ ] E5 judge A/B, E6 OpenCode 2 (gated), E7 finish P7/P8
+- [x] Tony self-healing (missing packages) and self-improvement loop: propose, build on a branch, Apply/Reject on Telegram (ADR-0027)
 - [x] TensorFold: skipped by the owner 2026-11-23 (young, self-reported gains, no proof on our Mac)
 - [ ] Pentest role (owner 2026-11-23: after v6.1 settles): sandboxed, own targets only; candidates PentestGPT, Strix (not ARTEX)
 - [ ] README + HTML documentation page (docs/index.html) once stable
 - 2026-11-23 11:25 E1 done: oMLX 0.8.0 (needed Xcode MetalToolchain for the custom kernels), Open WebUI 0.12.5, OpenCode pinned 1.18.7; thinking-off re-measured (template switch and reasoning_effort none both work); install re-run 0 changes; doctor healthy; integration 10/10 (stale ADR-0017 test fixed); golden eval 10/10. Projects may sit in one group folder (RnD/digital-bank). README ports table. bench_models.py ready.
 - 2026-11-23 13:05 E8: lead notes reach a stuck coder only after the owner approves or edits them on Telegram (ADR-0026); E2 baseline benchmarked, MTP quant building.
 - 2026-11-23 19:10 E2 done: DFlash 2 live on the 27B (27.3/24.6/22.1 tok/s code at 4K/32K/64K vs 9.7/9.0/8.4), tool calls unchanged, golden 10/10; registry `draft:`/`omlx:` applied by install; MTP quant deleted (28 GB).
+- 2026-11-23 20:10 Telegram testing round: fixed rewrite wording, unrun test claims (pytest in sandbox, reviewer re-runs code), reviewer blind to project facts, dropped re-asked question, invented facts in agent requests, files not attached; added typing indicator, projects card, send_file, old-output clearing, self-healing packages and the self-improvement loop (ADR-0027).

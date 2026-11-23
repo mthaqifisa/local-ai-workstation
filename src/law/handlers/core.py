@@ -87,6 +87,20 @@ SEND_FILE_TOOL: dict[str, Any] = {
                        "required": ["path"]},
     },
 }
+PROPOSE_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "propose_improvement",
+        "description": ("Improve LAW itself: when a missing skill, tool or rule made you fail or answer worse, or the "
+                        "user corrected the same thing twice, describe it. An agent builds and tests the change on "
+                        "a branch; the user applies it from Telegram. Not for one-off preferences or project work."),
+        "parameters": {"type": "object", "properties": {
+            "problem": {"type": "string", "description": "What LAW cannot do or does wrong, in one sentence"},
+            "evidence": {"type": "string", "description": "What happened in this chat that shows it"},
+            "change": {"type": "string", "description": "The concrete change to LAW that would fix it"}},
+            "required": ["problem", "evidence", "change"]},
+    },
+}
 SEND_MAX_BYTES = 45 * 1024 * 1024  # Telegram bots may send up to 50 MB
 
 
@@ -102,6 +116,19 @@ def attach(paths: LawPaths, raw: str, files: list[str]) -> str:
     if str(f) not in files:
         files.append(str(f))
     return f"attached {f.name}; it is sent with your reply"
+
+
+def propose(paths: LawPaths, args: dict[str, Any]) -> str:
+    """`propose_improvement`: record it; Tony's watcher starts the build."""
+    from law.improve import Improvements
+
+    try:
+        p = Improvements(paths).add(str(args.get("problem", "")), str(args.get("evidence", "")),
+                                    str(args.get("change", "")), "tony")
+    except ValueError as exc:
+        return f"error: {exc}"
+    return (f"improvement {p.id} recorded; an agent builds and tests it, then the user gets Apply/Reject buttons. "
+            "Tell the user in one line.")
 
 
 AGENT_TOOL: dict[str, Any] = {
@@ -254,7 +281,7 @@ async def answer(rt: Runtime, role: str, messages: list[dict[str, Any]], ctx: Co
     on_thought = ctx.thought if ctx is not None else None
     tools = [calc.TOOL_SPEC] if "python" in r.tools else []
     tools += [AGENT_TOOL, PROJECT_TOOL, REVISE_TOOL] if agents is not None else []
-    tools += [SEND_FILE_TOOL] if files is not None else []
+    tools += [SEND_FILE_TOOL, PROPOSE_TOOL] if files is not None else []
 
     async def run_tool(name: str, args: dict[str, Any]) -> str:
         if name == "run_python" and "python" in r.tools:
@@ -274,6 +301,8 @@ async def answer(rt: Runtime, role: str, messages: list[dict[str, Any]], ctx: Co
             return out
         if name == "send_file" and files is not None:
             return attach(rt.paths, str(args.get("path", "")), files)
+        if name == "propose_improvement" and files is not None:
+            return propose(rt.paths, args)
         if name in {"start_agent", "start_project", "revise_project"} and agents is not None:
             return await agents({**args, "_tool": name})
         return f"error: unknown tool {name}"

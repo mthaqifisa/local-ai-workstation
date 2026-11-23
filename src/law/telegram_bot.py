@@ -11,6 +11,7 @@ import contextlib
 import json
 import logging
 import re
+import subprocess
 import time
 from pathlib import Path
 from typing import Any
@@ -20,8 +21,8 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from law import board, bugs, lead, projects, registry, secrets
-from law.paths import LawPaths
+from law import board, bugs, improve, lead, projects, registry, secrets
+from law.paths import LawPaths, display
 from law.project_memory import ProjectMemory
 from law.tg_format import to_telegram_html
 
@@ -37,6 +38,7 @@ class LawBot:
         self.api = api_base.rstrip("/")
         self.delivered = Delivered(delivered or LawPaths.from_env().state / "telegram-delivered.txt")
         self.history = ChatHistory(history or LawPaths.from_env().state / "telegram-chats")
+        self.improvements = improve.Improvements(LawPaths.from_env())
         self._tasks: set[asyncio.Task[None]] = set()
         self.notify_sources = notify_sources or set()
         self.pending: dict[int, tuple[str, str]] = {}  # chat -> (project, action) waiting for the owner's note
@@ -180,6 +182,27 @@ class LawBot:
                 InlineKeyboardButton(text="Keep everything", callback_data="r|no")]])
             await self.bot.send_message(message.chat.id, to_telegram_html(HARD_RESET_TEXT), parse_mode="HTML",
                                         reply_markup=markup)
+
+        @dp.message(Command("improve"))
+        async def improve_cmd(message: Message, command: CommandObject) -> None:
+            if not self._ok(message):
+                return
+            what = (command.args or "").strip()
+            if not what:
+                await self._send(message.chat.id, "Usage: `/improve <what LAW should do better>`")
+                return
+            p = self.improvements.add(what, "asked by the owner on Telegram", what, "owner")
+            await self._send(message.chat.id, f"🔧 Building improvement {p.id}; you get Apply / Reject when it is "
+                                              "built and tested.")
+
+        @dp.callback_query(F.data.startswith("i|"))
+        async def improve_button(query: CallbackQuery) -> None:
+            if query.from_user.id not in self.allowed or not query.data or not isinstance(query.message, Message):
+                return
+            _, action, pid = query.data.split("|", 2)
+            await query.answer()
+            await query.message.edit_reply_markup(reply_markup=None)  # one decision per proposal
+            await self._send(query.message.chat.id, await self._improve_decide(pid, action))
 
         @dp.callback_query(F.data.startswith("l|"))
         async def lead_button(query: CallbackQuery) -> None:
@@ -407,6 +430,59 @@ class LawBot:
                     self.leads.mark_sent(draft)
             except Exception:  # never let a bad draft file or a Telegram hiccup stop the watcher
                 log.exception("lead watcher round failed")
+            await asyncio.sleep(poll_s)
+
+    async def _improve_decide(self, pid: str, action: str) -> str:
+        """Apply: merge the branch, push, reinstall (detached, since it restarts this bot). Reject: delete it."""
+        try:
+            p = self.improvements.get(pid)
+            if action != "apply":
+                self.improvements.reject(p)
+                return f"🗑 Improvement {pid} rejected; its branch is deleted."
+            self.improvements.apply(p)
+        except (KeyError, ValueError, RuntimeError) as exc:
+            return f"Improvement {pid}: {exc}"
+        paths = LawPaths.from_env()
+        log_file = paths.logs / f"improve-{pid}.log"
+        with log_file.open("a") as out:
+            await asyncio.create_subprocess_exec(
+                "/bin/sh", "-c", f'git -C "{paths.repo}" push -q origin HEAD; '
+                f'"{paths.runtime / "law-venv" / "bin" / "law"}" install',
+                stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
+        return f"✅ Improvement {pid} merged; pushing and reinstalling now (log: {display(log_file)})."
+
+    async def watch_improvements(self, poll_s: float = 20.0) -> None:
+        """Start a build for each new proposal, record finished builds, offer ready ones with Apply / Reject."""
+        while True:
+            try:
+                for p in self.improvements.all():
+                    if p.status != "building":
+                        continue
+                    if not p.job:
+                        folder = self.improvements.prepare(p)
+                        async with httpx.AsyncClient(timeout=30) as client:
+                            r = await client.post(f"{self.api}/jobs", json={
+                                "kind": "task", "payload": improve.build_payload(p, folder), "source": "improve"})
+                        p.job = r.json()["id"]
+                        self.improvements.save(p)
+                        await self._broadcast(f"🔧 Building an improvement ({p.id}): {p.problem}")
+                        continue
+                    job = await self._get(p.job)
+                    if job and job.get("status") in TERMINAL:
+                        result = job.get("result") or {}
+                        self.improvements.built(p, str(job.get("status")),
+                                                str(result.get("answer") or job.get("error") or ""))
+                for p in self.improvements.to_notify():
+                    markup = InlineKeyboardMarkup(inline_keyboard=[[
+                        InlineKeyboardButton(text="✅ Apply", callback_data=f"i|apply|{p.id}"),
+                        InlineKeyboardButton(text="🗑 Reject", callback_data=f"i|reject|{p.id}")]]) \
+                        if p.status == "ready" else None
+                    for chat in self.allowed:
+                        await self.bot.send_message(chat, improve.message(p, LawPaths.from_env()),
+                                                    disable_web_page_preview=True, reply_markup=markup)
+                    self.improvements.mark_notified(p)
+            except Exception:  # a bad proposal or a Telegram hiccup must not stop the watcher
+                log.exception("improvement watcher round failed")
             await asyncio.sleep(poll_s)
 
     async def _repeated(self, chat: int, text: str) -> bool:
@@ -803,9 +879,10 @@ class LawBot:
 
         await self.bot.set_my_commands([BotCommand(command=c, description=d) for c, d, _ in COMMANDS])
         await self.resume()
-        leads = asyncio.create_task(self.watch_leads())
-        self._tasks.add(leads)
-        leads.add_done_callback(self._tasks.discard)
+        for watcher_fn in (self.watch_leads, self.watch_improvements):
+            task = asyncio.create_task(watcher_fn())
+            self._tasks.add(task)
+            task.add_done_callback(self._tasks.discard)
         if self.notify_sources:
             watcher = asyncio.create_task(self.watch_other_jobs())
             self._tasks.add(watcher)
@@ -874,6 +951,8 @@ LIVE = {"queued", "running", "waiting"}
 # (command, menu description, help example) — one table drives the "/" menu, /help and the handlers above.
 COMMANDS: list[tuple[str, str, str]] = [
     ("help", "Everything Tony can do", "/help"),
+    ("improve", "Have LAW improve itself: an agent builds and tests it, you Apply or Reject", "/improve answer "
+     "follow-up questions about a memo without starting an agent"),
     ("new", "Start a new conversation (Tony forgets the earlier messages)", "/new"),
     ("hardreset", "Stop all jobs and clear all history, chat memory and caches (asks first; keeps models, "
      "projects, outputs and settings)", "/hardreset"),
