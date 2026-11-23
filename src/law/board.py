@@ -28,7 +28,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from law import bugs, secrets
+from law import bugs, estimate, secrets
 from law.paths import LawPaths
 from law.projects import Project, Projects
 from law.queue.jobs import Job, Status, new_id
@@ -133,6 +133,8 @@ class Ticket:
         self.steps: list[dict[str, Any]] = []
         self.logs: list[dict[str, Any]] = []
         self.notes: list[dict[str, Any]] = []
+        self.est: float | None = None  # the planner's estimate, seconds
+        self.eta: dict[str, Any] = {}  # calibrated: expect (s), and for a running ticket due (epoch) and overrun
 
     def log(self, t: float | None, source: str, text: str) -> None:
         if text.strip():
@@ -143,7 +145,7 @@ class Ticket:
         return {"id": self.id, "title": self.title, "kind": self.kind, "epic": self.epic, "column": self.column,
                 "state": self.state, "details": self.details, "started": self.started, "finished": self.finished,
                 "jobs": self.jobs, "steps": self.steps, "logs": logs,
-                "notes": sorted(self.notes, key=lambda n: n["t"])}
+                "notes": sorted(self.notes, key=lambda n: n["t"]), "est": self.est, "eta": self.eta}
 
 
 def _belongs(job: Job, pid: str) -> bool:
@@ -387,7 +389,7 @@ def plan_tickets(text: str) -> list[dict[str, Any]]:
         else:
             current = None  # e.g. a "Milestone gate:" line ends the ticket
     for t in out:
-        full = " ".join([t["title"], *t.pop("details")]).strip()
+        full, t["est"] = estimate.parse(" ".join([t["title"], *t.pop("details")]).strip())
         t["title"] = re.split(r"\s*\bAcceptance\b", full)[0].strip(" .;:")
         t["details"] = full
         t.pop("indent")
@@ -419,7 +421,7 @@ async def _plan_tickets(store: JobStore, project: Project, tickets: dict[str, Ti
             tid = item["id"]
             t = tickets[tid] = Ticket(tid, item["title"], "dev", item["milestone"] or f"Build v{version}",
                                       dev_order.get(version, after) + n / 1000)
-            t.details = item["details"]
+            t.details, t.est = item["details"], item["est"]
             mine = [c for c in commits if re.match(rf"{re.escape(tid)}\b", c[2])] or \
                    [c for c in commits if re.search(rf"\b{re.escape(tid)}\b", c[2])]
             for ct, sha, subject in mine:
@@ -509,12 +511,17 @@ async def build(paths: LawPaths, store: JobStore, pid: str) -> dict[str, Any]:
         tickets[gate.id] = gate
     general = _attach_notes(paths, project, tickets)
     ordered = sorted(tickets.values(), key=lambda k: k.order)
+    now = time.time()
+    dev = [t for t in ordered if t.kind == "dev"]
+    fc = estimate.forecast([estimate.Item(t.id, t.column, t.est, t.started, t.finished) for t in dev], now)
+    for t in dev:
+        t.eta = fc.tickets.get(t.id, {})
     return {
         "project": {"id": project.id, "name": project.name, "state": project.state, "version": project.version,
                     "dir": project.dir, "summary": project.summary, "stack": project.stack,
                     "live": (live := any(r.status in LIVE for r in roots)),
                     "approve": None if live else APPROVE.get(project.state),
-                    "history": [e.model_dump() for e in project.history]},
+                    "history": [e.model_dump() for e in project.history], "eta": fc.project(now)},
         "columns": [{"id": c, "label": label} for c, label in COLUMNS],
         "tickets": [t.as_dict() for t in ordered],
         "notes": general,

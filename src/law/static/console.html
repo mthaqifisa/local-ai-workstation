@@ -177,7 +177,7 @@
   <section id="projects">
     <div class="toolbar" style="flex-wrap:wrap"><h2>Projects</h2>
       <select id="proj" style="max-width:240px" aria-label="Project"></select>
-      <span class="pill" id="proj-state"></span><span class="spacer"></span>
+      <span class="pill" id="proj-state"></span><span class="sub" id="proj-eta"></span><span class="spacer"></span>
       <input id="ticket-q" placeholder="Filter tickets" style="max-width:220px">
       <button class="btn danger" id="proj-delete">Delete project</button></div>
     <div class="sub" id="proj-line" style="margin:-6px 0 14px"></div>
@@ -381,6 +381,33 @@ const STATE_PILL = {proposing: "s-running", awaiting_go: "s-queued", developing:
 const when = (t) => t ? new Date(t * 1000).toLocaleString([], {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false}) : "";
 const APPROVE = {go: "Approve and start the build", allgood: "Approve the build"};
 let boardData = null, openTicket = null, logFilter = "all";
+// time estimates: the planner's [est] per ticket, calibrated by LAW with this project's real ticket times
+const dur = (s) => {
+  s = Math.max(0, Math.round(s));
+  const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+  if (d) return `${d}d ${h}h`;
+  if (h) return `${h}h ${String(m).padStart(2, "0")}m`;
+  return `${m}m ${String(s % 60).padStart(2, "0")}s`;
+};
+const approx = (s) => s >= 86400 ? `${(s / 86400).toFixed(1)}d` : s >= 3600 ? `${(s / 3600).toFixed(1)}h` : `${Math.max(1, Math.round(s / 60))}m`;
+function etaTitle(t) {
+  const pace = boardData && boardData.project.eta ? boardData.project.eta.pace : 1;
+  return t.est ? `agent estimated ${approx(t.est)}${pace !== 1 ? `, × ${pace} (this project's real pace so far)` : ""}`
+               : "no estimate from the agent: typical time of this project's finished tickets";
+}
+function etaHtml(t) {
+  const e = t.eta || {};
+  if (t.column === "progress" && e.due) {
+    return `<div class="t-meta" title="${esc(etaTitle(t))}"><span>${e.overrun ? "⏳ taking longer · new estimate" : "⏱ done by"} ${when(e.due)}</span>
+      <span class="spacer"></span><span class="mono" data-due="${e.due}">${dur(e.due - Date.now() / 1000)}</span></div>`;
+  }
+  if (t.column === "todo" && e.expect) return `<div class="t-meta" title="${esc(etaTitle(t))}"><span>⏱ ~${approx(e.expect)}</span></div>`;
+  return "";
+}
+function tickDue() {
+  document.querySelectorAll("[data-due]").forEach((el) => { el.textContent = dur(Number(el.dataset.due) - Date.now() / 1000); });
+}
+setInterval(tickDue, 1000);
 const savedProject = () => { try { return localStorage.getItem("law.project"); } catch (e) { return null; } };
 async function loadProjects() {
   let list;
@@ -407,6 +434,8 @@ async function refreshBoard() {
   const pr = data.project;
   $("#proj-state").className = "pill " + (STATE_PILL[pr.state] || "");
   $("#proj-state").textContent = pr.state.replace(/_/g, " ");
+  const eta = pr.eta;
+  $("#proj-eta").innerHTML = eta ? `<span title="${esc(`${eta.remaining} open tickets; pace ${eta.pace} from ${eta.samples} finished ones${eta.unknown ? `; ${eta.unknown} without an estimate not counted` : ""}. Review, QA and fix rounds come after.`)}">📅 expected ${when(eta.due)} · <span class="mono" data-due="${eta.due}">${dur(eta.left_s)}</span></span>` : "";
   $("#proj-line").innerHTML = `v${pr.version} · <span class="mono">${esc(pr.dir)}</span>${pr.stack ? " · " + esc(pr.stack) : ""}`;
   patch($("#proj-notes"), data.notes.length ? `<div class="card" style="margin-bottom:14px"><h3>Project notes (not on a ticket)</h3>
     <div class="notes">${data.notes.map(noteHtml).join("")}</div></div>` : "");
@@ -421,6 +450,7 @@ async function refreshBoard() {
         <div class="t-title">${esc(t.title)}</div>
         <div class="t-meta"><span>${esc(t.epic)}</span><span class="spacer"></span>
           ${t.notes.length ? `<span title="notes">💬 ${t.notes.length}</span>` : ""}${t.logs.length ? `<span title="log entries">📜 ${t.logs.length}</span>` : ""}</div>
+        ${etaHtml(t)}
       </button>${t.column === "approval" && pr.approve ? `<button class="btn primary approve" data-approve>${APPROVE[pr.approve]}</button>` : ""}`).join("") || '<div class="sub" style="padding:8px">—</div>'}</div></div>`;
   }).join(""));
   if (openTicket) {

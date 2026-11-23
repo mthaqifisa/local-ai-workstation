@@ -83,8 +83,11 @@ version, installed version, how it is selected. Commit `.law/`.
 
 CODE_TICKETS = """Split this agreed plan into tickets for the project board. Reply with Markdown only, nothing before
 or after it: one level-3 heading per milestone ("### M1 Data layer"), and under each, small tickets, one per line:
-"- [ ] {key}-{start} Title (acceptance: what proves it works)". Number the tickets in one sequence across the
-milestones, starting at {key}-{start} (lower numbers belong to earlier versions).
+"- [ ] {key}-{start} Title (acceptance: what proves it works) [est 40m]". Number the tickets in one sequence across
+the milestones, starting at {key}-{start} (lower numbers belong to earlier versions).
+[est …] is your honest estimate of the wall-clock time an AI agent on a local model needs for the ticket, reading,
+writing, building and checking included: minutes (m), hours (h) or days (d), e.g. [est 25m], [est 1.5h]. Do not
+round everything to the same value; LAW compares them with the real times and corrects the countdown.
 
 The plan (version {version}):
 {plan}"""
@@ -98,14 +101,15 @@ Work like a team on a Jira board, in .law/PLAN.md:
 - If there is no section "## Build version {version}", create it first, with exactly that heading. Split the work
   into 3 to 8 milestones (epics) in build order, each a level-3 heading such as "### M1 Backend API". Under each,
   list small tickets as checkboxes with an ID and acceptance criteria, e.g.
-  "- [ ] {key}-3 Join rejects a second username from the same device (acceptance: unit + integration test)".
+  "- [ ] {key}-3 Join rejects a second username from the same device (acceptance: unit + integration test) [est 40m]"
+  ([est …]: your honest wall-clock estimate in m, h or d; the board's countdown uses it).
   A ticket is one focused change and one commit; a milestone ends with a passing build and tests.
 - A design document or reference (docs/design/) is a requirement: every screen and component it names gets a ticket.
   A UI ticket is done when you have run the product, opened the screen at a phone viewport (390 x 844) with real data,
   looked at the screenshot and it matches the design; tests passing alone do not show that.
 - Keep tickets small: one endpoint, one part of a screen or one script, a few files, at most about two hours of
   work. A ticket that turns out bigger is split in .law/PLAN.md into "{key}-<n>.1", "{key}-<n>.2", ... (they
-  replace its line); then do the first part.
+  replace its line, each with its own [est …]); then do the first part.
 - Keep the code simple and the files small (about 400 lines at most per source or test file). A ticket that
   must change a file already over that size is preceded by a ticket "{key}-<next n> Split <file>" (behaviour
   unchanged, tests green), added to .law/PLAN.md right before it.
