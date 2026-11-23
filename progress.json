@@ -1,11 +1,14 @@
 {
   "stage": "E-enhance-v6.1",
-  "task": "E5 judge A/B",
-  "status": "done: Gemma stays (Glimmer fails 3/4 switch conditions), Glimmer deleted",
-  "next_step": "E6 OpenCode 2: record v1 streams + contract tests",
-  "timestamp": "2026-11-24T06:02:17+08:00",
+  "task": "E6 OpenCode 2",
+  "status": "done: deferred (ADR-0028); v1+v2 contract fixtures, parsers accept v2 events",
+  "next_step": "Chapter-1 trial of the Digital Bank book via /rnd from Tony",
+  "timestamp": "2026-11-24T06:08:06+08:00",
   "files_touched": [
-    "docs/adr/0007-evaluation-and-judging.md"
+    "src/law/handlers/tasks.py",
+    "tests/unit/test_opencode_contract.py",
+    "tests/fixtures/opencode/",
+    "docs/adr/0028-opencode-2-deferred.md"
   ],
   "commands": [
     "brew upgrade jundot/omlx/omlx",

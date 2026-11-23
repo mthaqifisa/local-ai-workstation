@@ -83,8 +83,8 @@ async def searx(rt: Runtime, query: str, limit: int = 8) -> list[dict[str, Any]]
 
 
 TOOL_ICONS = {"write": "✏️ writing", "edit": "✏️ editing", "patch": "✏️ patching", "read": "📖 reading",
-              "bash": "▶ running", "grep": "🔎 searching", "glob": "🔎 finding", "list": "📂 listing",
-              "webfetch": "🌐 fetching", "todowrite": "🗒 planning"}
+              "bash": "▶ running", "shell": "▶ running", "grep": "🔎 searching", "glob": "🔎 finding",
+              "list": "📂 listing", "webfetch": "🌐 fetching", "todowrite": "🗒 planning"}
 
 
 def project_folder(brief: str, root: Path) -> Path | None:
@@ -308,7 +308,8 @@ def describe_opencode_line(line: str) -> str | None:
     if not target:
         return label
     lines = [ln.strip() for ln in str(target).replace(str(Path.home()), "~").splitlines() if ln.strip()]
-    if tool == "bash":  # what ran, not the boilerplate around it (every command starts with sourcing env.sh)
+    if tool in ("bash", "shell"):  # (shell in OpenCode 2) what ran, not the boilerplate around it (every command
+        # starts with sourcing env.sh)
         heredoc = next((i for i, ln in enumerate(lines) if "<<" in ln), None)  # after it: data, not commands
         lines = lines[:heredoc + 1] if heredoc is not None else lines
         meaningful = [BANNER.sub("", BOILERPLATE_PREFIX.sub("", ln)).strip() for ln in lines
@@ -583,7 +584,12 @@ def is_code_change(line: str) -> bool:
     """Progress for a ticket session's stall guard: a project file written. Editing LAW's plan or notes is not
     (seen 2026-10-28: a P-37.1 session rewrote its to-do list in PLAN.md after a stall nudge and read on, an hour
     without code)."""
-    return is_file_change(line) and f"/{FOLDER}/" not in (describe_opencode_line(line) or "")
+    return is_file_change(line) and not in_law_folder(describe_opencode_line(line) or "")
+
+
+def in_law_folder(summary: str) -> bool:
+    """The progress line names a file in the project's LAW folder (absolute path, or relative as OpenCode 2 writes)."""
+    return re.search(rf"(?:^|[\s/]){re.escape(FOLDER)}/", summary) is not None
 
 
 def session_id(output: str) -> str | None:
@@ -739,7 +745,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 return SHELL_WRITE_NUDGE
             # LAW's plan and notes are reread by design (seen 2026-10-28: the split nudge sent a P-34 session to
             # PLAN.md, and its third open of the plan cut the split off with "write the change")
-            if summary.startswith("📖") and f"/{FOLDER}/" not in summary:
+            if summary.startswith("📖") and not in_law_folder(summary):
                 name = summary.split(" ", 2)[-1].strip()
                 opened[name] = opened.get(name, 0) + 1
                 if opened[name] >= REREAD_LIMIT and role == "coder":
