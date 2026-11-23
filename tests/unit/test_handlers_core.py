@@ -57,9 +57,9 @@ async def setup(sandbox):
     await store.close()
 
 
-async def run_ask(rt, store, w, scores):
+async def run_ask(rt, store, w, scores, role="architect"):
     rt.llm.scores = scores
-    job = await store.submit(resolver(rt)(Job(kind="ask", payload={"prompt": "Assess vendor X", "role": "architect"})))
+    job = await store.submit(resolver(rt)(Job(kind="ask", payload={"prompt": "Assess vendor X", "role": role})))
     await w.drain()
     return await store.require(job.id)
 
@@ -806,3 +806,18 @@ def test_projects_card_lists_each_project_fresh(sandbox):
     card = projects_card(paths)
     assert "Digital Bank (id digital-bank, folder ~/SourceCode/digital-bank): developing" in card
     assert "Pantry-iOS" in card and "awaiting go" in card and str(sandbox) not in card
+
+
+async def test_reviewer_sees_the_projects_tony_was_given(setup, sandbox, monkeypatch):
+    from law.handlers import core
+    from law.projects import Project, Projects
+
+    rt, store, w = setup
+    monkeypatch.setattr(core, "review_skip", lambda *a: None)  # the fake's short draft would skip the review
+    folder = sandbox / "SourceCode" / "digital-bank"
+    (folder / ".law").mkdir(parents=True)
+    Projects(rt.paths).save(Project(id="digital-bank", name="Digital Bank", dir=str(folder), summary="s",
+                                    details="d", state="developing"))
+    await run_ask(rt, store, w, [2], role="assistant")
+    judge_prompt = next(text for _, text in rt.llm.calls if "Score the RESPONSE" in str(text))
+    assert "FACTS THE ASSISTANT WAS GIVEN" in judge_prompt and "Digital Bank" in judge_prompt

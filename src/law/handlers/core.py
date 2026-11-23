@@ -180,8 +180,24 @@ def projects_card(paths: LawPaths) -> str:
         return ""
     lines = [f"- {p.name} (id {p.id}, folder {display(Path(p.dir))}): {p.state.replace('_', ' ')}"
              + (f"; last: {p.history[-1].event} {p.history[-1].at[:16].replace('T', ' ')}" if p.history else "")
+             + (f"; latest progress note: {_latest_progress(Path(p.dir))}" if _latest_progress(Path(p.dir)) else "")
              for p in rows[:PROJECTS_SHOWN]]
     return ("\n\nPROJECTS (current, from LAW's records; newest activity first):\n" + "\n".join(lines))
+
+
+def _latest_progress(folder: Path) -> str:
+    """The heading of the newest entry in the project's .law/PROGRESS.md (agents append one per step)."""
+    try:
+        heads = [x for x in (folder / ".law" / "PROGRESS.md").read_text(errors="replace").splitlines()
+                 if x.startswith("## ")]
+    except OSError:
+        return ""
+    return heads[-1][3:].strip()[:160] if heads else ""
+
+
+def with_facts(messages: list[dict[str, Any]], facts: str) -> list[dict[str, Any]]:
+    """The system prompt plus facts read from LAW's records (the projects list)."""
+    return [{**messages[0], "content": messages[0]["content"] + facts}, *messages[1:]] if facts else messages
 
 
 def _images(payload: dict[str, Any]) -> list[str]:
@@ -410,9 +426,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         started: list[str] = []
         agents = agent_starter(ctx, started) if root and "agents" in rt.roles.get(role).tools else None
         await ctx.progress(f"{role} is answering")
-        messages = build_messages(rt, role, p["prompt"], history, images)
-        if agents is not None:  # Tony: which projects exist and where each stands, fresh for every message
-            messages[0] = {**messages[0], "content": messages[0]["content"] + projects_card(rt.paths)}
+        # Tony: which projects exist and where each stands, fresh for every message
+        facts = projects_card(rt.paths) if agents is not None else ""
+        messages = with_facts(build_messages(rt, role, p["prompt"], history, images), facts)
         text = await answer(rt, role, messages, ctx,
                             model=model, agents=agents)
         agent_job = {"agent_job": started[0]} if started else {}
@@ -424,8 +440,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         # the draft is written; the independent review (another model family) and a revision only if it is weak
         seen = {"images": images} if images else {}
         return Stages([
-            {"kind": "judge", "payload": {"prompt": p["prompt"], "history": history}},
-            {"kind": "revise", "payload": {"role": role, "prompt": p["prompt"], "history": history, **seen}},
+            {"kind": "judge", "payload": {"prompt": p["prompt"], "history": history, "facts": facts}},
+            {"kind": "revise", "payload": {"role": role, "prompt": p["prompt"], "history": history, "facts": facts,
+                                           **seen}},
         ], carry={"answer": text})
 
     async def draft(ctx: Context) -> Outcome:
@@ -435,6 +452,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         carry = ctx.job.payload["_carry"]
         await ctx.progress("independent review")
         context = conversation_text(ctx.job.payload.get("history"))
+        facts = ctx.job.payload.get("facts") or ""
+        if facts:  # the reviewer must know what the assistant was told, or it scores true facts as invented
+            context += f"FACTS THE ASSISTANT WAS GIVEN (from LAW's own records; true, not invented):{facts}\n\n"
         text = await answer(rt, "reviewer", build_messages(
             rt, "reviewer",
             f"{RUBRIC}\n\n{context}REQUEST:\n{ctx.job.payload['prompt']}\n\nRESPONSE:\n{carry['answer']}"), ctx)
@@ -452,8 +472,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                   f"A reviewer found these problems:\n{feedback}\n\nWrite the improved, complete answer. The user saw "
                   "neither the previous answer nor the review: answer the request directly as your only reply, and "
                   "do not mention a previous version, a correction, the reviewer or these problems.")
-        text = await answer(rt, role, build_messages(rt, role, prompt, ctx.job.payload.get("history"),
-                                                     _images(ctx.job.payload)), ctx, model=job_model(rt, ctx, role))
+        messages = with_facts(build_messages(rt, role, prompt, ctx.job.payload.get("history"),
+                                             _images(ctx.job.payload)), ctx.job.payload.get("facts") or "")
+        text = await answer(rt, role, messages, ctx, model=job_model(rt, ctx, role))
         return Done({"answer": text, "verdict": verdict, "revised": True})
 
     return {"ask": ask, "draft": draft, "judge": judge, "revise": revise}
