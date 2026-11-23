@@ -180,6 +180,9 @@ Plain Markdown, at most about 450 words, no preamble, with exactly these parts:
 **Style**: voice, depth, diagram and citation conventions (kept in .law/STYLE.md).
 **Assumptions**: the defaults you chose where the request is silent.
 **Out of scope**: what the document will not cover.
+Readers, structure, layers and style come from the request and the files it names; where they say something, follow
+it word for word and do not invent your own. Name sources by their title only. State no facts, figures, dates or
+section numbers in the plan: the writer finds and cites them from the sources while writing.
 
 The REQUEST:
 {request}
@@ -190,6 +193,34 @@ Files there now:
 
 Plan and progress so far:
 {memory}"""
+
+# Text files the owner names in a request (a brief, a spec): the planner is one model call and cannot open them.
+NAMED_FILE = re.compile(r"(?<![\w/])(~/[^\s;,()\"'`]+|/(?:Users|home)/[^\s;,()\"'`]+)")
+NAMED_SUFFIXES = {".md", ".txt", ".rst", ".adoc", ".typ", ".yaml", ".yml", ".json", ".csv"}
+NAMED_MAX_CHARS = 60_000
+
+
+def named_files(text: str, home: Path | None = None) -> str:
+    """The text of each readable text file the request names, as a block to append to it ("" when none)."""
+    home = home or Path.home()
+    out: list[str] = []
+    seen: set[Path] = set()
+    for raw in NAMED_FILE.findall(text):
+        name = raw.rstrip(".:!?]")
+        path = (home / name[2:]) if name.startswith("~/") else Path(name)
+        try:
+            path = path.resolve()
+            if path in seen or path.suffix.lower() not in NAMED_SUFFIXES or not path.is_file():
+                continue
+            body = path.read_text(errors="replace")
+        except OSError:
+            continue
+        seen.add(path)
+        cut = "\n[... cut: the file is longer; read it in full while working]" if len(body) > NAMED_MAX_CHARS else ""
+        out.append(f"--- {name} ---\n{body[:NAMED_MAX_CHARS]}{cut}")
+    return ("\n\nFILES THE REQUEST NAMES (their full text; they are part of the request):\n\n"
+            + "\n\n".join(out)) if out else ""
+
 
 CODE_PLAN = """Plan this coding work for the owner to approve in a chat message. Plain Markdown, at most about 350
 words, no preamble, with exactly these parts:
@@ -400,8 +431,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         folder = Path(project.dir)
         memory = ProjectMemory(folder)
         template = DOC_PLAN if project.kind == "document" else CODE_PLAN
-        prompt = template.format(request=project.request(), folder=folder, listing=project_listing(folder),
-                                  memory=memory.context() or "(none)")
+        request = project.request()
+        prompt = template.format(request=request + named_files(request), folder=folder,
+                                  listing=project_listing(folder), memory=memory.context() or "(none)")
         await ctx.progress(f"🗺 planning v{project.version}")
         plan = (await answer(rt, "translator", [{"role": "user", "content": prompt}], ctx)).strip()
         if not plan:
