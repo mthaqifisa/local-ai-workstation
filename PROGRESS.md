@@ -324,7 +324,7 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - [ ] E5 judge A/B, E6 OpenCode 2 (gated), E7 finish P7/P8
 - [x] Tony self-healing (missing packages) and self-improvement loop: propose, build on a branch, Apply/Reject on Telegram (ADR-0027)
 - [x] TensorFold: skipped by the owner 2026-11-23 (young, self-reported gains, no proof on our Mac)
-- [ ] Pentest role (owner 2026-11-23: after v6.1 settles): sandboxed, own targets only; candidates PentestGPT, Strix (not ARTEX)
+- [x] Pentest role: moved to a separate session by the owner (2026-11-23)
 - [ ] README + HTML documentation page (docs/index.html) once stable
 - 2026-11-23 11:25 E1 done: oMLX 0.8.0 (needed Xcode MetalToolchain for the custom kernels), Open WebUI 0.12.5, OpenCode pinned 1.18.7; thinking-off re-measured (template switch and reasoning_effort none both work); install re-run 0 changes; doctor healthy; integration 10/10 (stale ADR-0017 test fixed); golden eval 10/10. Projects may sit in one group folder (RnD/digital-bank). README ports table. bench_models.py ready.
 - 2026-11-23 13:05 E8: lead notes reach a stuck coder only after the owner approves or edits them on Telegram (ADR-0026); E2 baseline benchmarked, MTP quant building.
