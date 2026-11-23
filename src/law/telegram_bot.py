@@ -113,7 +113,7 @@ class LawBot:
             board.add_note(LawPaths.from_env(), project.id, text, ticket=ticket, author="owner (Telegram)")
             await self._send(message.chat.id, f"📨 Noted for **{project.name}**: {how}.")
 
-        @dp.message(Command("bugfix"))
+        @dp.message(Command("bugfix", "amend"))
         async def bugfix(message: Message, command: CommandObject) -> None:
             if not self._ok(message):
                 return
@@ -967,6 +967,8 @@ LIVE = {"queued", "running", "waiting"}
 COMMANDS: list[tuple[str, str, str]] = [
     ("help", "Everything Tony can do", "/help"),
     ("rnd", "Start a book, report or research paper as a project in ~/RnD (template)", "/rnd init"),
+    ("amend", "Ask for a change in an R&D document: a ticket the writer fixes, the editor re-checks",
+     "/amend digital-bank Chapter 3: add the DuitNow QR flow"),
     ("improve", "Have LAW improve itself: an agent builds and tests it, you Apply or Reject", "/improve answer "
      "follow-up questions about a memo without starting an agent"),
     ("new", "Start a new conversation (Tony forgets the earlier messages)", "/new"),

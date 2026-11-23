@@ -252,3 +252,40 @@ async def test_a_design_is_checked_by_a_model_that_can_see(tmp_path: Path, monke
     done = await tasks.make_handlers(_review_rt(tmp_path))["task_review"](_ctx(payload))
     assert "docs/design/reference/look.webp" in prompts["designer"] and "390 x 844" in prompts["designer"]
     assert done.result["review"]["score"] < 4 and "No bottom nav" in done.result["review"]["issues"][0]
+
+
+async def test_a_document_gets_the_editor_and_a_page_check_instead_of_qa(tmp_path: Path,
+                                                                       monkeypatch: pytest.MonkeyPatch) -> None:
+    from law.handlers import project as _registers_project_specs  # noqa: F401
+    from law.handlers import tasks
+
+    book = tmp_path / "RnD" / "bank"
+    (book / ".law").mkdir(parents=True)
+    agents: list[str] = []
+    prompts: list[str] = []
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        prompts.append(cmd[-1])
+        agent = cmd[cmd.index("--agent") + 1] if "--agent" in cmd else ""
+        agents.append(agent)
+        if agent == "editor":
+            bugs.add(book, "Ch. 2 says PIDM covers RM 200k; the source says RM 250k", "Severity: blocker",
+                     reporter="editor")
+            reply = '{"tested": ["ch2: fail"], "summary": "one wrong figure"}'
+        elif agent == "designer":
+            reply = '{"screens": ["page 14: fail"], "summary": "ledger diagram cut"}'
+        else:
+            reply = '{"score": 5, "issues": [], "summary": "fine"}'
+        return '{"type": "text", "part": {"type": "text", "text": ' + json.dumps(reply) + '}}'
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    payload = {"prompt": "write a book", "dir": str(book), "role": "writer", "project": "bank",
+               "rubric_ref": "project.review", "version": 1,
+               "spec_args": {"name": "Bank", "out": "docs/proposal", "version": 1, "kind": "document",
+                             "spec_file": ".law/PROMPT.md (the agreed plan)"},
+               "_carry": {"answer": "done"}}
+    done = await tasks.make_handlers(_review_rt(tmp_path))["task_review"](_ctx(payload))
+    review = done.result["review"]
+    assert "qa" not in agents and agents[:2] == ["editor", "designer"]
+    assert review["score"] < 4 and review["issues"][0].startswith("BUG-1 (open, blocker, found by editor)")
+    assert any("open the cited source" in p for p in prompts) and any("pdftoppm" in p for p in prompts)

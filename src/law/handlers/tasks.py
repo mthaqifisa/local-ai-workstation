@@ -436,6 +436,35 @@ The bug list is {folder}/.law/BUGS.md (statuses: open, fixed, verified, reopened
 4. Reply with JSON only: {{"tested": ["<requirement>: pass|fail"], "summary": "<one sentence>"}}"""
 
 
+EDITOR_TASK = """Check {name} version {version}, the document in {folder}, as its independent editor and fact-checker.
+
+Requirements: {folder}/.law/PROMPT.md (the brief), {folder}/{spec_file} (the agreed outline), {folder}/.law/STYLE.md
+and every change the owner asked for in {folder}/.law/REQUESTS.md. The findings list is {folder}/.law/BUGS.md
+(statuses: open, fixed, verified, reopened).
+
+1. Retest: for every finding that is open, fixed or reopened, check it again. Set its status word in the heading to
+   verified if it is resolved, or reopened if not, and add a line "Retest <date>: <result>".
+2. Run {folder}/.law/check.sh (it builds the PDF and HTML). A failure is a finding.
+3. Fact-check every chapter: open the cited source of each factual statement, figure, date and regulation reference
+   and confirm it; check terms and numbers agree across chapters and with the glossary, and that every part of the
+   outline and every owner request is covered. For each new finding append:
+   ## BUG-<next number> · open · editor · <YYYY-MM-DD HH:MM>
+   <one-line title of what is wrong>
+   Severity: blocker | major | minor
+   Where: <file, section, page>  Evidence: <the source's words or the command output>  Correct: <what it should say>
+4. Reply with JSON only: {{"tested": ["<chapter or check>: pass|fail"], "summary": "<one sentence>"}}"""
+PAGES_TASK = """Check how {name} version {version}, the document in {folder}, looks on the page: you can see images.
+
+1. Build it with {folder}/.law/check.sh, then render every page of the PDF: `pdftoppm -png -r 50 <pdf> $TMPDIR/p`.
+2. Look at every page image. A finding is: a diagram, image, table or code block cut off at a page edge or running
+   past the margin; text too small to read; an empty or near-empty page; a missing or broken image; a heading
+   alone at the bottom of a page. Check a few HTML pages the same way (a headless browser screenshot).
+3. Append each finding to {folder}/.law/BUGS.md:
+   ## BUG-<next number> · open · editor · <YYYY-MM-DD HH:MM>
+   <one-line title>  Severity: major (cut, unreadable or missing) | minor (layout)
+   Where: <page number and figure or table>  Evidence: <the page image path under $TMPDIR>
+4. Reply with JSON only: {{"screens": ["page <n>: pass|fail"], "summary": "<one sentence>"}}"""
+
 QA_NO_REPORT = ("\n\nAn earlier QA session ended without its report, so nothing was verified. Work through the steps "
                 "above in order, and end with the JSON report.")
 NO_EVIDENCE = ("QA evidence missing: {what}. Nothing here proves the product works; run QA again and read why the "
@@ -1065,6 +1094,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         a = p.get("spec_args") or {}
         spec_file = a.get("spec_file") or f"{a.get('out', 'docs/proposal')}/proposal.md"
         before = {b.id for b in bugs.load(folder)}
+        if a.get("kind") == "document":
+            return await _editor_round(ctx, p, folder, a, spec_file, before)
         await ctx.progress("🧪 QA: testing the product as a user (black box)")
         task = QA_TASK.format(name=a.get("name", folder.name), version=p.get("version", 1), folder=folder,
                               spec_file=spec_file)
@@ -1089,6 +1120,35 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         blocking = [b for b in open_bugs if b.severity in bugs.BLOCKING]
         summary = str(report.get("summary") or reply.strip()[-300:])
         await ctx.progress(f"🧪 QA: {len(blocking)} blocking, {len(open_bugs) - len(blocking)} minor. {summary}"[:300])
+        new_blockers = [b for b in blocking if b.id not in before and b.severity == "blocker"]
+        if new_blockers:
+            await _alert_owner(a.get("name", folder.name), new_blockers)
+        evidence = [NO_EVIDENCE.format(what=", ".join(missing))] if missing else []
+        return {"open": [*evidence, *bugs.as_issues(blocking)],
+                "minor": bugs.as_issues([b for b in open_bugs if b not in blocking]),
+                "tested": [str(t) for t in report.get("tested", [])][:40], "summary": summary}
+
+    async def _editor_round(ctx: Context, p: dict[str, Any], folder: Path, a: dict[str, Any], spec_file: str,
+                            before: set[str]) -> dict[str, Any]:
+        """QA for a document: the editor (judge model, another family than the writer) fact-checks and checks the
+        build; the designer (a vision model) checks every rendered page for cut or unreadable figures."""
+        fill = {"name": a.get("name", folder.name), "version": p.get("version", 1), "folder": folder,
+                "spec_file": spec_file}
+        await ctx.progress("🧐 editor: fact-checking every chapter against its sources")
+        reply = await _agent(ctx, "editor", EDITOR_TASK.format(**fill), folder, writes=False)
+        report = json_report(reply)
+        if not report.get("tested"):
+            reply = await _agent(ctx, "editor", EDITOR_TASK.format(**fill) + QA_NO_REPORT, folder, writes=False)
+            report = json_report(reply)
+        await ctx.progress("🖼 page check: every page for cut or unreadable figures")
+        shown = await _agent(ctx, "designer", PAGES_TASK.format(**fill), folder, writes=False)
+        missing = ([] if report.get("tested") else ["no fact-check results"]) + \
+            ([] if json_report(shown).get("screens") else ["no page check"])
+        open_bugs = bugs.unresolved(folder)
+        blocking = [b for b in open_bugs if b.severity in bugs.BLOCKING]
+        summary = str(report.get("summary") or reply.strip()[-300:])
+        minor = len(open_bugs) - len(blocking)
+        await ctx.progress(f"🧐 editor: {len(blocking)} blocking, {minor} minor. {summary}"[:300])
         new_blockers = [b for b in blocking if b.id not in before and b.severity == "blocker"]
         if new_blockers:
             await _alert_owner(a.get("name", folder.name), new_blockers)

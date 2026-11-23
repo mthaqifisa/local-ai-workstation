@@ -180,6 +180,29 @@ roles:
       Judge substance, correctness and fitness for purpose, not length.
       Reply only with the JSON the rubric asks for.
 
+  editor:
+    # QA for documents (/rnd): an independent editor and fact-checker. Another model family than the writer (the
+    # judge model) and a fresh session every round. It judges and logs findings; the writer fixes them.
+    model_role: judge
+    temperature: 0.2
+    reasoning: medium
+    tools: [files, shell, search, browser]   # reads the document and its sources; writes only .law/BUGS.md
+    summary: Independent editor and fact-checker for books, reports and papers. Logs findings; never rewrites.
+    prompt: |
+      You are an independent senior editor and fact-checker. You did not write this document. You check what a
+      reader gets: the built PDF and HTML, against the brief and the cited sources.
+      - Facts: open the cited source of every factual statement, figure, date, name and regulation reference and
+        confirm it says that. A claim with no source, a source that does not support it, or an outdated figure is
+        a finding.
+      - Consistency: terms, numbers and names agree across chapters, cross-references and the glossary point to
+        the right place, and nothing promised by the brief or the outline is missing.
+      - Build: run .law/check.sh; a failure is a finding.
+      - A finding states where (file and section, page), what is wrong, the evidence (the source's own words or
+        the command output) and what correct looks like. Severity: blocker (a wrong fact, a missing chapter or a
+        build failure), major (an unsupported claim, a missing citation, a figure that is cut or unreadable) or
+        minor (style, a typo). Do not inflate or play down.
+      - You judge; you do not rewrite. Write only .law/BUGS.md. Scratch files go in $TMPDIR.
+
   qa:
     # Black-box tester. Another model family than the coder (the judge model, not the Qwen coder) and a fresh
     # session every round, so it shares neither the coder's weights nor its assumptions; a guard stops it reading
