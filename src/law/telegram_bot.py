@@ -19,7 +19,7 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from law import board, bugs, projects, registry, secrets
+from law import board, bugs, lead, projects, registry, secrets
 from law.paths import LawPaths
 from law.project_memory import ProjectMemory
 from law.tg_format import to_telegram_html
@@ -40,6 +40,8 @@ class LawBot:
         self.notify_sources = notify_sources or set()
         self.pending: dict[int, tuple[str, str]] = {}  # chat -> (project, action) waiting for the owner's note
         self.following: set[str] = set()  # jobs whose progress this process is streaming to a chat
+        self.leads = lead.Leads(LawPaths.from_env())
+        self.lead_edit: dict[int, str] = {}  # chat -> lead draft waiting for the owner's own wording
         self._wire()
 
     def _ok(self, message: Message) -> bool:
@@ -177,6 +179,20 @@ class LawBot:
                 InlineKeyboardButton(text="Keep everything", callback_data="r|no")]])
             await self.bot.send_message(message.chat.id, to_telegram_html(HARD_RESET_TEXT), parse_mode="HTML",
                                         reply_markup=markup)
+
+        @dp.callback_query(F.data.startswith("l|"))
+        async def lead_button(query: CallbackQuery) -> None:
+            if query.from_user.id not in self.allowed or not query.data or not isinstance(query.message, Message):
+                return
+            _, action, draft_id = query.data.split("|", 2)
+            await query.answer()
+            await query.message.edit_reply_markup(reply_markup=None)  # one decision per draft
+            chat = query.message.chat.id
+            if action == "edit":
+                self.lead_edit[chat] = draft_id
+                await self._send(chat, "Reply with the note the agent should get (or `drop`).")
+                return
+            await self._send(chat, self._lead_decide(draft_id, "approved" if action == "approve" else "dropped"))
 
         @dp.callback_query(F.data.startswith("r|"))
         async def reset_button(query: CallbackQuery) -> None:
@@ -341,6 +357,11 @@ class LawBot:
         async def text(message: Message) -> None:
             if not self._ok(message) or not message.text:
                 return
+            if message.chat.id in self.lead_edit and not message.text.startswith("/"):
+                draft_id, words = self.lead_edit.pop(message.chat.id), message.text.strip()
+                decision = "dropped" if words.lower() == "drop" else "edited"
+                await self._send(message.chat.id, self._lead_decide(draft_id, decision, words))
+                return
             if message.chat.id in self.pending and not message.text.startswith("/"):
                 pid, action = self.pending.pop(message.chat.id)
                 note = "" if message.text.strip().lower() == "stop" else message.text.strip()
@@ -355,6 +376,37 @@ class LawBot:
                                                   "not start it again.")
                 return
             await self._job(message, "ask", {"prompt": message.text, "role": "assistant"})
+
+    def _lead_decide(self, draft_id: str, decision: str, text: str = "") -> str:
+        """Record the owner's decision on a lead draft; approved or edited notes reach the agent at its next step."""
+        done = self.leads.decide(draft_id, decision, text if decision == "edited" else "")
+        if done is None:
+            return "That lead note was already decided (or timed out)."
+        return {"approved": "✅ Sent to the agent.", "edited": "✏️ Your wording was sent to the agent.",
+                "dropped": "🗑 Dropped; the agent carries on with LAW's usual nudges."}[decision]
+
+    async def watch_leads(self, poll_s: float = 15.0) -> None:
+        """Send each new lead draft to the owner with Approve / Edit / Drop; report drafts that timed out."""
+        while True:
+            try:
+                for gone in self.leads.expire():
+                    await self._broadcast(f"⌛ Lead note for **{gone.project}** dropped: no answer in "
+                                          f"{lead.DECIDE_TIMEOUT_S // 60} min.")
+                    for chat, waiting in list(self.lead_edit.items()):
+                        if waiting == gone.id:
+                            self.lead_edit.pop(chat)
+                for draft in self.leads.unsent():
+                    markup = InlineKeyboardMarkup(inline_keyboard=[[
+                        InlineKeyboardButton(text="✅ Approve", callback_data=f"l|approve|{draft.id}"),
+                        InlineKeyboardButton(text="✏️ Edit", callback_data=f"l|edit|{draft.id}"),
+                        InlineKeyboardButton(text="🗑 Drop", callback_data=f"l|drop|{draft.id}")]])
+                    for chat in self.allowed:
+                        await self.bot.send_message(chat, to_telegram_html(lead.message(draft)), parse_mode="HTML",
+                                                    disable_web_page_preview=True, reply_markup=markup)
+                    self.leads.mark_sent(draft)
+            except Exception:  # never let a bad draft file or a Telegram hiccup stop the watcher
+                log.exception("lead watcher round failed")
+            await asyncio.sleep(poll_s)
 
     async def _repeated(self, chat: int, text: str) -> bool:
         async with httpx.AsyncClient(timeout=30) as client:
@@ -733,6 +785,9 @@ class LawBot:
 
         await self.bot.set_my_commands([BotCommand(command=c, description=d) for c, d, _ in COMMANDS])
         await self.resume()
+        leads = asyncio.create_task(self.watch_leads())
+        self._tasks.add(leads)
+        leads.add_done_callback(self._tasks.discard)
         if self.notify_sources:
             watcher = asyncio.create_task(self.watch_other_jobs())
             self._tasks.add(watcher)

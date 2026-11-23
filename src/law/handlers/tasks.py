@@ -13,7 +13,7 @@ from typing import Any
 
 import httpx
 
-from law import bugs, deliver, specs
+from law import bugs, deliver, lead, specs
 from law.handlers.base import Runtime, Stalled, Steered, run_cmd
 from law.handlers.core import PASS_SCORE, answer, parse_verdict
 from law.project_memory import FOLDER, ProjectMemory, project_listing
@@ -602,6 +602,9 @@ def agent_env(rt: Runtime, role: str, effort: str | None = None) -> dict[str, st
             "TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE": "/var/run/docker.sock"}
 
 
+_lead_tasks: set[asyncio.Task[None]] = set()
+
+
 def make_handlers(rt: Runtime) -> dict[str, Any]:
     async def search(ctx: Context) -> Outcome:
         hits = await searx(rt, ctx.job.payload["query"], int(ctx.job.payload.get("limit", 8)))
@@ -618,7 +621,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
 
     async def _agent(ctx: Context, role: str, prompt: str, workdir: Path, *, writes: bool = True,
                      memory: ProjectMemory | None = None, timeout_s: float | None = None,
-                     finished: Callable[[], bool] | None = None) -> str:
+                     finished: Callable[[], bool] | None = None, ticket: str | None = None) -> str:
         """Run one OpenCode agent. A writing agent that stalls (no file change for STALL_MINUTES) is stopped and
         its session resumed with a nudge to build and fix. With project memory, the session is recorded in
         `.law/session.json`, and a job that restarts (e.g. after a worker restart) resumes that session."""
@@ -643,6 +646,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         # one deadline for the whole session: a nudge resumes it in a new run, which must not restart the clock
         deadline = time.monotonic() + (timeout_s or float(ctx.job.payload.get("timeout_s", 4 * 3600)))
         edits: list[str] = []
+        recent: list[str] = []  # LAW's summaries of the agent's actions: what the lead step reads
 
         def describe(line: str) -> str | None:
             if memory is not None and line.startswith('{"'):
@@ -652,6 +656,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             summary = describe_opencode_line(line)
             if summary and summary.startswith("✏️"):
                 edits.append(summary.split(" ", 2)[-1])
+            if summary:
+                recent.append(f"{time.strftime('%H:%M')} {summary}")
+                del recent[:-200]
             return summary
 
         digs = lookups = blind_edits = reads = probes = 0
@@ -802,7 +809,37 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 if left and (await _gate_problem(ctx, workdir, after_ticket=False)).startswith(UNCOMMITTED_HEAD):
                     message, what = COMMIT_NUDGE.format(files=", ".join(left[:10])), "tick and commit"
                 await ctx.progress(f"⚠️ nothing saved for {stall_min:.0f} min: nudging the agent to {what}")
+                if ticket and role == "coder" and strikes >= 2:
+                    _draft_lead_note(ctx, role, workdir, ticket, list(recent))
                 cmd = [*base, "--session", sid, message]
+
+    def _draft_lead_note(ctx: Context, role: str, workdir: Path, ticket: str, activity: list[str]) -> None:
+        """Ask the lead (the role's model) for a note in the background; a note becomes a draft the owner approves
+        on Telegram before the agent sees it (ADR-0026). One undecided draft per job at a time."""
+        leads = lead.Leads(rt.paths)
+        if leads.pending_for(ctx.job.id) is not None:
+            return
+
+        async def draft() -> None:
+            try:
+                answer = await rt.llm.chat(rt.model_id(role), [
+                    {"role": "system", "content": lead.PROMPT},
+                    {"role": "user", "content": lead.context_message(ticket, activity, workdir)}],
+                    temperature=1.0, max_tokens=16000)
+            except Exception as exc:  # the lead is an extra: its failure never stops the agent
+                await ctx.progress(f"🧭 lead note not drafted: {type(exc).__name__}")
+                return
+            stuck, diagnosis, note = lead.parse(answer)
+            if not stuck:
+                await ctx.progress("🧭 the lead looked: not stuck, no note")
+                return
+            project = str(ctx.job.payload.get("project") or workdir.name)
+            leads.add(project=project, folder=workdir, ticket=ticket, job=ctx.job.id, diagnosis=diagnosis, note=note)
+            await ctx.progress("🧭 the lead drafted a note: waiting for the owner's approval on Telegram")
+
+        task = asyncio.create_task(draft())
+        _lead_tasks.add(task)  # keep a reference so the task isn't garbage-collected
+        task.add_done_callback(_lead_tasks.discard)
 
     def _scoped(p: dict[str, Any], memory: ProjectMemory | None = None, writes: bool = True) -> str:
         """The agent's prompt: the brief (or the raw request), the folder to work in, and how to keep `.law/`."""
@@ -983,7 +1020,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             try:
                 text = await _agent(ctx, p["role"], prompt, folder, memory=memory,
                                     timeout_s=min(left, float(p.get("timeout_s", 4 * 3600))),
-                                    finished=ticket_done)
+                                    finished=ticket_done, ticket=ticket[1] if ticket else None)
             except TimeoutError:
                 if memory is not None:
                     memory.end_session(ctx.job.id)
