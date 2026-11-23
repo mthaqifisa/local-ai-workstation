@@ -356,7 +356,7 @@ class CalcEnv:
     """Scientific Python for the run_python calculator tool (~/LAW/runtime/calc)."""
 
     name = "calc-env"
-    PACKAGES = ("numpy==2.5.4", "scipy==1.18.1", "sympy==1.14.0", "pandas==3.0.6")
+    PACKAGES = ("numpy==2.5.4", "scipy==1.18.1", "sympy==1.14.0", "pandas==3.0.6", "pytest==9.1.1")
 
     def __init__(self, c: Ctx) -> None:
         self.c = c
@@ -368,7 +368,7 @@ class CalcEnv:
     def plan(self) -> list[str]:
         st = self.c.paths.state / "calc.stamp"
         ok = (self.venv / "bin" / "python").exists() and st.exists() and st.read_text() == self._want()
-        return [] if ok else ["install calculator Python (numpy, scipy, sympy, pandas)"]
+        return [] if ok else ["install calculator Python (numpy, scipy, sympy, pandas, pytest)"]
 
     def apply(self) -> None:
         env = _uv_env(self.c.paths)

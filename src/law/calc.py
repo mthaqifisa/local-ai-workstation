@@ -17,8 +17,9 @@ TOOL_SPEC: dict[str, Any] = {
     "function": {
         "name": "run_python",
         "description": ("Run Python 3 code and return what it prints. Use it for every calculation, statistic, "
-                        "date or unit conversion. numpy, scipy, sympy, pandas and decimal are available. "
-                        "print() the results you need."),
+                        "date or unit conversion, and to run code you wrote with its tests before you show it. "
+                        "numpy, scipy, sympy, pandas, pytest and decimal are available; the working folder is "
+                        "writable (write test_x.py, then pytest.main(['-q', 'test_x.py'])). print() what you need."),
         "parameters": {"type": "object", "properties": {"code": {"type": "string", "description": "Python code"}},
                        "required": ["code"]},
     },

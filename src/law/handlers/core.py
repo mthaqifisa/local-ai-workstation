@@ -110,6 +110,8 @@ RUBRIC = """Score the RESPONSE to the REQUEST from 1 to 5.
 1 = wrong or unusable
 Check correctness, whether it answers the request, structure, clarity and invented facts.
 Recompute every number, rate and total with the run_python tool before scoring; a wrong figure caps the score at 2.
+Run self-contained code in the RESPONSE with run_python, with its tests and the edge cases the request implies; code
+that fails, or run output and test results the response shows that your run does not reproduce, cap the score at 2.
 Reply with JSON only: {"score": <1-5>, "issues": ["<problem and fix>"], "summary": "<one sentence>"}"""
 
 
@@ -184,8 +186,11 @@ async def answer(rt: Runtime, role: str, messages: list[dict[str, Any]], ctx: Co
 
     async def run_tool(name: str, args: dict[str, Any]) -> str:
         if name == "run_python" and "python" in r.tools:
-            return await calc.run_python(rt.paths.runtime / "calc" / "bin" / "python", rt.paths.tmp / "calc",
-                                         str(args.get("code", "")))
+            out = await calc.run_python(rt.paths.runtime / "calc" / "bin" / "python", rt.paths.tmp / "calc",
+                                        str(args.get("code", "")))
+            if ctx is not None:  # visible in the job log, so a claimed run can be checked against a real one
+                await ctx.progress(f"🧮 {role} ran Python: {out.splitlines()[-1][:120] if out else 'no output'}")
+            return out
         if name in {"start_agent", "start_project", "revise_project"} and agents is not None:
             return await agents({**args, "_tool": name})
         return f"error: unknown tool {name}"
