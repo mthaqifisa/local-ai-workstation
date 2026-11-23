@@ -1,15 +1,11 @@
 {
   "stage": "E-enhance-v6.1",
-  "task": "E2",
-  "status": "done",
-  "next_step": "E5 judge A/B (Gemma vs Glimmer), then E3/E4",
-  "timestamp": "2026-11-23T18:13:10",
+  "task": "E5 judge A/B",
+  "status": "done: Gemma stays (Glimmer fails 3/4 switch conditions), Glimmer deleted",
+  "next_step": "E6 OpenCode 2: record v1 streams + contract tests",
+  "timestamp": "2026-11-24T06:02:17+08:00",
   "files_touched": [
-    "settings/registry.yaml",
-    "src/law/registry.py",
-    "src/law/install/steps.py",
-    "tests/unit/test_install_engine.py",
-    "docs/adr/0025-speculative-decoding-dflash.md"
+    "docs/adr/0007-evaluation-and-judging.md"
   ],
   "commands": [
     "brew upgrade jundot/omlx/omlx",
