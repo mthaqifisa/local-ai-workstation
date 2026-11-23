@@ -362,8 +362,13 @@ class CalcEnv:
         self.c = c
         self.venv = c.paths.runtime / "calc"
 
+    def _extras(self) -> list[str]:
+        """Packages Tony installed itself when code needed them (law.calc.install_missing)."""
+        f = self.c.paths.state / "calc-extra.txt"
+        return sorted(f.read_text().split()) if f.exists() else []
+
     def _want(self) -> str:
-        return "3.12|" + ",".join(self.PACKAGES)
+        return "3.12|" + ",".join((*self.PACKAGES, *self._extras()))
 
     def plan(self) -> list[str]:
         st = self.c.paths.state / "calc.stamp"
@@ -373,7 +378,8 @@ class CalcEnv:
     def apply(self) -> None:
         env = _uv_env(self.c.paths)
         for cmd in (["uv", "venv", "--allow-existing", "--python", "3.12", str(self.venv)],
-                    ["uv", "pip", "install", "--python", str(self.venv / "bin" / "python"), *self.PACKAGES]):
+                    ["uv", "pip", "install", "--python", str(self.venv / "bin" / "python"), *self.PACKAGES,
+                     *self._extras()]):
             res = self.c.sys.run(cmd, env=env, timeout=1800)
             if not res.ok:
                 raise RuntimeError(res.out[-1500:])

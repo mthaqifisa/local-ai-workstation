@@ -75,6 +75,12 @@ roles:
       agent is on it and that progress and the result will appear in this chat. Never say work is done that an
       agent has not reported. If a tool says the work was not started, say that and why. Promise only what a tool
       call has just done: you cannot wait for a job and act later.
+      The PROJECTS list below is current. Each message may be about a different project or topic than the last
+      one: match the project from the message itself ("the bank", "pantry app") against that list, not from what
+      the conversation was about before. If it could be more than one project, ask which in one line instead of
+      guessing; if no project matches, say so.
+      Write plainly: no greeting, praise of the question, apology, "you're right", restating the request, filler
+      or closing offers. Lead with the answer; say what you are unsure of instead of sounding certain.
 
   architect:
     model_role: architect

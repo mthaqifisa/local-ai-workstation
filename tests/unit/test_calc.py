@@ -64,3 +64,30 @@ async def test_tool_loop_is_capped():
                                 temperature=0.2, reasoning=None, max_calls=6)
     assert out == "final"
     assert "Tool budget used up" in llm.bodies[-1]["messages"][-1]["content"]
+
+
+def test_missing_module_names_the_import() -> None:
+    from law import calc
+
+    out = "Traceback...\nModuleNotFoundError: No module named 'sklearn'"
+    assert calc.missing_module(out) == "sklearn" and calc.PACKAGE_FOR["sklearn"] == "scikit-learn"
+    assert calc.missing_module("ModuleNotFoundError: No module named 'a.b'") == "a"
+    assert calc.missing_module("ok") is None
+
+
+async def test_install_missing_records_the_pinned_package(tmp_path) -> None:
+    import os
+    import stat
+
+    from law import calc
+
+    fake_uv = tmp_path / "uv"
+    fake_uv.write_text("#!/bin/sh\nexit 0\n")
+    fake_uv.chmod(fake_uv.stat().st_mode | stat.S_IEXEC)
+    record = tmp_path / "state" / "calc-extra.txt"
+    record.parent.mkdir()
+    record.write_text("pyyaml==6.0\n")
+    import sys
+    pinned = await calc.install_missing(Path(sys.executable), "pytest", dict(os.environ), record, uv=str(fake_uv))
+    assert pinned and pinned.startswith("pytest==")
+    assert record.read_text().split() == sorted(["pyyaml==6.0", pinned])

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -11,6 +12,7 @@ from typing import Any
 from law import calc
 from law.handlers.base import Runtime
 from law.llm import TruncatedError, chat_with_tools, image_part
+from law.paths import LawPaths, display
 from law.queue.store import JobStore
 from law.queue.worker import Context, Done, Fatal, Outcome, Stages
 
@@ -159,6 +161,29 @@ def build_messages(rt: Runtime, role: str, prompt: str, history: list[dict[str, 
             {"role": "user", "content": content}]
 
 
+def _uv_env(paths: LawPaths) -> dict[str, str]:
+    """uv's caches inside ~/LAW, as the installer sets them."""
+    return {**os.environ, "UV_CACHE_DIR": str(paths.cache / "uv"),
+            "UV_PYTHON_INSTALL_DIR": str(paths.runtime / "python")}
+
+
+PROJECTS_SHOWN = 12
+
+
+def projects_card(paths: LawPaths) -> str:
+    """Every project's name, folder, state and last event, read fresh from LAW's records for each message: Tony
+    knows which project the user means without relying on the chat history (which keeps only 16 messages)."""
+    from law.projects import Projects  # here, as in the tools below: law.projects imports the handlers' modules
+
+    rows = sorted(Projects(paths).all(), key=lambda p: p.history[-1].at if p.history else "", reverse=True)
+    if not rows:
+        return ""
+    lines = [f"- {p.name} (id {p.id}, folder {display(Path(p.dir))}): {p.state.replace('_', ' ')}"
+             + (f"; last: {p.history[-1].event} {p.history[-1].at[:16].replace('T', ' ')}" if p.history else "")
+             for p in rows[:PROJECTS_SHOWN]]
+    return ("\n\nPROJECTS (current, from LAW's records; newest activity first):\n" + "\n".join(lines))
+
+
 def _images(payload: dict[str, Any]) -> list[str]:
     imgs = payload.get("images") or ([payload["image"]] if payload.get("image") else [])
     missing = [i for i in imgs if not Path(i).is_file()]
@@ -186,8 +211,17 @@ async def answer(rt: Runtime, role: str, messages: list[dict[str, Any]], ctx: Co
 
     async def run_tool(name: str, args: dict[str, Any]) -> str:
         if name == "run_python" and "python" in r.tools:
-            out = await calc.run_python(rt.paths.runtime / "calc" / "bin" / "python", rt.paths.tmp / "calc",
-                                        str(args.get("code", "")))
+            python, code = rt.paths.runtime / "calc" / "bin" / "python", str(args.get("code", ""))
+            out = await calc.run_python(python, rt.paths.tmp / "calc", code)
+            module = calc.missing_module(out)
+            if module:  # self-healing: add the missing package, say so, run again
+                pinned = await calc.install_missing(python, module, _uv_env(rt.paths),
+                                                    rt.paths.state / "calc-extra.txt")
+                if ctx is not None:
+                    await ctx.progress(f"🔧 installed {pinned} for {role}'s Python" if pinned
+                                       else f"🔧 could not install the package for module {module}")
+                if pinned:
+                    out = await calc.run_python(python, rt.paths.tmp / "calc", code)
             if ctx is not None:  # visible in the job log, so a claimed run can be checked against a real one
                 await ctx.progress(f"🧮 {role} ran Python: {out.splitlines()[-1][:120] if out else 'no output'}")
             return out
@@ -376,7 +410,10 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         started: list[str] = []
         agents = agent_starter(ctx, started) if root and "agents" in rt.roles.get(role).tools else None
         await ctx.progress(f"{role} is answering")
-        text = await answer(rt, role, build_messages(rt, role, p["prompt"], history, images), ctx,
+        messages = build_messages(rt, role, p["prompt"], history, images)
+        if agents is not None:  # Tony: which projects exist and where each stands, fresh for every message
+            messages[0] = {**messages[0], "content": messages[0]["content"] + projects_card(rt.paths)}
+        text = await answer(rt, role, messages, ctx,
                             model=model, agents=agents)
         agent_job = {"agent_job": started[0]} if started else {}
         if not (p.get("quality", True) and root):

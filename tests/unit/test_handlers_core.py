@@ -788,3 +788,21 @@ async def test_answers_use_the_model_cards_sampling_not_the_roles_temperature(se
     assert {k: bodies[-1][k] for k in ("top_p", "top_k", "presence_penalty")} == {
         "top_p": expected.top_p, "top_k": expected.top_k, "presence_penalty": expected.presence_penalty}
     assert rt.reg.model("qwen3.8-27b-8bit").sampling_for("off").presence_penalty == 1.5  # type: ignore[union-attr]
+
+
+def test_projects_card_lists_each_project_fresh(sandbox):
+    from law.handlers.core import projects_card
+    from law.projects import Project, Projects
+
+    paths = LawPaths(repo=REPO, home=sandbox / "LAW", user_home=sandbox)
+    assert projects_card(paths) == ""
+    for pid, name, state in (("digital-bank", "Digital Bank", "developing"), ("pantry-ios", "Pantry-iOS",
+                                                                             "awaiting_go")):
+        folder = sandbox / "SourceCode" / pid
+        (folder / ".law").mkdir(parents=True)
+        project = Project(id=pid, name=name, dir=str(folder), summary="s", details="d", state=state)  # type: ignore[arg-type]
+        project.log("created")
+        Projects(paths).save(project)
+    card = projects_card(paths)
+    assert "Digital Bank (id digital-bank, folder ~/SourceCode/digital-bank): developing" in card
+    assert "Pantry-iOS" in card and "awaiting go" in card and str(sandbox) not in card
