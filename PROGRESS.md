@@ -318,7 +318,7 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - [x] E1 Pins + runtime upgrade: registry `pins:` (OpenCode 1.18.7 via npm, oMLX 0.8.0), Open WebUI 0.12.5 by digest, doctor version check (ADR-0024)
 - [x] E2 Speculative decoding: DFlash 2 on the 27B 8-bit, 2.6-2.8x decode on code, golden 10/10, owner yes (ADR-0025)
 - [ ] E3 fast-lane 4-bit; E4 coder-fast DFlash
-- [ ] Digital Bank book via Tony (project RnD/digital-bank), monitored every 2 h
+- [ ] Digital Bank book via Tony (/rnd project in ~/RnD/digital-bank, brief there), monitored every 2 h
 - [x] E8 lead-note approval: drafts on the 2nd stall, Telegram Approve/Edit/Drop, 60 min = drop, rate every 10 (ADR-0026)
 - [ ] E5 judge A/B, E6 OpenCode 2 (gated), E7 finish P7/P8
 - [x] Tony self-healing (missing packages) and self-improvement loop: propose, build on a branch, Apply/Reject on Telegram (ADR-0027)
@@ -330,3 +330,4 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - 2026-11-23 19:10 E2 done: DFlash 2 live on the 27B (27.3/24.6/22.1 tok/s code at 4K/32K/64K vs 9.7/9.0/8.4), tool calls unchanged, golden 10/10; registry `draft:`/`omlx:` applied by install; MTP quant deleted (28 GB).
 - 2026-11-23 20:10 Telegram testing round: fixed rewrite wording, unrun test claims (pytest in sandbox, reviewer re-runs code), reviewer blind to project facts, dropped re-asked question, invented facts in agent requests, files not attached; added typing indicator, projects card, send_file, old-output clearing, self-healing packages and the self-improvement loop (ADR-0027).
 - 2026-11-23 20:45 Hardware wear: SSD 2% used (smartctl), ~190 GB/day written incl. downloads; battery 100% / 48 cycles, held at 80%; display now awake only while jobs run (worker caffeinate -d). RUNBOOK section.
+- 2026-11-23 21:05 /rnd: document projects (books, reports, research papers) in ~/RnD, written by the writer agent chapter by chapter with a render gate and a book rubric; Tony starts them from chat too. ~/SourceCode/RnD moved to ~/RnD (owner).

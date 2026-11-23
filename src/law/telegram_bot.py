@@ -79,6 +79,11 @@ class LawBot:
                 return
             await self._job(message, "task", {"role": "coder", **split_dir(args)})
 
+        @dp.message(Command("rnd"))
+        async def rnd(message: Message, command: CommandObject) -> None:
+            if self._ok(message):
+                await self._start_project(message, (command.args or "init").strip(), "rnd")
+
         @dp.message(Command("project"))
         async def project(message: Message, command: CommandObject) -> None:
             if self._ok(message):
@@ -520,6 +525,8 @@ class LawBot:
         except projects.TemplateError as exc:
             await self._send(message.chat.id, f"Not started: {exc}. Send `/{mode} init` for the template.")
             return
+        if mode == "rnd":  # a document project: the code flow (plan in the chat, go, tickets), written by the writer
+            fields, mode = {**fields, "kind": "document"}, "code"
         await self._submit(message.chat.id, "project_new", {"fields": fields, "chat": message.chat.id, "mode": mode})
 
     def _wire_decision(self, action: str) -> None:
@@ -951,6 +958,7 @@ LIVE = {"queued", "running", "waiting"}
 # (command, menu description, help example) — one table drives the "/" menu, /help and the handlers above.
 COMMANDS: list[tuple[str, str, str]] = [
     ("help", "Everything Tony can do", "/help"),
+    ("rnd", "Start a book, report or research paper as a project in ~/RnD (template)", "/rnd init"),
     ("improve", "Have LAW improve itself: an agent builds and tests it, you Apply or Reject", "/improve answer "
      "follow-up questions about a memo without starting an agent"),
     ("new", "Start a new conversation (Tony forgets the earlier messages)", "/new"),

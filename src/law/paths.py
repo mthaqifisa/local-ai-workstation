@@ -123,6 +123,11 @@ class LawPaths:
         """Where agent-created code projects go (code lives only in ~/SourceCode)."""
         return self.user_home / "SourceCode"
 
+    @property
+    def rnd(self) -> Path:
+        """Where document projects go: books, reports, research papers (`/rnd`, owner 2026-11-23)."""
+        return self.user_home / "RnD"
+
     def skeleton(self) -> list[Path]:
         """Directories `law install` guarantees exist."""
         return [

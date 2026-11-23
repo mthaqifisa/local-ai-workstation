@@ -28,7 +28,7 @@ State = Literal["proposing", "awaiting_go", "developing", "awaiting_verification
 Action = Literal["go", "nogo", "changes", "allgood", "resume", "push"]
 EFFORTS = {"low": "low", "medium": "medium", "high": "xhigh"}
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,39}$")
-# An optional group folder above the project (e.g. RnD/digital-bank): shell-safe characters only, case kept.
+# An optional group folder above the project (e.g. Clients/acme-portal): shell-safe characters only, case kept.
 GROUP_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$")
 URL_RE = re.compile(r"^(https://[^\s@/:]+(?::\d+)?/[^\s@]+|git@[^\s:]+:[^\s]+)$")
 
@@ -43,11 +43,17 @@ INTROS: dict[str, str] = {
                 + ", **proposal** (brief: about 6 sections; full: the 15-section consultant document)."),
     "code": ("**Code only** (a short plan here in the chat, your go, then build and test; no documents). Copy the "
              "next message, fill it in and send it back. " + _FIELDS_HELP + "."),
+    "rnd": ("**R&D document** (a book, report or research paper in ~/RnD: an outline with sources here in the chat, "
+            "your go, then one chapter per ticket on the board, each reviewed, built into PDF and HTML). Copy the "
+            "next message, fill it in and send it back. Required: **name**, **summary**, **details** (everything "
+            "the document must cover, its readers and format). Optional: **repo** (folder under ~/RnD), "
+            "**thinking** (low, medium or high)."),
 }
 TEMPLATES: dict[str, str] = {
     "project": "/project new\nname:\nrepo:\nrepo_url:\nstack:\nkind: software\nthinking: medium\n"
                "proposal: brief\nsummary:\ndetails:\n",
     "code": "/code new\nname:\nrepo:\nrepo_url:\nstack:\nkind: software\nthinking: medium\nsummary:\ndetails:\n",
+    "rnd": "/rnd new\nname:\nrepo:\nthinking: medium\nsummary:\ndetails:\n",
 }
 TEMPLATE_INTRO, TEMPLATE = INTROS["project"], TEMPLATES["project"]  # the full project is the default
 FIELDS = ("name", "repo", "repo_url", "stack", "kind", "thinking", "proposal", "summary", "details")
@@ -102,7 +108,7 @@ class Project(BaseModel):
 def parse_template(text: str) -> dict[str, str]:
     """Read `key: value` lines; `details:` takes everything after it. Raises TemplateError with what is wrong."""
     lines = text.strip().splitlines()
-    if lines and lines[0].strip().lower().startswith(("/code", "/project")):
+    if lines and lines[0].strip().lower().startswith(("/code", "/project", "/rnd")):
         lines = lines[1:]
     fields: dict[str, str] = {}
     for i, line in enumerate(lines):
@@ -133,7 +139,7 @@ def parse_template(text: str) -> dict[str, str]:
     repo = f"{group}/{name.lower()}" if group else name.lower()
     if not NAME_RE.match(name.lower()) or (group and not GROUP_RE.match(group)):
         raise TemplateError("repo must be a folder name: letters, numbers, - . _ (e.g. office-chat), optionally "
-                            "inside one group folder (e.g. RnD/digital-bank); no spaces or &")
+                            "inside one group folder (e.g. Clients/acme-portal); no spaces or &")
     fields["repo"] = repo
     url = fields.get("repo_url", "")
     if url and not URL_RE.match(url):
@@ -230,7 +236,8 @@ class Projects:
         return project
 
     def create(self, fields: dict[str, str], chat: int | None, mode: Mode = "project") -> Project:
-        folder = self.paths.projects / fields["repo"]
+        root = self.paths.rnd if fields.get("kind") == "document" else self.paths.projects
+        folder = root / fields["repo"]
         pid = project_id(fields["repo"])
         if pid in self._index():
             raise TemplateError(f"a project named {pid} already exists; pick another repo name")

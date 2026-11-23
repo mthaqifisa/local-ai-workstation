@@ -391,3 +391,15 @@ def test_a_document_project_is_built_by_the_writer_with_book_rules():
     assert "chapter of a book" in review
     soft = specs.resolve({"spec_ref": "project.dev", "spec_args": {**args, "kind": "software"}}) or ""
     assert "host.docker.internal" in soft
+
+
+def test_rnd_documents_live_in_the_rnd_folder(tmp_path):
+    from law.projects import TEMPLATES, Projects, parse_template
+
+    paths = LawPaths(repo=REPO, home=tmp_path / "LAW", user_home=tmp_path)
+    fields = parse_template(TEMPLATES["rnd"].replace("name:", "name: Digital Bank").replace(
+        "summary:", "summary: a book").replace("details:", "details: chapters"))
+    doc = Projects(paths).create({**fields, "kind": "document"}, chat=None, mode="code")
+    assert doc.dir == str(tmp_path / "RnD" / "digital-bank") and doc.kind == "document"
+    app = Projects(paths).create({**fields, "repo": "bank-app"}, chat=None, mode="code")
+    assert app.dir == str(tmp_path / "SourceCode" / "bank-app") and app.kind == "software"

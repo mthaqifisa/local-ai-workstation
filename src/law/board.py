@@ -511,9 +511,10 @@ def summaries(paths: LawPaths) -> list[dict[str, Any]]:
 
 
 def _check_folder(paths: LawPaths, folder: Path) -> None:
-    real, root = folder.resolve(), paths.projects.resolve()
-    if not real.is_relative_to(root) or real == root or paths.repo.resolve().is_relative_to(real):
-        raise ValueError(f"{folder} is not a project folder under {paths.projects}; delete it by hand")
+    real, roots = folder.resolve(), (paths.projects.resolve(), paths.rnd.resolve())
+    if (not any(real.is_relative_to(r) and real != r for r in roots)
+            or paths.repo.resolve().is_relative_to(real)):
+        raise ValueError(f"{folder} is not a project folder under {paths.projects} or {paths.rnd}; delete it by hand")
 
 
 def _remove_files(paths: LawPaths, project: Project, code: bool) -> str | None:

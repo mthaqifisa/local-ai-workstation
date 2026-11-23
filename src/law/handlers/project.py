@@ -172,6 +172,25 @@ Include a section "Check on your phone" (or the device the product targets): the
 real device can do, taken from the requirements (e.g. trust the certificate, the camera scan, a notification
 arriving), each with what should happen. QA tested everything else in a browser; say so."""
 
+DOC_PLAN = """Plan this document (a book, report or research paper) for the owner to approve in a chat message.
+Plain Markdown, at most about 450 words, no preamble, with exactly these parts:
+**What I'll write**: the document, its readers and its formats in two or three sentences.
+**Outline**: every part and chapter in order, each with its main sources (standards, official documents, papers).
+**Milestones**: 3 to 8 parts in writing order, each ending with a PDF and HTML build that passes .law/check.sh.
+**Style**: voice, depth, diagram and citation conventions (kept in .law/STYLE.md).
+**Assumptions**: the defaults you chose where the request is silent.
+**Out of scope**: what the document will not cover.
+
+The REQUEST:
+{request}
+
+Project folder: {folder}
+Files there now:
+{listing}
+
+Plan and progress so far:
+{memory}"""
+
 CODE_PLAN = """Plan this coding work for the owner to approve in a chat message. Plain Markdown, at most about 350
 words, no preamble, with exactly these parts:
 **What I'll build**: the product in two or three sentences.
@@ -380,7 +399,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         project = store.get(str(ctx.job.payload["project"]))
         folder = Path(project.dir)
         memory = ProjectMemory(folder)
-        prompt = CODE_PLAN.format(request=project.request(), folder=folder, listing=project_listing(folder),
+        template = DOC_PLAN if project.kind == "document" else CODE_PLAN
+        prompt = template.format(request=project.request(), folder=folder, listing=project_listing(folder),
                                   memory=memory.context() or "(none)")
         await ctx.progress(f"🗺 planning v{project.version}")
         plan = (await answer(rt, "translator", [{"role": "user", "content": prompt}], ctx)).strip()

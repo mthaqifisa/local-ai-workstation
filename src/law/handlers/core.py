@@ -46,8 +46,8 @@ PROJECT_TOOL: dict[str, Any] = {
                 "details": {"type": "string", "description": "Everything the user asked for, with every detail."},
                 "stack": {"type": "string", "description": "The technology, if the user or the chat settled it."},
                 "folder": {"type": "string",
-                           "description": ("Only if the user named one: the folder under ~/SourceCode, e.g. "
-                                           "RnD/digital-bank. Leave empty to derive it from the name.")},
+                           "description": ("Only if the user named one: the folder under ~/SourceCode (software) or "
+                                           "~/RnD (documents). Leave empty to derive it from the name.")},
                 "kind": {"type": "string", "enum": ["software", "document"],
                          "description": ("document for a book, report or guide (PDF/HTML, diagrams); software for "
                                          "an app or service.")},
