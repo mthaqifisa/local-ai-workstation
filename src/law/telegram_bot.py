@@ -958,11 +958,12 @@ REPEAT_WINDOW_S = 600.0
 
 
 def is_repeat(jobs: list[dict[str, Any]], chat: int, text: str, now: float) -> bool:
-    """The same long message from this chat a moment ago, not failed: a double send, not a new request (2026-11-01:
-    one message arrived twice 36 s apart and queued two coders). Sending it again after a failure still works."""
+    """The same long message from this chat while the first is still in progress: a double send, not a new request
+    (2026-11-01: one message arrived twice 36 s apart and queued two coders). Once the first is answered or has
+    failed, sending it again is a real request (2026-11-23: a re-asked question was dropped)."""
     return len(text) >= REPEAT_CHARS and any(
         j.get("kind") == "ask" and j.get("parent") is None and (j.get("reply_to") or {}).get("chat_id") == chat
-        and (j.get("payload") or {}).get("prompt") == text and j.get("status") not in STOPPED
+        and (j.get("payload") or {}).get("prompt") == text and j.get("status") in LIVE
         and now - float(j.get("created", 0)) < REPEAT_WINDOW_S for j in jobs)
 
 

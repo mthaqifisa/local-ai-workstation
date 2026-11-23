@@ -277,7 +277,8 @@ async def test_a_telegram_job_that_stops_unfollowed_is_reported_once(tmp_path: P
 
 @pytest.mark.parametrize("text,chat,status,age,repeat", [
     ("the same long message sent twice", 7, "running", 36, True),
-    ("the same long message sent twice", 7, "done", 36, True),
+    ("the same long message sent twice", 7, "done", 36, False),  # answered: asking again is a new request
+    ("the same long message sent twice", 7, "waiting", 36, True),
     ("the same long message sent twice", 7, "failed", 36, False),  # sending it again after a failure is a retry
     ("the same long message sent twice", 8, "running", 36, False),
     ("the same long message sent twice", 7, "done", 700, False),
