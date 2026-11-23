@@ -138,6 +138,30 @@ class ProjectMemory:
         with (self.dir / "NOTES.md").open("a") as f:
             f.write(f"{text.strip()}\n\n")
 
+    def add_followup(self, ticket: str, note: str) -> str | None:
+        """An owner's note on a finished ticket becomes a new ticket right after the one in progress, so the work
+        reaches the plan instead of being skimmed by an agent busy elsewhere (owner 2026-11-23: notes on chapter 1
+        while chapter 2 is written). Returns the new ticket id, or None if `ticket` is not a ticked ticket."""
+        plan = self.dir / "PLAN.md"
+        try:
+            lines = plan.read_text().splitlines()
+        except OSError:
+            return None
+        done = re.compile(rf"^\s*- \[[xX]\]\s+{re.escape(ticket)}\b")
+        if not any(done.match(line) for line in lines):
+            return None
+        key = ticket.split("-", 1)[0]
+        numbers = [int(m.group(1)) for line in lines for m in [re.match(rf"^\s*- \[[ xX]\]\s+{re.escape(key)}-(\d+)",
+                                                                         line)] if m]
+        new = f"{key}-{max(numbers, default=0) + 1}"
+        text = " ".join(note.split())
+        entry = (f"- [ ] {new} Revise {ticket} as the owner noted: {text} (acceptance: the note is addressed, "
+                 f"the gate passes)")
+        open_at = next((i for i, line in enumerate(lines) if re.match(r"^\s*- \[ \]", line)), None)
+        lines.insert(len(lines) if open_at is None else open_at + 1, entry)  # after the ticket in progress
+        plan.write_text("\n".join(lines) + "\n")
+        return new
+
     def take_notes(self) -> str | None:
         """Pending owner notes, once: they move to REQUESTS.md (the committed record) when the agent gets them."""
         path = self.dir / "NOTES.md"

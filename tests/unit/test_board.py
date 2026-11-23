@@ -165,7 +165,7 @@ def test_notes_api_add_list_delete_and_to_agent(client):
     assert c.get("/board").json() == [{"id": "pantry", "name": "Pantry", "state": "developing", "version": 1}]
     r = c.post("/board/pantry/notes", json={"text": "  check the PEM path ", "ticket": "P-2", "to_agent": True})
     assert r.status_code == 200 and r.json()["text"] == "check the PEM path"
-    assert (Path(project.dir) / ".law" / "NOTES.md").read_text().strip() == "check the PEM path"
+    assert (Path(project.dir) / ".law" / "NOTES.md").read_text().strip() == "(on P-2) check the PEM path"
     p2 = next(t for t in c.get("/board/pantry").json()["tickets"] if t["id"] == "P-2")
     assert [n["text"] for n in p2["notes"]] == ["check the PEM path"]
     assert c.post("/board/pantry/notes", json={"text": " "}).status_code == 422

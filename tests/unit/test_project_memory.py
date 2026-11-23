@@ -115,3 +115,19 @@ def test_pending_notes_show_until_an_agent_takes_them(tmp_path: Path) -> None:
     assert memory.pending_notes() == "use icons"
     memory.take_notes()
     assert memory.pending_notes() == ""
+
+
+def test_a_note_on_a_finished_ticket_becomes_the_next_ticket(tmp_path):
+    from law import board
+
+    law = tmp_path / ".law"
+    law.mkdir()
+    (law / "PLAN.md").write_text("# Plan\n\n## Build version 1\n\n### M1 Part one\n- [x] DB-1 Chapter 1 (acceptance: x)\n"
+                                 "- [ ] DB-2 Chapter 2 (acceptance: y)\n- [ ] DB-3 Chapter 3 (acceptance: z)\n")
+    assert board.deliver_note(tmp_path, "DB-1", "the ledger diagram is wrong") == "ticket DB-4 added after the current one"
+    lines = (law / "PLAN.md").read_text().splitlines()
+    i = lines.index("- [ ] DB-2 Chapter 2 (acceptance: y)")
+    assert lines[i + 1].startswith("- [ ] DB-4 Revise DB-1 as the owner noted: the ledger diagram is wrong")
+    assert "then do DB-4" in (law / "NOTES.md").read_text()
+    assert board.deliver_note(tmp_path, "DB-2", "use RM, not USD") == "the agent gets it at its next action"
+    assert "(on DB-2) use RM, not USD" in (law / "NOTES.md").read_text()

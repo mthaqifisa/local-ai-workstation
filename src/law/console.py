@@ -140,7 +140,6 @@ def mount(app: Any, llm_internal: str, paths: LawPaths) -> None:
     @router.post("/board/{pid}/notes")
     def board_note(pid: str, body: board.NoteIn) -> dict[str, Any]:
         """A note on a ticket (none: the ticket in progress); `to_agent` also hands it to the working agent."""
-        from law.project_memory import ProjectMemory
         from law.projects import Projects
 
         try:
@@ -151,7 +150,7 @@ def mount(app: Any, llm_internal: str, paths: LawPaths) -> None:
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         if body.to_agent:
-            ProjectMemory(Path(project.dir)).add_note(body.text)
+            board.deliver_note(Path(project.dir), body.ticket, body.text)
         return saved.model_dump()
 
     @router.post("/board/{pid}/approve", status_code=201)

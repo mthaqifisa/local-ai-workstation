@@ -66,6 +66,21 @@ class NoteIn(BaseModel):
 
 
 # ---- notes ---------------------------------------------------------------------------------------------------
+
+
+def deliver_note(folder: Path, ticket: str | None, text: str) -> str:
+    """Hand an owner's note to the work: on a finished ticket it becomes a follow-up ticket after the current one
+    (the agent is told); otherwise the working agent gets it at its next action. Returns what happened."""
+    from law.project_memory import ProjectMemory
+
+    memory = ProjectMemory(folder)
+    new = memory.add_followup(ticket, text) if ticket else None
+    if new:
+        memory.add_note(f"The owner's note on the finished ticket {ticket} is now ticket {new} in .law/PLAN.md, right "
+                        f"after your current one: finish your current ticket first, then do {new}.")
+        return f"ticket {new} added after the current one"
+    memory.add_note(f"(on {ticket}) {text.strip()}" if ticket else text)
+    return "the agent gets it at its next action"
 def _notes_file(paths: LawPaths, pid: str) -> Path:
     return paths.state / "boards" / f"{pid}.json"
 

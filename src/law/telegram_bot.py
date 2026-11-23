@@ -98,16 +98,20 @@ class LawBot:
                 return
             pid, _, text = (command.args or "").strip().partition(" ")
             if not pid or not text.strip():
-                await self._send(message.chat.id, "Usage: `/note <project> <what the agent should know>`")
+                await self._send(message.chat.id, "Usage: `/note <project> [ticket] <what the agent should know>` "
+                                                  "(a finished ticket gets a follow-up ticket)")
                 return
             try:
                 project = projects.Projects(LawPaths.from_env()).get(pid)
             except KeyError as exc:
                 await self._send(message.chat.id, str(exc))
                 return
-            ProjectMemory(Path(project.dir)).add_note(text)
-            board.add_note(LawPaths.from_env(), project.id, text, author="owner (Telegram)")  # the ticket in progress
-            await self._send(message.chat.id, f"📨 Noted for **{project.name}**: the agent gets it at its next action.")
+            first, _, rest = text.strip().partition(" ")
+            ticket = first if TICKET_ID.match(first) and rest.strip() else None  # `/note <project> DB-4 <text>`
+            text = rest.strip() if ticket else text
+            how = board.deliver_note(Path(project.dir), ticket, text)
+            board.add_note(LawPaths.from_env(), project.id, text, ticket=ticket, author="owner (Telegram)")
+            await self._send(message.chat.id, f"📨 Noted for **{project.name}**: {how}.")
 
         @dp.message(Command("bugfix"))
         async def bugfix(message: Message, command: CommandObject) -> None:
@@ -1084,6 +1088,7 @@ def deliverables(job: dict[str, Any]) -> list[Path]:
     return sorted(found, key=lambda f: f.stat().st_mtime, reverse=True)[:DOCS_SENT]
 
 
+TICKET_ID = re.compile(r"^[A-Z]{1,6}-\d+(?:\.\d+)*$")  # DB-4, P-37.1
 EDIT_EVERY_S = 3.0  # Telegram allows about one edit per second per chat; agents report several actions a second
 
 
