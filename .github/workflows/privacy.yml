@@ -1,0 +1,46 @@
+# Public repo guard: no secrets or personal data in any file, commit message or commit identity, on any branch.
+# Same rules as the local hooks (.githooks/) and `law save`: .gitleaks.toml. Logs never print a found value.
+name: privacy
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  privacy:
+    runs-on: ubuntu-24.04
+    env:
+      GITLEAKS_VERSION: "8.30.1"
+      GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks (pinned, checksum verified)
+        run: |
+          tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$tarball" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/$tarball"
+          echo "$GITLEAKS_SHA256  $RUNNER_TEMP/$tarball" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/bin"
+          tar -xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP/bin" gitleaks
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Files in all history
+        run: gitleaks git . --config .gitleaks.toml --log-opts="--all" --redact --no-banner
+
+      - name: Commit messages
+        run: git log --all --format=%B | gitleaks stdin --config .gitleaks.toml --redact --no-banner
+
+      - name: Commit identities are the noreply address only
+        run: |
+          bad=$(git log --all --format='%ae%n%ce' | sort -u \
+            | grep -cvxE '34667065\+mthaqifisa@users\.noreply\.github\.com|noreply@github\.com' || true)
+          if [ "$bad" -ne 0 ]; then
+            echo "::error::$bad commit identity address(es) are not the GitHub noreply address"
+            exit 1
+          fi
