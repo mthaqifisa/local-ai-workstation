@@ -83,7 +83,8 @@ version, installed version, how it is selected. Commit `.law/`.
 
 CODE_TICKETS = """Split this agreed plan into tickets for the project board. Reply with Markdown only, nothing before
 or after it: one level-3 heading per milestone ("### M1 Data layer"), and under each, small tickets, one per line:
-"- [ ] {key}-1 Title (acceptance: what proves it works)". Number the tickets in one sequence across the milestones.
+"- [ ] {key}-{start} Title (acceptance: what proves it works)". Number the tickets in one sequence across the
+milestones, starting at {key}-{start} (lower numbers belong to earlier versions).
 
 The plan (version {version}):
 {plan}"""
@@ -175,7 +176,8 @@ arriving), each with what should happen. QA tested everything else in a browser;
 DOC_PLAN = """Plan this document (a book, report or research paper) for the owner to approve in a chat message.
 Plain Markdown, at most about 450 words, no preamble, with exactly these parts:
 **What I'll write**: the document, its readers and its formats in two or three sentences.
-**Outline**: every part and chapter in order, each with its main sources (standards, official documents, papers).
+**Outline**: every part and chapter in order, each with its main sources (standards, official documents, papers)
+and each diagram it will have, by name (a cover, when the document has one, is a part of its own).
 **Milestones**: 3 to 8 parts in writing order, each ending with a PDF and HTML build that passes .law/check.sh.
 **Style**: voice, depth, diagram and citation conventions (kept in .law/STYLE.md).
 **Assumptions**: the defaults you chose where the request is silent.
@@ -418,11 +420,14 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         if not document.exists():
             return Done({})
         await ctx.progress("🗂 writing the tickets for the board")
+        board = ProjectMemory(Path(project.dir))
+        board.drop_unstarted_builds()  # a revised proposal replaces the tickets of one nobody started
+        key = _base(project)["spec_args"]["key"]
         tickets = (await answer(rt, "translator", [{"role": "user", "content": CODE_TICKETS.format(
-            plan=document.read_text(), version=project.version,
-            key=_base(project)["spec_args"]["key"])}], ctx)).strip()
+            plan=document.read_text(), version=project.version, key=key, start=board.next_ticket(key))}],
+            ctx)).strip()
         if LEFT.search(tickets):
-            ProjectMemory(Path(project.dir)).add_build_section(f"## Build version {project.version}\n\n{tickets}\n")
+            board.add_build_section(f"## Build version {project.version}\n\n{tickets}\n")
         return Done({})
 
     async def code_plan(ctx: Context) -> Outcome:
@@ -440,8 +445,10 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             raise Fatal("the planner returned no plan")
         memory.prepare(ctx.job.parent or ctx.job.id, project.request(), plan)  # .law/PROMPT.md = the agreed plan
         await ctx.progress("🗂 writing the tickets for the board")
+        memory.drop_unstarted_builds()  # a revised plan replaces the tickets of one nobody started
+        key = _base(project)["spec_args"]["key"]
         tickets = (await answer(rt, "translator", [{"role": "user", "content": CODE_TICKETS.format(
-            plan=plan, version=project.version, key=_base(project)["spec_args"]["key"])}], ctx)).strip()
+            plan=plan, version=project.version, key=key, start=memory.next_ticket(key))}], ctx)).strip()
         if LEFT.search(tickets):  # the board shows them before the go; the build sessions work from them
             memory.add_build_section(f"## Build version {project.version}\n\n{tickets}\n")
         return Done({"plan": plan})

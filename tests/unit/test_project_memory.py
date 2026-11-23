@@ -131,3 +131,24 @@ def test_a_note_on_a_finished_ticket_becomes_the_next_ticket(tmp_path):
     assert "then do DB-4" in (law / "NOTES.md").read_text()
     assert board.deliver_note(tmp_path, "DB-2", "use RM, not USD") == "the agent gets it at its next action"
     assert "(on DB-2) use RM, not USD" in (law / "NOTES.md").read_text()
+
+
+def test_replan_drops_unstarted_build_and_keeps_numbering(tmp_path: Path) -> None:
+    """2026-11-24: a No go added plan v2's tickets beside v1's, with the same IDs (DBCT-9 twice)."""
+    memory = ProjectMemory(tmp_path)
+    memory.prepare("j1", "req", "brief")
+    memory.add_build_section("## Build version 1\n\n### M1 A\n- [x] K-1 done\n- [ ] K-2 open\n")
+    memory.add_build_section("## Build version 2\n\n### M1 B\n- [ ] K-3 never started\n")
+    assert memory.drop_unstarted_builds() == ["## Build version 2"]
+    plan = memory.plan_text()
+    assert "## Build version 1" in plan and "K-1 done" in plan and "Build version 2" not in plan
+    assert memory.next_ticket("K") == 3
+    memory.add_build_section("## Build version 3\n\n### M1 C\n- [ ] K-3 new\n")
+    assert memory.plan_text().count("## Build version") == 2
+
+
+def test_next_ticket_on_empty_board(tmp_path: Path) -> None:
+    memory = ProjectMemory(tmp_path)
+    memory.prepare("j1", "req", "brief")
+    assert memory.drop_unstarted_builds() == []
+    assert memory.next_ticket("DBCT") == 1

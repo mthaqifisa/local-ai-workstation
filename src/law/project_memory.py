@@ -46,6 +46,7 @@ COMMITTED = ("PLAN.md", "PROGRESS.md", "RESEARCH.md", "REQUESTS.md", "PROMPT.md"
              "project.json", "check.sh")
 GITIGNORE = "*\n!.gitignore\n" + "".join(f"!{name}\n" for name in COMMITTED)
 
+DONE_TICKET = re.compile(r"^\s*- \[[xX]\]", re.MULTILINE)
 BUILD_SECTION = re.compile(r"^## Build version \d+.*?(?=^#{1,2} |\Z)", re.MULTILINE | re.DOTALL)
 
 
@@ -86,6 +87,23 @@ class ProjectMemory:
             return False
         (self.dir / "PLAN.md").write_text("\n\n".join([now.rstrip(), *(s.rstrip() for s in lost)]) + "\n")
         return True
+
+    def drop_unstarted_builds(self) -> list[str]:
+        """Remove the `## Build version N` sections with no ticket done: a plan the owner sent back before any work
+        (seen 2026-11-24: a No go added plan v2's tickets beside v1's, so the board held both plans). Returns the
+        removed headings. Sections with work done stay: they are the project's history."""
+        now = self.plan_text()
+        dropped = [s for s in BUILD_SECTION.findall(now) if not DONE_TICKET.search(s)]
+        if dropped:
+            for section in dropped:
+                now = now.replace(section, "")
+            (self.dir / "PLAN.md").write_text(re.sub(r"\n{3,}", "\n\n", now).rstrip() + "\n")
+        return [s.partition("\n")[0].strip() for s in dropped]
+
+    def next_ticket(self, key: str) -> int:
+        """The first free ticket number for `key`, so a new build version never reuses an ID on the board."""
+        found = [int(n) for n in re.findall(rf"\b{re.escape(key)}-(\d+)", self.plan_text())]
+        return max(found, default=0) + 1
 
     def add_build_section(self, section: str) -> None:
         heading = section.partition("\n")[0]
