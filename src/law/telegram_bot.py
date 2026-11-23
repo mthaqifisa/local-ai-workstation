@@ -1103,7 +1103,7 @@ def deliverables(job: dict[str, Any]) -> list[Path]:
         return []
     folder, since = Path(str(payload["dir"])), float(job.get("started") or job.get("created") or 0)
     sent = deliver.already_sent(LawPaths.from_env().data / deliver.SENT_LOG)  # the agent sent these itself
-    skip = {".law", ".git", "node_modules", ".venv", "venv", "__pycache__", "build", "dist"}
+    skip = {".law", ".git", "node_modules", ".venv", "venv", "__pycache__", "build", "dist", "pages", "qa"}  # pages: checks
     found = []
     for f in folder.rglob("*") if folder.is_dir() else []:
         if (f.is_file() and f.suffix.lower() in DOC_SUFFIXES and not skip & set(f.relative_to(folder).parts)
