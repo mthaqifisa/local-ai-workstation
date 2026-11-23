@@ -740,11 +740,13 @@ class LawBot:
             await self.bot.send_message(chat, markdown, reply_markup=markup)
 
     async def _send(self, chat: int, markdown: str) -> None:
-        try:
-            await self.bot.send_message(chat, to_telegram_html(markdown), parse_mode="HTML",
-                                        disable_web_page_preview=True)
-        except Exception:  # Telegram rejected the markup: never lose the answer, send it plain
-            await self.bot.send_message(chat, markdown)
+        """Send Markdown as HTML, split under Telegram's 4,096-character limit (/help is longer)."""
+        for part in split_message(markdown, limit=3500):
+            try:
+                await self.bot.send_message(chat, to_telegram_html(part), parse_mode="HTML",
+                                            disable_web_page_preview=True)
+            except Exception:  # Telegram rejected the markup: never lose the answer, send it plain
+                await self.bot.send_message(chat, part)
 
     async def _edit(self, reply: dict[str, Any], text: str, *, rich: bool = False) -> None:
         """Update the job's status message in place. Without one (a job submitted elsewhere or resumed after a
@@ -967,8 +969,8 @@ LIVE = {"queued", "running", "waiting"}
 COMMANDS: list[tuple[str, str, str]] = [
     ("help", "Everything Tony can do", "/help"),
     ("rnd", "Start a book, report or research paper as a project in ~/RnD (template)", "/rnd init"),
-    ("amend", "Ask for a change in an R&D document: a ticket the writer fixes, the editor re-checks",
-     "/amend digital-bank Chapter 3: add the DuitNow QR flow"),
+    ("amend", "Ask for a change in a project (same as /bugfix): a ticket the agent fixes, then QA (code) or the "
+     "editor (R&D) re-checks", "/amend digital-bank Chapter 3: add the DuitNow QR flow"),
     ("improve", "Have LAW improve itself: an agent builds and tests it, you Apply or Reject", "/improve answer "
      "follow-up questions about a memo without starting an agent"),
     ("new", "Start a new conversation (Tony forgets the earlier messages)", "/new"),
@@ -988,7 +990,8 @@ COMMANDS: list[tuple[str, str, str]] = [
      "/changes office-chat add file sharing"),
     ("allgood", "Accept the build: the project is done", "/allgood office-chat"),
     ("email", "Email a project's latest document (proposal or handover) again", "/email office-chat"),
-    ("note", "Tell the agent building a project something while it works", "/note office-chat use the PEM files"),
+    ("note", "Tell a project's agent something; name a finished ticket to get a follow-up ticket for it",
+     "/note digital-bank DB-1 the ledger diagram should show the hold account"),
     ("qa", "QA tests a project's running product now and reports bugs", "/qa office-chat"),
     ("bugfix", "Report a bug: the agent fixes it and QA retests the product",
      "/bugfix office-chat the send button does nothing"),
@@ -1012,6 +1015,29 @@ COMMANDS: list[tuple[str, str, str]] = [
     ("retry", "Run a failed job again from the step that failed (earlier work is kept)", "/retry 8f22ebbaef49"),
 ]
 
+PROJECT_CHEATSHEET = (
+    "**Projects cheat sheet**\n"
+    "Three kinds, each starts with `init` (a template to fill in and send back):\n"
+    "• `/code init`: software, a short plan here → your go → build and test (folder in ~/SourceCode)\n"
+    "• `/project init`: software with research, a proposal PDF and a handover document\n"
+    "• `/rnd init`: a book, report or research paper (folder in ~/RnD), written chapter by chapter\n"
+    "Or just tell Tony (\"write a book about …\", \"build an app that …\"): it starts the right kind.\n"
+    "Every project has a board (Console → Projects): a plan, tickets, progress notes, and your **Go / No go** and "
+    "**All good / Needs changes** buttons here.\n"
+    "While it runs:\n"
+    "• `/note <project> <text>`: the agent gets it at its next action\n"
+    "• `/note <project> <ticket> <text>` on a finished ticket (e.g. chapter 1 while chapter 2 is written): a new "
+    "ticket to revise it, done right after the current one\n"
+    "• `/amend` (or `/bugfix`) `<project> <what to change>`: a ticket the agent fixes; QA (code) or the editor "
+    "(R&D: fact-check and page check) re-checks it\n"
+    "• `/qa <project>`: test it now; `/jobs <project>`: progress with Retry / Skip / Restart\n"
+    "At the end, QA (code) or the editor (R&D) checks everything; each problem becomes a ticket the agent fixes, "
+    "until the check passes. Then you verify.\n"
+    "**Files**: an agent's documents arrive here with its answer; ask \"send me the memo\" for an earlier one.\n"
+    "**LAW improves itself**: `/improve <what>`, or Tony proposes one; you get **Apply / Reject** after it is "
+    "built and tested."
+)
+
 HELP_TEXT = (
     "**Tony — your local AI** (runs on your Mac; nothing leaves it)\n\n"
     "Just type to ask anything; Tony remembers the recent conversation (/new starts over). Short replies come "
@@ -1021,11 +1047,7 @@ HELP_TEXT = (
     "**Voice note** → transcribed and answered. **Photo** → described or answered about "
     "(add a question as caption).\n\n"
     + "\n".join(f"/{c} — {d}\n  e.g. `{ex}`" for c, d, ex in COMMANDS if c != "help")
-    + "\n\n**Projects**: `/project init` (full SDLC) or `/code init` (code only) sends a template; fill it in "
-    "and send it back. A project researches and emails a proposal; a code-only one posts a short plan here. Then "
-    "**Go / No go**: on Go, Tony prepares the tools, builds in milestones, tests and fixes until an independent "
-    "review passes (a project also writes a handover document with screenshots), then asks you to verify: "
-    "**All good** finishes it, **Needs changes** brings a revised proposal or plan and the loop repeats.\n"
+    + "\n\n" + PROJECT_CHEATSHEET + "\n"
     "\n**Music**: say the genre/vibe, duration (up to 4 min) and theme; add your own lyrics after a line "
     "`lyrics:` or Tony writes them.\n"
     "**Video**: say the duration (2-10 s), subject and style; or send a photo with /animate."

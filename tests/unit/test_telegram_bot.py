@@ -352,3 +352,17 @@ async def test_a_rate_limited_edit_does_not_post_a_new_message():
     reply = {"chat_id": 7, "status_id": 1}
     await telegram_bot.LawBot._edit(bot, reply, "… writing", rich=False)  # type: ignore[arg-type]
     assert posted == [] and reply["status_id"] == 1
+
+
+async def test_long_messages_such_as_help_are_split_under_telegrams_limit():
+    from types import SimpleNamespace
+
+    sent: list[str] = []
+
+    async def send(chat, text, **_k):
+        sent.append(text)
+
+    bot = SimpleNamespace(bot=SimpleNamespace(send_message=send))
+    await telegram_bot.LawBot._send(bot, 7, telegram_bot.HELP_TEXT)  # type: ignore[arg-type]
+    assert len(sent) >= 2 and all(len(x) <= 4096 for x in sent)
+    assert "Projects cheat sheet" in "".join(sent) and "/amend" in "".join(sent)
