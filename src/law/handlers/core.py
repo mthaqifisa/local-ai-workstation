@@ -75,6 +75,35 @@ REVISE_TOOL: dict[str, Any] = {
         },
     },
 }
+SEND_FILE_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "send_file",
+        "description": ("Attach an existing file to your reply in this chat (a memo, report, PDF, image or audio an "
+                        "agent made, as named in the conversation). Use it when the user asks for a file; never "
+                        "start an agent just to send one."),
+        "parameters": {"type": "object", "properties": {"path": {"type": "string",
+                                                                  "description": "Absolute path of the file"}},
+                       "required": ["path"]},
+    },
+}
+SEND_MAX_BYTES = 45 * 1024 * 1024  # Telegram bots may send up to 50 MB
+
+
+def attach(paths: LawPaths, raw: str, files: list[str]) -> str:
+    """`send_file`: check the path and queue it for the reply."""
+    f = Path(raw).expanduser()
+    if not f.is_absolute() or not f.resolve().is_relative_to(paths.user_home.resolve()):
+        return f"error: give an absolute path in {display(paths.user_home)}"
+    if not f.is_file():
+        return f"error: no such file: {display(f)}"
+    if f.stat().st_size > SEND_MAX_BYTES:
+        return "error: the file is over 45 MB, too big for Telegram"
+    if str(f) not in files:
+        files.append(str(f))
+    return f"attached {f.name}; it is sent with your reply"
+
+
 AGENT_TOOL: dict[str, Any] = {
     "type": "function",
     "function": {
@@ -215,7 +244,8 @@ AgentStarter = Callable[[dict[str, Any]], Awaitable[str]]
 
 
 async def answer(rt: Runtime, role: str, messages: list[dict[str, Any]], ctx: Context | None = None, *,
-                 model: str | None = None, agents: AgentStarter | None = None) -> str:
+                 model: str | None = None, agents: AgentStarter | None = None,
+                 files: list[str] | None = None) -> str:
     """Ask the role's model (or `model`, e.g. the one a shared slot runs on) at the role's reasoning effort, with
     the calculator if the role has it and `start_agent` when `agents` is given.
     If the model thinks itself out of tokens, retry one step lower."""
@@ -224,6 +254,7 @@ async def answer(rt: Runtime, role: str, messages: list[dict[str, Any]], ctx: Co
     on_thought = ctx.thought if ctx is not None else None
     tools = [calc.TOOL_SPEC] if "python" in r.tools else []
     tools += [AGENT_TOOL, PROJECT_TOOL, REVISE_TOOL] if agents is not None else []
+    tools += [SEND_FILE_TOOL] if files is not None else []
 
     async def run_tool(name: str, args: dict[str, Any]) -> str:
         if name == "run_python" and "python" in r.tools:
@@ -241,6 +272,8 @@ async def answer(rt: Runtime, role: str, messages: list[dict[str, Any]], ctx: Co
             if ctx is not None:  # visible in the job log, so a claimed run can be checked against a real one
                 await ctx.progress(f"🧮 {role} ran Python: {out.splitlines()[-1][:120] if out else 'no output'}")
             return out
+        if name == "send_file" and files is not None:
+            return attach(rt.paths, str(args.get("path", "")), files)
         if name in {"start_agent", "start_project", "revise_project"} and agents is not None:
             return await agents({**args, "_tool": name})
         return f"error: unknown tool {name}"
@@ -429,9 +462,12 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         # Tony: which projects exist and where each stands, fresh for every message
         facts = projects_card(rt.paths) if agents is not None else ""
         messages = with_facts(build_messages(rt, role, p["prompt"], history, images), facts)
-        text = await answer(rt, role, messages, ctx,
-                            model=model, agents=agents)
-        agent_job = {"agent_job": started[0]} if started else {}
+        files: list[str] = []
+        text = await answer(rt, role, messages, ctx, model=model, agents=agents,
+                            files=files if agents is not None else None)
+        agent_job: dict[str, Any] = {"agent_job": started[0]} if started else {}
+        if files:
+            agent_job["files"] = files
         if not (p.get("quality", True) and root):
             return Done({"answer": text, **agent_job})
         skip = review_skip(rt, ctx, role, text, started[0] if started else None)
@@ -443,7 +479,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             {"kind": "judge", "payload": {"prompt": p["prompt"], "history": history, "facts": facts}},
             {"kind": "revise", "payload": {"role": role, "prompt": p["prompt"], "history": history, "facts": facts,
                                            **seen}},
-        ], carry={"answer": text})
+        ], carry={"answer": text, **({"files": files} if files else {})})
 
     async def draft(ctx: Context) -> Outcome:
         return await ask(ctx)
@@ -464,7 +500,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         carry = ctx.job.payload["_carry"]
         verdict = carry["verdict"]
         if verdict["score"] >= PASS_SCORE:
-            return Done({"answer": carry["answer"], "verdict": verdict, "revised": False})
+            return Done({"answer": carry["answer"], "verdict": verdict, "revised": False,
+                         **({"files": carry["files"]} if carry.get("files") else {})})
         role = ctx.job.payload["role"]
         await ctx.progress(f"revising (review score {verdict['score']}/5)")
         feedback = "\n".join(f"- {i}" for i in verdict["issues"]) or "- improve correctness and completeness"
@@ -475,6 +512,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         messages = with_facts(build_messages(rt, role, prompt, ctx.job.payload.get("history"),
                                              _images(ctx.job.payload)), ctx.job.payload.get("facts") or "")
         text = await answer(rt, role, messages, ctx, model=job_model(rt, ctx, role))
-        return Done({"answer": text, "verdict": verdict, "revised": True})
+        return Done({"answer": text, "verdict": verdict, "revised": True,
+                     **({"files": carry["files"]} if carry.get("files") else {})})
 
     return {"ask": ask, "draft": draft, "judge": judge, "revise": revise}

@@ -821,3 +821,18 @@ async def test_reviewer_sees_the_projects_tony_was_given(setup, sandbox, monkeyp
     await run_ask(rt, store, w, [2], role="assistant")
     judge_prompt = next(text for _, text in rt.llm.calls if "Score the RESPONSE" in str(text))
     assert "FACTS THE ASSISTANT WAS GIVEN" in judge_prompt and "Digital Bank" in judge_prompt
+
+
+def test_send_file_attaches_only_real_files_in_home(sandbox):
+    from law.handlers.core import attach
+
+    paths = LawPaths(repo=REPO, home=sandbox / "LAW", user_home=sandbox)
+    memo = sandbox / "LAW" / "outputs" / "agents" / "x" / "memo.md"
+    memo.parent.mkdir(parents=True)
+    memo.write_text("memo")
+    files: list[str] = []
+    assert attach(paths, str(memo), files).startswith("attached memo.md") and files == [str(memo)]
+    assert attach(paths, str(memo), files) and files == [str(memo)]  # once
+    assert attach(paths, str(sandbox / "nope.pdf"), files).startswith("error: no such file")
+    assert attach(paths, "/etc/hosts", files).startswith("error: give an absolute path")
+    assert attach(paths, "memo.md", files).startswith("error")

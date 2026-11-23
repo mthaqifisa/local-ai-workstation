@@ -619,7 +619,8 @@ class LawBot:
         await self._edit(reply, parts[0], rich=True)
         for part in parts[1:]:
             await self._send(chat, part)
-        for doc in deliverables(final):  # an agent's documents arrive with its answer, not on request
+        attached = [Path(f) for f in result.get("files") or []]  # Tony's send_file (checked when attached)
+        for doc in attached or deliverables(final):  # an agent's documents arrive with its answer, not on request
             try:
                 await self.bot.send_document(chat, FSInputFile(str(doc)))
             except Exception:  # the answer names the file; a failed upload must not lose the reply
@@ -1137,8 +1138,9 @@ class ChatHistory:
         role = payload.get("role") or ""
         outcome = (result.get("answer") or result.get("text") or "") if job.get("status") == "done" \
             else f"{job.get('status')}: {job.get('error')}"
+        files = "".join(f"\nFile: {f}" for f in deliverables(job))  # so "send me the memo" can attach it
         self.add(chat, "assistant", f"[{job.get('kind')} job {job.get('id')}{f' ({role} agent)' if role else ''} "
-                                    f"{job.get('status')}] {outcome}".strip())
+                                    f"{job.get('status')}] {outcome}{files}".strip())
 
     def clear(self, chat: int) -> None:
         self._file(chat).unlink(missing_ok=True)

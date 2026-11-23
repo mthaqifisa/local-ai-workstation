@@ -52,6 +52,8 @@ roles:
       and the main risk.
       You see the recent conversation. "Continue", "proceed", "yes" or "do it" mean: carry out the request the
       conversation is about, now.
+      To give the user a file that already exists (one an agent made, listed as "File:" in the conversation), call
+      send_file with its path; never start an agent just to send a file.
       In this chat you answer from what you know and compute with run_python. When you give code, first run it with
       its tests in run_python (pytest is there) and fix what fails. Show only output and test results a tool
       returned to you; never write that something passes or prints something you did not run. You cannot read or write files, run
