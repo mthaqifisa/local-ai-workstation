@@ -317,7 +317,7 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 ### v6.1 enhancements (owner brief 2026-11-20; brief kept outside the repo)
 - [x] E1 Pins + runtime upgrade: registry `pins:` (OpenCode 1.18.7 via npm, oMLX 0.8.0), Open WebUI 0.12.5 by digest, doctor version check (ADR-0024)
 - [x] E2 Speculative decoding: DFlash 2 on the 27B 8-bit, 2.6-2.8x decode on code, golden 10/10, owner yes (ADR-0025)
-- [ ] E3 fast-lane 4-bit; E4 coder-fast DFlash
+- [x] E3 fast-lane 4-bit: rejected (tool calls wrong in 6/6 runs), stays 8-bit; E4 coder-fast unchanged (no drafter) — ADR-0002
 - [ ] Chapter-1 trial of the Digital Bank book (/rnd), verified before anything else
 - [ ] Digital Bank book via Tony (/rnd, ~/RnD/digital-bank) LAST: after all pending items, the HTML page, cache and model cleanup; stop-fix-restart on any issue; monitored every 2 h
 - [x] E8 lead-note approval: drafts on the 2nd stall, Telegram Approve/Edit/Drop, 60 min = drop, rate every 10 (ADR-0026)
@@ -332,3 +332,4 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - 2026-11-23 20:10 Telegram testing round: fixed rewrite wording, unrun test claims (pytest in sandbox, reviewer re-runs code), reviewer blind to project facts, dropped re-asked question, invented facts in agent requests, files not attached; added typing indicator, projects card, send_file, old-output clearing, self-healing packages and the self-improvement loop (ADR-0027).
 - 2026-11-23 20:45 Hardware wear: SSD 2% used (smartctl), ~190 GB/day written incl. downloads; battery 100% / 48 cycles, held at 80%; display now awake only while jobs run (worker caffeinate -d). RUNBOOK section.
 - 2026-11-23 21:05 /rnd: document projects (books, reports, research papers) in ~/RnD, written by the writer agent chapter by chapter with a render gate and a book rubric; Tony starts them from chat too. ~/SourceCode/RnD moved to ~/RnD (owner).
+- 2026-11-23 22:20 Speed-ups measured: 2 concurrent requests (none at 32K), SpecPrefill (lossy, rejected), ANE prefill (7%, rejected), 35B-A3B 4-bit (+58% but wrong tool calls, rejected, deleted). ADR-0025/0002.

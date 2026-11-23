@@ -1,6 +1,6 @@
 # Model benchmarks
 
-Generated 2026-11-23 22:01 by `scripts/bench_models.py report` from raw results in `~/LAW/outputs/bench/`. Do not edit by hand. Medians of the timed runs; memory is the peak oMLX reported for loaded models. Tool-call rows have no decode figure (the call arrives as one chunk), so their TTFT is the whole turn; the Calls column says whether every run made the baseline's call. Protocol: ADR-0025.
+Generated 2026-11-23 22:12 by `scripts/bench_models.py report` from raw results in `~/LAW/outputs/bench/`. Do not edit by hand. Medians of the timed runs; memory is the peak oMLX reported for loaded models. Tool-call rows have no decode figure (the call arrives as one chunk), so their TTFT is the whole turn; the Calls column says whether every run made the baseline's call. Protocol: ADR-0025.
 
 | Config | Model | oMLX | Workload | Context | Decode tok/s | Prefill tok/s | TTFT s | Peak GB | Runs | Calls |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -46,3 +46,15 @@ Generated 2026-11-23 22:01 by `scripts/bench_models.py report` from raw results 
 | 27b-dflash-aneprefill | qwen3.8-27b-8bit | 0.8.0 | prose | 32K | 16.5 | 361.6 | 85.97 | 33.63 | 3/3 | - |
 | 27b-dflash-aneprefill | qwen3.8-27b-8bit | 0.8.0 | toolcall | 4K | - | 300.6 | 9.81 | 33.63 | 3/3 | ok |
 | 27b-dflash-aneprefill | qwen3.8-27b-8bit | 0.8.0 | toolcall | 32K | - | 350.7 | 87.18 | 33.63 | 3/3 | ok |
+| 35b-a3b-8bit | qwen3.6-35b-a3b-8bit | 0.8.0 | code | 4K | 70.1 | 2867.7 | 1.21 | 39.61 | 3/3 | - |
+| 35b-a3b-8bit | qwen3.6-35b-a3b-8bit | 0.8.0 | code | 32K | 51.5 | 2241.6 | 13.91 | 39.61 | 3/3 | - |
+| 35b-a3b-8bit | qwen3.6-35b-a3b-8bit | 0.8.0 | prose | 4K | 73.0 | 2885.9 | 1.17 | 39.61 | 3/3 | - |
+| 35b-a3b-8bit | qwen3.6-35b-a3b-8bit | 0.8.0 | prose | 32K | 49.2 | 1892.6 | 16.43 | 39.61 | 3/3 | - |
+| 35b-a3b-8bit | qwen3.6-35b-a3b-8bit | 0.8.0 | toolcall | 4K | - | 1803.4 | 1.64 | 39.61 | 3/3 | ok |
+| 35b-a3b-8bit | qwen3.6-35b-a3b-8bit | 0.8.0 | toolcall | 32K | - | 1860.8 | 16.43 | 39.61 | 3/3 | ok |
+| 35b-a3b-4bit | qwen3.6-35b-a3b-4bit | 0.8.0 | code | 4K | 110.6 | 3011.5 | 1.15 | 21.42 | 3/3 | - |
+| 35b-a3b-4bit | qwen3.6-35b-a3b-4bit | 0.8.0 | code | 32K | 67.6 | 2106.5 | 14.8 | 21.42 | 3/3 | - |
+| 35b-a3b-4bit | qwen3.6-35b-a3b-4bit | 0.8.0 | prose | 4K | 109.8 | 2347.4 | 1.44 | 21.42 | 3/3 | - |
+| 35b-a3b-4bit | qwen3.6-35b-a3b-4bit | 0.8.0 | prose | 32K | 67.5 | 2080.7 | 14.94 | 21.42 | 3/3 | - |
+| 35b-a3b-4bit | qwen3.6-35b-a3b-4bit | 0.8.0 | toolcall | 4K | - | 2574.0 | 1.15 | 21.42 | 3/3 | CHANGED |
+| 35b-a3b-4bit | qwen3.6-35b-a3b-4bit | 0.8.0 | toolcall | 32K | - | 2051.1 | 14.91 | 21.42 | 3/3 | CHANGED |

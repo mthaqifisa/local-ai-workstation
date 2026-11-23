@@ -28,3 +28,12 @@ Rules: one heavy model resident (≤ 45 GB); light models (embed, rerank, STT, T
   prefill activations, not KV.
 - Decision: the `coder` role uses Qwen3.8-27B 8-bit (28 GB; SWE-bench Pro 61.7 on its card), leaving ~18 GB for long
   contexts. Qwen3-Coder-Next stays as `coder_fast` (32k context) for short tasks. Trade-off: ~10 vs ~55 tokens/s.
+
+## Revision 2026-11-23: fast lane stays 8-bit (E3), coder-fast unchanged (E4)
+Measured with `scripts/bench_models.py` (docs/BENCHMARKS.md): `lmstudio-community/Qwen3.6-35B-A3B-MLX-4bit` decodes
+110 tok/s at 4K and 68 at 32K against 70 and 51 for the 8-bit build, at 21 GB instead of 40 GB peak. But its tool
+calls on the recorded Pantry turn were wrong in all 6 runs (a path without its `api/` folder, and at 4K a file that
+is not in the project), where the 8-bit build made the correct call every time. Tony, the router and the operator
+depend on tool calls, so the 4-bit build fails the quality gate and was deleted; the fast lane stays on the 8-bit
+model. Qwen3-Coder-Next 4-bit (coder_fast) keeps its configuration: oMLX 0.8.0 ships no DFlash drafter for it, and
+the brief rules out custom work for its smaller expected gain.
