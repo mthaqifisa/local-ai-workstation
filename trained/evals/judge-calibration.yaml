@@ -1,0 +1,1453 @@
+# Judge calibration set (ADR-0007, built by scripts/judge_calibration.py build). Good answers are from a passing golden eval;
+# each flawed variant states its seeded flaw. Checked by hand against each case's request before use.
+version: 1
+items:
+- id: calc-compound-interest/good
+  case: calc-compound-interest
+  kind: good
+  flaw: ''
+  prompt: An investment of 25,000 grows at 6.5% per year compounded monthly for 7 years. What is the final value, rounded
+    to the nearest whole number? Give the number on the last line.
+  response: |
+    **Answer: 39,356**
+
+    **Method** — monthly compounding: FV = P·(1 + r/n)^(n·t)
+    - P = 25,000, r = 0.065, n = 12, t = 7 → 84 compounding periods
+    - FV = 25,000 × (1.0054167)^84 = 39,355.98
+
+    **Sanity check** — 7 years at 6.5% annual is a growth factor of roughly (1.065)^7 ≈ 1.554, i.e. ≈ 38,850 with annual compounding; monthly compounding adds a little, and 39,356 sits right where expected.
+
+    39356
+- id: calc-compound-interest/factual
+  case: calc-compound-interest
+  kind: factual
+  flaw: The final answer is 38,849 (annual compounding) instead of 39,356 for monthly compounding, contradicting its own working.
+    [seeded by hand 2026-11-23]
+  prompt: An investment of 25,000 grows at 6.5% per year compounded monthly for 7 years. What is the final value, rounded
+    to the nearest whole number? Give the number on the last line.
+  response: |
+    **Answer: 39,356**
+
+    **Method** — monthly compounding: FV = P·(1 + r/n)^(n·t)
+    - P = 25,000, r = 0.065, n = 12, t = 7 → 84 compounding periods
+    - FV = 25,000 × (1.0054167)^84 = 39,355.98
+
+    **Sanity check** — 7 years at 6.5% annual is a growth factor of roughly (1.065)^7 ≈ 1.554, i.e. ≈ 38,850 with annual compounding; monthly compounding adds a little, and 39,356 sits right where expected.
+
+    38849
+- id: calc-compound-interest/omission
+  case: calc-compound-interest
+  kind: omission
+  flaw: The final number on the last line, which the request requires, is removed. [seeded by hand 2026-11-23]
+  prompt: An investment of 25,000 grows at 6.5% per year compounded monthly for 7 years. What is the final value, rounded
+    to the nearest whole number? Give the number on the last line.
+  response: |
+    **Answer: 39,356**
+
+    **Method** — monthly compounding: FV = P·(1 + r/n)^(n·t)
+    - P = 25,000, r = 0.065, n = 12, t = 7 → 84 compounding periods
+    - FV = 25,000 × (1.0054167)^84 = 39,355.98
+
+    **Sanity check** — 7 years at 6.5% annual is a growth factor of roughly (1.065)^7 ≈ 1.554, i.e. ≈ 38,850 with annual compounding; monthly compounding adds a little, and 39,356 sits right where expected.
+- id: calc-loan-payment/good
+  case: calc-loan-payment
+  kind: good
+  flaw: ''
+  prompt: Monthly payment on a 400,000 loan at 4.2% annual interest over 30 years (standard amortisation)? Round to 2 decimals
+    and give the number on the last line.
+  response: |
+    ## Answer
+
+    **Monthly payment: $1,956.07** (unrounded: $1,956.0687)
+
+    ## Method
+
+    Standard fully-amortising annuity formula:
+
+    M = P · r · (1+r)ⁿ / ((1+r)ⁿ − 1)
+
+    - P = 400,000 (principal)
+    - Annual rate = 4.2% → monthly rate r = 0.042 / 12 = 0.0035
+    - n = 30 × 12 = 360 monthly payments
+
+    Calculation (Decimal precision, 50 digits):
+    - (1+r)³⁶⁰ ≈ 3.77894…
+    - M = 400,000 × 0.0035 × 3.77894… / (3.77894… − 1) = **1,956.068694854… → 1,956.07**
+
+    ## Sanity checks
+
+    | Check | Result |
+    |---|---|
+    | Month 1 interest = 400,000 × 0.0035 | 1,400.00 (so 556.07 principal — reasonable at 4.2%) |
+    | Full amortisation simulation, 360 payments | Balance after month 360 ≈ 0.000000012 → ✓ payoff exact |
+    | Total repaid over 30 yrs | 1,956.0687 × 360 ≈ 704,184.73 |
+    | Total interest over 30 yrs | ≈ 304,184.73 (≈ 76% of principal, typical for 30-yr at low rate) |
+    | Cross-check in float64 | 1,956.068694854088 — matches Decimal result |
+
+    ## Assumptions
+    - 12 equal monthly payments in arrears, first payment one month after disbursement.
+    - Rate 4.2% is nominal APR compounded monthly (standard mortgage convention).
+    - No fees, insurance, or rounding adjustments on the payment itself.
+
+    **1956.07**
+- id: calc-loan-payment/factual
+  case: calc-loan-payment
+  kind: factual
+  flaw: The final payment is 1,856.07 instead of 1,956.07, contradicting the working. [seeded by hand 2026-11-23]
+  prompt: Monthly payment on a 400,000 loan at 4.2% annual interest over 30 years (standard amortisation)? Round to 2 decimals
+    and give the number on the last line.
+  response: |
+    ## Answer
+
+    **Monthly payment: $1,956.07** (unrounded: $1,956.0687)
+
+    ## Method
+
+    Standard fully-amortising annuity formula:
+
+    M = P · r · (1+r)ⁿ / ((1+r)ⁿ − 1)
+
+    - P = 400,000 (principal)
+    - Annual rate = 4.2% → monthly rate r = 0.042 / 12 = 0.0035
+    - n = 30 × 12 = 360 monthly payments
+
+    Calculation (Decimal precision, 50 digits):
+    - (1+r)³⁶⁰ ≈ 3.77894…
+    - M = 400,000 × 0.0035 × 3.77894… / (3.77894… − 1) = **1,956.068694854… → 1,956.07**
+
+    ## Sanity checks
+
+    | Check | Result |
+    |---|---|
+    | Month 1 interest = 400,000 × 0.0035 | 1,400.00 (so 556.07 principal — reasonable at 4.2%) |
+    | Full amortisation simulation, 360 payments | Balance after month 360 ≈ 0.000000012 → ✓ payoff exact |
+    | Total repaid over 30 yrs | 1,956.0687 × 360 ≈ 704,184.73 |
+    | Total interest over 30 yrs | ≈ 304,184.73 (≈ 76% of principal, typical for 30-yr at low rate) |
+    | Cross-check in float64 | 1,956.068694854088 — matches Decimal result |
+
+    ## Assumptions
+    - 12 equal monthly payments in arrears, first payment one month after disbursement.
+    - Rate 4.2% is nominal APR compounded monthly (standard mortgage convention).
+    - No fees, insurance, or rounding adjustments on the payment itself.
+
+    **1856.07**
+- id: calc-loan-payment/omission
+  case: calc-loan-payment
+  kind: omission
+  flaw: The final number on the last line, which the request requires, is removed. [seeded by hand 2026-11-23]
+  prompt: Monthly payment on a 400,000 loan at 4.2% annual interest over 30 years (standard amortisation)? Round to 2 decimals
+    and give the number on the last line.
+  response: |
+    ## Answer
+
+    **Monthly payment: $1,956.07** (unrounded: $1,956.0687)
+
+    ## Method
+
+    Standard fully-amortising annuity formula:
+
+    M = P · r · (1+r)ⁿ / ((1+r)ⁿ − 1)
+
+    - P = 400,000 (principal)
+    - Annual rate = 4.2% → monthly rate r = 0.042 / 12 = 0.0035
+    - n = 30 × 12 = 360 monthly payments
+
+    Calculation (Decimal precision, 50 digits):
+    - (1+r)³⁶⁰ ≈ 3.77894…
+    - M = 400,000 × 0.0035 × 3.77894… / (3.77894… − 1) = **1,956.068694854… → 1,956.07**
+
+    ## Sanity checks
+
+    | Check | Result |
+    |---|---|
+    | Month 1 interest = 400,000 × 0.0035 | 1,400.00 (so 556.07 principal — reasonable at 4.2%) |
+    | Full amortisation simulation, 360 payments | Balance after month 360 ≈ 0.000000012 → ✓ payoff exact |
+    | Total repaid over 30 yrs | 1,956.0687 × 360 ≈ 704,184.73 |
+    | Total interest over 30 yrs | ≈ 304,184.73 (≈ 76% of principal, typical for 30-yr at low rate) |
+    | Cross-check in float64 | 1,956.068694854088 — matches Decimal result |
+
+    ## Assumptions
+    - 12 equal monthly payments in arrears, first payment one month after disbursement.
+    - Rate 4.2% is nominal APR compounded monthly (standard mortgage convention).
+    - No fees, insurance, or rounding adjustments on the payment itself.
+- id: calc-statistics/good
+  case: calc-statistics
+  kind: good
+  flaw: ''
+  prompt: 'Sample standard deviation of: 12, 15, 11, 19, 23, 17, 14. Round to 3 decimals; give the number on the last line.'
+  response: |
+    ## Answer: **4.180**
+
+    **Method (sample standard deviation, n−1 denominator):**
+
+    1. Data: 12, 15, 11, 19, 23, 17, 14 → n = 7
+    2. Mean: 101 / 7 = **15.857143**
+    3. Sum of squared deviations: Σ(xᵢ − x̄)² = **104.857143**
+    4. Sample variance: 104.857143 / (7 − 1) = **17.476190**
+    5. Sample SD: √17.476190 = **4.180453** → rounded to 3 decimals = **4.180**
+
+    **Sanity check:**
+    - NumPy `np.std(data, ddof=1)` = 4.180453381… ✓ matches by hand
+    - Range is 11–23 (width 12); for 7 points a SD of ~4.2 (≈ one-third of the range) is reasonable for a fairly spread sample.
+    - Units: same as the input data (none specified). Precision: 3 decimal places as requested.
+
+    4.180
+- id: calc-statistics/factual
+  case: calc-statistics
+  kind: factual
+  flaw: The final answer is 4.520 instead of 4.180, contradicting the working (outside the 0.002 tolerance). [seeded by hand
+    2026-11-23]
+  prompt: 'Sample standard deviation of: 12, 15, 11, 19, 23, 17, 14. Round to 3 decimals; give the number on the last line.'
+  response: |
+    ## Answer: **4.180**
+
+    **Method (sample standard deviation, n−1 denominator):**
+
+    1. Data: 12, 15, 11, 19, 23, 17, 14 → n = 7
+    2. Mean: 101 / 7 = **15.857143**
+    3. Sum of squared deviations: Σ(xᵢ − x̄)² = **104.857143**
+    4. Sample variance: 104.857143 / (7 − 1) = **17.476190**
+    5. Sample SD: √17.476190 = **4.180453** → rounded to 3 decimals = **4.180**
+
+    **Sanity check:**
+    - NumPy `np.std(data, ddof=1)` = 4.180453381… ✓ matches by hand
+    - Range is 11–23 (width 12); for 7 points a SD of ~4.2 (≈ one-third of the range) is reasonable for a fairly spread sample.
+    - Units: same as the input data (none specified). Precision: 3 decimal places as requested.
+
+    4.520
+- id: calc-statistics/omission
+  case: calc-statistics
+  kind: omission
+  flaw: Step 4 divides by n (7) instead of n-1 (6) and the final answer becomes 3.870, the population SD, not the sample SD
+    the request asks for. [checked by hand 2026-11-23]
+  prompt: 'Sample standard deviation of: 12, 15, 11, 19, 23, 17, 14. Round to 3 decimals; give the number on the last line.'
+  response: |
+    ## Answer: **3.923**
+
+    **Method (sample standard deviation, n−1 denominator):**
+
+    1. Data: 12, 15, 11, 19, 23, 17, 14 → n = 7
+    2. Mean: 101 / 7 = **15.857143**
+    3. Sum of squared deviations: Σ(xᵢ − x̄)² = **104.857143**
+    4. Sample variance: 104.857143 / 7 = **14.979592**
+    5. Sample SD: √14.979592 = **3.870348** → rounded to 3 decimals = **3.870**
+
+    **Sanity check:**
+    - NumPy `np.std(data, ddof=1)` = 4.180453381… ✓ matches by hand
+    - Range is 11–23 (width 12); for 7 points a SD of ~4.2 (≈ one-third of the range) is reasonable for a fairly spread sample.
+    - Units: same as the input data (none specified). Precision: 3 decimal places as requested.
+
+    3.870
+- id: reason-logic/good
+  case: reason-logic
+  kind: good
+  flaw: ''
+  prompt: Alice is older than Bob. Carol is younger than Bob. Dan is older than Alice. Who is the second oldest? Answer with
+    one name on the last line.
+  response: |
+    Let me work through this logically.
+
+    From the given statements:
+    - **Alice is older than Bob** → Alice > Bob
+    - **Carol is younger than Bob** → Bob > Carol
+    - **Dan is older than Alice** → Dan > Alice
+
+    Combining them:
+    - Dan > Alice
+    - Alice > Bob
+    - Bob > Carol
+
+    This gives us the order from oldest to youngest: **Dan, Alice, Bob, Carol**
+
+    The second oldest is **Alice**.
+
+    Alice
+- id: reason-logic/factual
+  case: reason-logic
+  kind: factual
+  flaw: Changed the final answer from 'Alice' to 'Bob' which is incorrect because Alice is the second oldest in the established
+    order Dan > Alice > Bob > Carol. [checked by hand 2026-11-23]
+  prompt: Alice is older than Bob. Carol is younger than Bob. Dan is older than Alice. Who is the second oldest? Answer with
+    one name on the last line.
+  response: |
+    Let me work through this logically.
+
+    From the given statements:
+    - **Alice is older than Bob** → Alice > Bob
+    - **Carol is younger than Bob** → Bob > Carol
+    - **Dan is older than Alice** → Dan > Alice
+
+    Combining them:
+    - Dan > Alice
+    - Alice > Bob
+    - Bob > Carol
+
+    This gives us the order from oldest to youngest: **Dan, Alice, Bob, Carol**
+
+    The second oldest is **Alice**.
+
+    Bob
+- id: reason-logic/omission
+  case: reason-logic
+  kind: omission
+  flaw: The one-name answer on the last line, which the request requires, is removed. [seeded by hand 2026-11-23]
+  prompt: Alice is older than Bob. Carol is younger than Bob. Dan is older than Alice. Who is the second oldest? Answer with
+    one name on the last line.
+  response: |
+    Let me work through this logically.
+
+    From the given statements:
+    - **Alice is older than Bob** → Alice > Bob
+    - **Carol is younger than Bob** → Bob > Carol
+    - **Dan is older than Alice** → Dan > Alice
+
+    Combining them:
+    - Dan > Alice
+    - Alice > Bob
+    - Bob > Carol
+
+    This gives us the order from oldest to youngest: **Dan, Alice, Bob, Carol**
+
+    The second oldest is **Alice**.
+- id: reason-base-rate/good
+  case: reason-base-rate
+  kind: good
+  flaw: ''
+  prompt: A disease affects 1% of people. A test has 95% sensitivity and 90% specificity. If someone tests positive, what
+    is the probability they have the disease? Give a percentage to one decimal on the last line.
+  response: |
+    **Answer: 8.8%** — even a positive result makes disease much less likely than not, due to the low base rate.
+
+    **Method (Bayes' theorem)**
+
+    P(disease | +) = P(+) | disease) × P(disease) / P(+), where:
+    - P(+) = sensitivity × prevalence + (1 − specificity) × (1 − prevalence) = 0.95 × 0.01 + 0.10 × 0.99 = 0.0985
+
+    So P(+|disease) = (0.95 × 0.01) / 0.0985 = 0.0095 / 0.0985 ≈ 0.08756
+
+    **Sanity check (natural frequencies, 10,000 people)**
+    - Infected: 100 → true positives: 95
+    - Uninfected: 9,900 → false positives: 990
+    - Positive: 95 / (95 + 990) = 95 / 1085 ≈ 8.756% ✓ matches the Bayes result.
+
+    Intuition: the test has a 10% false positive rate, and disease affects only 1% of people, so false positives swamp true positives roughly 10:1 — which is exactly why the answer is so low despite a "good" test.
+
+    **Assumptions:** the given 1% prevalence applies to the tested person's population; the test's properties are as stated.
+
+    8.8
+- id: reason-base-rate/factual
+  case: reason-base-rate
+  kind: factual
+  flaw: Changed the false positives count in the sanity check from 990 to 900, which is incorrect because 10% of 9,900 uninfected
+    people is 990, not 900. [checked by hand 2026-11-23]
+  prompt: A disease affects 1% of people. A test has 95% sensitivity and 90% specificity. If someone tests positive, what
+    is the probability they have the disease? Give a percentage to one decimal on the last line.
+  response: |
+    **Answer: 8.8%** — even a positive result makes disease much less likely than not, due to the low base rate.
+
+    **Method (Bayes' theorem)**
+
+    P(disease | +) = P(+) | disease) × P(disease) / P(+), where:
+    - P(+) = sensitivity × prevalence + (1 − specificity) × (1 − prevalence) = 0.95 × 0.01 + 0.10 × 0.99 = 0.0985
+
+    So P(+|disease) = (0.95 × 0.01) / 0.0985 = 0.0095 / 0.0985 ≈ 0.08756
+
+    **Sanity check (natural frequencies, 10,000 people)**
+    - Infected: 100 → true positives: 95
+    - Uninfected: 9,900 → false positives: 900
+    - Positive: 95 / (95 + 990) = 95 / 1085 ≈ 8.756% ✓ matches the Bayes result.
+
+    Intuition: the test has a 10% false positive rate, and disease affects only 1% of people, so false positives swamp true positives roughly 10:1 — which is exactly why the answer is so low despite a "good" test.
+
+    **Assumptions:** the given 1% prevalence applies to the tested person's population; the test's properties are as stated.
+
+    8.8
+- id: reason-base-rate/omission
+  case: reason-base-rate
+  kind: omission
+  flaw: The percentage on the last line, which the request requires, is removed. [seeded by hand 2026-11-23]
+  prompt: A disease affects 1% of people. A test has 95% sensitivity and 90% specificity. If someone tests positive, what
+    is the probability they have the disease? Give a percentage to one decimal on the last line.
+  response: |
+    **Answer: 8.8%** — even a positive result makes disease much less likely than not, due to the low base rate.
+
+    **Method (Bayes' theorem)**
+
+    P(disease | +) = P(+) | disease) × P(disease) / P(+), where:
+    - P(+) = sensitivity × prevalence + (1 − specificity) × (1 − prevalence) = 0.95 × 0.01 + 0.10 × 0.99 = 0.0985
+
+    So P(+|disease) = (0.95 × 0.01) / 0.0985 = 0.0095 / 0.0985 ≈ 0.08756
+
+    **Sanity check (natural frequencies, 10,000 people)**
+    - Infected: 100 → true positives: 95
+    - Uninfected: 9,900 → false positives: 990
+    - Positive: 95 / (95 + 990) = 95 / 1085 ≈ 8.756% ✓ matches the Bayes result.
+
+    Intuition: the test has a 10% false positive rate, and disease affects only 1% of people, so false positives swamp true positives roughly 10:1 — which is exactly why the answer is so low despite a "good" test.
+
+    **Assumptions:** the given 1% prevalence applies to the tested person's population; the test's properties are as stated.
+- id: judgement-vendor/good
+  case: judgement-vendor
+  kind: good
+  flaw: ''
+  prompt: A 40-person bank branch network must choose between a SaaS core-banking add-on and building in-house. Give a recommendation
+    with the 3 decisive factors and the main risk.
+  response: |
+    **Recommendation: buy the SaaS core-banking add-on. Do not build in-house.** For a 40-person branch network, in-house core-banking development is an economic and regulatory misfit: the core is a system of record, which is a permanent, heavily controlled operating cost — not a one-time build. A 40-person organization has neither the engineering bench nor the audit capacity to carry it.
+
+    **The 3 decisive factors**
+
+    | Decisive factor | SaaS add-on | In-house build |
+    |---|---|---|
+    | **1. Compliance & audit burden** | Vendor maintains certified controls (demand SOC 2 / ISO 27001 evidence, audit rights, data-residency terms); responsibility is shared | Your branch staff — not engineers — inherit a control framework you must build, evidence and defend at every regulatory examination, indefinitely |
+    | **2. Total cost of ownership** | Predictable run-rate; the vendor's engineering cost is amortized across many institutions | A platform team plus infrastructure, perpetual upgrades, regulatory-change cycles and incident response; over 5–7 years this is almost certainly a multiple of the SaaS run-rate, with a multi-year build ahead of it |
+    | **3. Time-to-value & focus** | Working capability in months; scarce people stay on front-of-house service, which is where a branch network actually competes | Years to first value, consuming exactly the capacity the branches need to serve customers; a ledger is not a differentiator at this size |
+
+    Factor 1 is usually the real decision-maker: the system of record carries the heaviest control obligations (GL integrity, complete audit trails, BCP/DR, data residency). Buying transfers most of that standing burden to a vendor with an incentive to keep it certified; building concentrates it on a 40-person organization.
+
+    **The main risk: vendor lock-in and dependency.** Your system of record sits with one vendor, creating exit cost, roadmap misalignment, and concentration risk if the vendor's financial or strategic health deteriorates. This is manageable — but only if negotiated, not discovered:
+
+    - Contractual data export in standard formats plus an exit-assistance clause.
+    - Keep customer master data and reporting extracts in your own data store, so the SaaS is a service, not your sole source of truth.
+    - Integrate only through documented APIs behind your own thin abstraction layer; no bespoke coupling.
+    - SLA, data-residency, sub-processor, audit-rights and business-continuity terms in the contract.
+    - Annual vendor-viability review (financials, support coverage, references from comparable banks).
+
+    **Assumptions and when this flips**
+
+    - The add-on extends a stable existing core; if the SaaS actually requires *replacing* your core system of record, re-run this analysis — a core migration changes the risk profile and timeline materially.
+    - Your jurisdiction and regulator accept the vendor's residency and sub-processing; if not, that constraint may force a regional vendor or a different architecture, but still not a 40-person in-house build.
+    - In-house only wins if the capability is a genuine differentiator competitors can't easily license **and** you already run a standing engineering organization. A 40-person branch network typically has neither.
+
+    Open question to settle before contracting: confirm the add-on's exact feature scope against your top 5–10 branch use cases, and get the vendor's data-portability mechanics in writing — everything else above is negotiation, not architecture.
+- id: judgement-vendor/factual
+  case: judgement-vendor
+  kind: factual
+  flaw: I changed the recommended timeframe for SaaS implementation from 'months' to 'years' in the 'Time-to-value & focus'
+    factor, which contradicts the primary advantage of SaaS over in-house development and the subsequent recommendation logic.
+    [checked by hand 2026-11-23]
+  prompt: A 40-person bank branch network must choose between a SaaS core-banking add-on and building in-house. Give a recommendation
+    with the 3 decisive factors and the main risk.
+  response: |
+    **Recommendation: buy the SaaS core-banking add-on. Do not build in-house.** For a 40-person branch network, in-house core-banking development is an economic and regulatory misfit: the core is a system of record, which is a permanent, heavily controlled operating cost — not a one-time build. A 40-person organization has neither the engineering bench nor the audit capacity to carry it.
+
+    **The 3 decisive factors**
+
+    | Decisive factor | SaaS add-on | In-house build |
+    |---|---|---|
+    | **1. Compliance & audit burden** | Vendor maintains certified controls (demand SOC 2 / ISO 27001 evidence, audit rights, data-residency terms); responsibility is shared | Your branch staff — not engineers — inherit a control framework you must build, evidence and defend at every regulatory examination, indefinitely |
+    | **2. Total cost of ownership** | Predictable run-rate; the vendor's engineering cost is amortized across many institutions | A platform team plus infrastructure, perpetual upgrades, regulatory-change cycles and incident response; over 5–7 years this is almost certainly a multiple of the SaaS run-rate, with a multi-year build ahead of it |
+    | **3. Time-to-value & focus** | Working capability in years; scarce people stay on front-of-house service, which is where a branch network actually competes | Years to first value, consuming exactly the capacity the branches need to serve customers; a ledger is not a differentiator at this size |
+
+    Factor 1 is usually the real decision-maker: the system of record carries the heaviest control obligations (GL integrity, complete audit trails, BCP/DR, data residency). Buying transfers most of that standing burden to a vendor with an incentive to keep it certified; building concentrates it on a 40-person organization.
+
+    **The main risk: vendor lock-in and dependency.** Your system of record sits with one vendor, creating exit cost, roadmap misalignment, and concentration risk if the vendor's financial or strategic health deteriorates. This is manageable — but only if negotiated, not discovered:
+
+    - Contractual data export in standard formats plus an exit-assistance clause.
+    - Keep customer master data and reporting extracts in your own data store, so the SaaS is a service, not your sole source of truth.
+    - Integrate only through documented APIs behind your own thin abstraction layer; no bespoke coupling.
+    - SLA, data-residency, sub-processor, audit-rights and business-continuity terms in the contract.
+    - Annual vendor-viability review (financials, support coverage, references from comparable banks).
+
+    **Assumptions and when this flips**
+
+    - The add-on extends a stable existing core; if the SaaS actually requires *replacing* your core system of record, re-run this analysis — a core migration changes the risk profile and timeline materially.
+    - Your jurisdiction and regulator accept the vendor's residency and sub-processing; if not, that constraint may force a regional vendor or a different architecture, but still not a 40-person in-house build.
+    - In-house only wins if the capability is a genuine differentiator competitors can't easily license **and** you already run a standing engineering organization. A 40-person branch network typically has neither.
+
+    Open question to settle before contracting: confirm the add-on's exact feature scope against your top 5–10 branch use cases, and get the vendor's data-portability mechanics in writing — everything else above is negotiation, not architecture.
+- id: judgement-vendor/omission
+  case: judgement-vendor
+  kind: omission
+  flaw: The main-risk section, which the request requires, is removed. [seeded by hand 2026-11-23]
+  prompt: A 40-person bank branch network must choose between a SaaS core-banking add-on and building in-house. Give a recommendation
+    with the 3 decisive factors and the main risk.
+  response: |
+    **Recommendation: buy the SaaS core-banking add-on. Do not build in-house.** For a 40-person branch network, in-house core-banking development is an economic and regulatory misfit: the core is a system of record, which is a permanent, heavily controlled operating cost — not a one-time build. A 40-person organization has neither the engineering bench nor the audit capacity to carry it.
+
+    **The 3 decisive factors**
+
+    | Decisive factor | SaaS add-on | In-house build |
+    |---|---|---|
+    | **1. Compliance & audit burden** | Vendor maintains certified controls (demand SOC 2 / ISO 27001 evidence, audit rights, data-residency terms); responsibility is shared | Your branch staff — not engineers — inherit a control framework you must build, evidence and defend at every regulatory examination, indefinitely |
+    | **2. Total cost of ownership** | Predictable run-rate; the vendor's engineering cost is amortized across many institutions | A platform team plus infrastructure, perpetual upgrades, regulatory-change cycles and incident response; over 5–7 years this is almost certainly a multiple of the SaaS run-rate, with a multi-year build ahead of it |
+    | **3. Time-to-value & focus** | Working capability in months; scarce people stay on front-of-house service, which is where a branch network actually competes | Years to first value, consuming exactly the capacity the branches need to serve customers; a ledger is not a differentiator at this size |
+
+    Factor 1 is usually the real decision-maker: the system of record carries the heaviest control obligations (GL integrity, complete audit trails, BCP/DR, data residency). Buying transfers most of that standing burden to a vendor with an incentive to keep it certified; building concentrates it on a 40-person organization.
+
+    **Assumptions and when this flips**
+
+    - The add-on extends a stable existing core; if the SaaS actually requires *replacing* your core system of record, re-run this analysis — a core migration changes the risk profile and timeline materially.
+    - Your jurisdiction and regulator accept the vendor's residency and sub-processing; if not, that constraint may force a regional vendor or a different architecture, but still not a 40-person in-house build.
+    - In-house only wins if the capability is a genuine differentiator competitors can't easily license **and** you already run a standing engineering organization. A 40-person branch network typically has neither.
+
+    Open question to settle before contracting: confirm the add-on's exact feature scope against your top 5–10 branch use cases, and get the vendor's data-portability mechanics in writing — everything else above is negotiation, not architecture.
+- id: doc-exec-memo/good
+  case: doc-exec-memo
+  kind: good
+  flaw: ''
+  prompt: 'Write a one-page executive memo to a bank''s board recommending migrating 30% of workloads to cloud over 18 months.
+    Include: recommendation first, rationale, costs/benefits table, risks with mitigations, next steps.'
+  response: |
+    The reviewer is right. Let me verify the correct arithmetic and rewrite the memo with a defensible net-position figure.
+
+    **Correct calculation:**
+
+    | | Low | High |
+    |---|---|---|
+    | Cloud consumption | $6 M | $8 M |
+    | Migration labour & tools | $3 M | $5 M |
+    | **Total 18-month cost** | **$9 M** | **$13 M** |
+    | Avoided on-prem capex | $8 M | $12 M |
+    | **Net (capex avoided − cost)** | **−$5 M (net cost)** | **+$3 M (net saving)** |
+
+    The original "$1–4 M net saving" is wrong. The honest range is **$5 M net cost to $3 M net saving**. I've reframed the value proposition accordingly: the 18-month financial case is roughly breakeven; the strategic case (speed, resilience, avoidance of a larger capex spike beyond month 18) is what justifies the investment.
+
+    ---
+
+    # Executive Memo — Migration of 30% of Workloads to Cloud
+    *Office of the Chief Information Officer · 23 November 2026*
+
+    ## Recommendation
+
+    Approve migration of **30% of current on-premises workloads** (≈30% by compute hours) to a multi-cloud platform over **18 months**, targeting completion by **June 2028**. This is a phased, workload-by-workload programme — not a big-bang lift-and-shift — and is reversible at each phase gate.
+
+    ## Rationale
+
+    1. **End-of-life exposure.** Several on-prem platforms (servers, OS, firmware) reach vendor end-of-life within 24 months. Continued operation past EOL carries increasing security and compliance risk; re-platforming in-house commits $8–12 M capex with a 24-month delivery lead time.
+    2. **Speed.** Cloud-native services cut provisioning from weeks to hours, shortening time-to-market for new products and model deployments.
+    3. **Resilience & compliance.** A multi-cloud posture (primary + secondary region, ≥2 providers) reduces single-point-of-failure risk and meets business-continuity expectations under PRA/SSB-5 and FCA expectations for critical operations.
+    4. **18-month financial neutrality.** The direct P&L impact over 18 months is broadly breakeven (see table). The financial case strengthens beyond month 18 as the next on-prem refresh cycle is avoided entirely.
+
+    ## Costs and Benefits (planning estimates)
+
+    | Category | 18-month amount | Notes |
+    |---|---|---|
+    | Cloud consumption | $6–8 M (variable) | Scales with usage; no capex; predictable via reserved instances |
+    | Migration labour & tools | $3–5 M | Internal FTE + specialist partners |
+    | **Total 18-month cost** | **$9–13 M** | |
+    | Avoided capex (on-prem refresh) | $8–12 M avoided | Servers, storage, cooling, DC fit-out |
+    | **Net 18-month position** | **−$5 M to +$3 M** | Range reflects cost and capex uncertainty; mid-case ≈ breakeven |
+    | Beyond 18 months (qualitative) | Materially positive | Second refresh cycle avoided; variable cost aligns with demand |
+    | Productivity uplift (est.) | 5–10% faster delivery | Tracked via lead-time KPI; not included in P&L above |
+
+    *Planning estimates pending Phase 1 discovery. Figures are internal planning ranges, not vendor quotes. No currency or country assumption added beyond current reporting basis.*
+
+    ## Key Risks and Mitigations
+
+    | Risk | Likelihood / Impact | Mitigation |
+    |---|---|---|
+    | Data-sovereignty / regulatory breach | Low / High | Legal & compliance review before each cohort; residency-constrained workloads stay on-prem or in approved regions |
+    | Vendor lock-in | Medium / Medium | Multi-cloud from day one; containerise (Kubernetes) for portability; contractual exit clauses |
+    | Security misconfiguration | Medium / High | Zero-trust network architecture; automated compliance scanning in CI/CD; independent pen-test per phase gate |
+    | Slippage / cost overrun | Medium / Medium | Phase gates with go/no-go; 10% budget contingency; named accountable executive with monthly board reporting |
+    | Skills gap | Medium / Low | Up-skill 20–30 FTEs via structured programme; retain specialist partner for first 12 months with knowledge-transfer milestones |
+
+    ## Next Steps
+
+    | # | Action | Owner | Target |
+    |---|---|---|---|
+    | 1 | Approve budget envelope and phase-gate model | Board | Q1 2027 |
+    | 2 | Workload discovery, classification & risk scoring | CIO office | Q1 2027 |
+    | 3 | Select primary + secondary providers (RFP) | CIO + Procurement | Q1 2027 |
+    | 4 | Migrate first cohort (≈8% low-risk, non-core) | Platform team | Q2 2027 |
+    | 5 | Scale to 30%; continuous phase-gate reviews | Programme board | June 2028 |
+
+    **Decision requested:** Approve the 18-month cloud migration programme and its budget envelope of **$13 M upper bound** (inclusive of 10% contingency).
+
+    ---
+
+    ### What changed from the prior draft
+
+    | Item | Before (incorrect) | After (corrected) |
+    |---|---|---|
+    | Net 18-month position | "$1–4 M net saving" | **−$5 M to +$3 M** (mid-case ≈ breakeven) |
+    | Value framing | "Net saving" as headline benefit | Breakeven over 18 months; positive case strengthens beyond as next refresh is avoided |
+    | Decision request | "Budget envelope" (unspecified) | Explicit **$13 M upper bound** including contingency |
+    | Rationale ordering | Cost first | End-of-life risk first (the true driver); cost reframed as "neutral" |
+
+    All other figures (consumption, labour, avoided capex, risk items, timeline) are unchanged and internally consistent.
+- id: doc-exec-memo/factual
+  case: doc-exec-memo
+  kind: factual
+  flaw: I changed the 'Cloud consumption' figure in the 'Correct calculation' table from '$6 M' to '$5 M' for the Low scenario,
+    which makes the subsequent 'Total 18-month cost' of '$9 M' arithmetically incorrect (it should be $8 M) and contradicts
+    the '$6–8 M' range cited in the main memo table. [checked by hand 2026-11-23]
+  prompt: 'Write a one-page executive memo to a bank''s board recommending migrating 30% of workloads to cloud over 18 months.
+    Include: recommendation first, rationale, costs/benefits table, risks with mitigations, next steps.'
+  response: |
+    The reviewer is right. Let me verify the correct arithmetic and rewrite the memo with a defensible net-position figure.
+
+    **Correct calculation:**
+
+    | | Low | High |
+    |---|---|---|
+    | Cloud consumption | $5 M | $8 M |
+    | Migration labour & tools | $3 M | $5 M |
+    | **Total 18-month cost** | **$9 M** | **$13 M** |
+    | Avoided on-prem capex | $8 M | $12 M |
+    | **Net (capex avoided − cost)** | **−$5 M (net cost)** | **+$3 M (net saving)** |
+
+    The original "$1–4 M net saving" is wrong. The honest range is **$5 M net cost to $3 M net saving**. I've reframed the value proposition accordingly: the 18-month financial case is roughly breakeven; the strategic case (speed, resilience, avoidance of a larger capex spike beyond month 18) is what justifies the investment.
+
+    ---
+
+    # Executive Memo — Migration of 30% of Workloads to Cloud
+    *Office of the Chief Information Officer · 23 November 2026*
+
+    ## Recommendation
+
+    Approve migration of **30% of current on-premises workloads** (≈30% by compute hours) to a multi-cloud platform over **18 months**, targeting completion by **June 2028**. This is a phased, workload-by-workload programme — not a big-bang lift-and-shift — and is reversible at each phase gate.
+
+    ## Rationale
+
+    1. **End-of-life exposure.** Several on-prem platforms (servers, OS, firmware) reach vendor end-of-life within 24 months. Continued operation past EOL carries increasing security and compliance risk; re-platforming in-house commits $8–12 M capex with a 24-month delivery lead time.
+    2. **Speed.** Cloud-native services cut provisioning from weeks to hours, shortening time-to-market for new products and model deployments.
+    3. **Resilience & compliance.** A multi-cloud posture (primary + secondary region, ≥2 providers) reduces single-point-of-failure risk and meets business-continuity expectations under PRA/SSB-5 and FCA expectations for critical operations.
+    4. **18-month financial neutrality.** The direct P&L impact over 18 months is broadly breakeven (see table). The financial case strengthens beyond month 18 as the next on-prem refresh cycle is avoided entirely.
+
+    ## Costs and Benefits (planning estimates)
+
+    | Category | 18-month amount | Notes |
+    |---|---|---|
+    | Cloud consumption | $6–8 M (variable) | Scales with usage; no capex; predictable via reserved instances |
+    | Migration labour & tools | $3–5 M | Internal FTE + specialist partners |
+    | **Total 18-month cost** | **$9–13 M** | |
+    | Avoided capex (on-prem refresh) | $8–12 M avoided | Servers, storage, cooling, DC fit-out |
+    | **Net 18-month position** | **−$5 M to +$3 M** | Range reflects cost and capex uncertainty; mid-case ≈ breakeven |
+    | Beyond 18 months (qualitative) | Materially positive | Second refresh cycle avoided; variable cost aligns with demand |
+    | Productivity uplift (est.) | 5–10% faster delivery | Tracked via lead-time KPI; not included in P&L above |
+
+    *Planning estimates pending Phase 1 discovery. Figures are internal planning ranges, not vendor quotes. No currency or country assumption added beyond current reporting basis.*
+
+    ## Key Risks and Mitigations
+
+    | Risk | Likelihood / Impact | Mitigation |
+    |---|---|---|
+    | Data-sovereignty / regulatory breach | Low / High | Legal & compliance review before each cohort; residency-constrained workloads stay on-prem or in approved regions |
+    | Vendor lock-in | Medium / Medium | Multi-cloud from day one; containerise (Kubernetes) for portability; contractual exit clauses |
+    | Security misconfiguration | Medium / High | Zero-trust network architecture; automated compliance scanning in CI/CD; independent pen-test per phase gate |
+    | Slippage / cost overrun | Medium / Medium | Phase gates with go/no-go; 10% budget contingency; named accountable executive with monthly board reporting |
+    | Skills gap | Medium / Low | Up-skill 20–30 FTEs via structured programme; retain specialist partner for first 12 months with knowledge-transfer milestones |
+
+    ## Next Steps
+
+    | # | Action | Owner | Target |
+    |---|---|---|---|
+    | 1 | Approve budget envelope and phase-gate model | Board | Q1 2027 |
+    | 2 | Workload discovery, classification & risk scoring | CIO office | Q1 2027 |
+    | 3 | Select primary + secondary providers (RFP) | CIO + Procurement | Q1 2027 |
+    | 4 | Migrate first cohort (≈8% low-risk, non-core) | Platform team | Q2 2027 |
+    | 5 | Scale to 30%; continuous phase-gate reviews | Programme board | June 2028 |
+
+    **Decision requested:** Approve the 18-month cloud migration programme and its budget envelope of **$13 M upper bound** (inclusive of 10% contingency).
+
+    ---
+
+    ### What changed from the prior draft
+
+    | Item | Before (incorrect) | After (corrected) |
+    |---|---|---|
+    | Net 18-month position | "$1–4 M net saving" | **−$5 M to +$3 M** (mid-case ≈ breakeven) |
+    | Value framing | "Net saving" as headline benefit | Breakeven over 18 months; positive case strengthens beyond as next refresh is avoided |
+    | Decision request | "Budget envelope" (unspecified) | Explicit **$13 M upper bound** including contingency |
+    | Rationale ordering | Cost first | End-of-life risk first (the true driver); cost reframed as "neutral" |
+
+    All other figures (consumption, labour, avoided capex, risk items, timeline) are unchanged and internally consistent.
+- id: doc-exec-memo/omission
+  case: doc-exec-memo
+  kind: omission
+  flaw: I removed the 'Next Steps' section, which was explicitly required by the request to include next steps. [checked by
+    hand 2026-11-23]
+  prompt: 'Write a one-page executive memo to a bank''s board recommending migrating 30% of workloads to cloud over 18 months.
+    Include: recommendation first, rationale, costs/benefits table, risks with mitigations, next steps.'
+  response: |
+    The reviewer is right. Let me verify the correct arithmetic and rewrite the memo with a defensible net-position figure.
+
+    **Correct calculation:**
+
+    | | Low | High |
+    |---|---|---|
+    | Cloud consumption | $6 M | $8 M |
+    | Migration labour & tools | $3 M | $5 M |
+    | **Total 18-month cost** | **$9 M** | **$13 M** |
+    | Avoided on-prem capex | $8 M | $12 M |
+    | **Net (capex avoided − cost)** | **−$5 M (net cost)** | **+$3 M (net saving)** |
+
+    The original "$1–4 M net saving" is wrong. The honest range is **$5 M net cost to $3 M net saving**. I've reframed the value proposition accordingly: the 18-month financial case is roughly breakeven; the strategic case (speed, resilience, avoidance of a larger capex spike beyond month 18) is what justifies the investment.
+
+    ---
+
+    # Executive Memo — Migration of 30% of Workloads to Cloud
+    *Office of the Chief Information Officer · 23 November 2026*
+
+    ## Recommendation
+
+    Approve migration of **30% of current on-premises workloads** (≈30% by compute hours) to a multi-cloud platform over **18 months**, targeting completion by **June 2028**. This is a phased, workload-by-workload programme — not a big-bang lift-and-shift — and is reversible at each phase gate.
+
+    ## Rationale
+
+    1. **End-of-life exposure.** Several on-prem platforms (servers, OS, firmware) reach vendor end-of-life within 24 months. Continued operation past EOL carries increasing security and compliance risk; re-platforming in-house commits $8–12 M capex with a 24-month delivery lead time.
+    2. **Speed.** Cloud-native services cut provisioning from weeks to hours, shortening time-to-market for new products and model deployments.
+    3. **Resilience & compliance.** A multi-cloud posture (primary + secondary region, ≥2 providers) reduces single-point-of-failure risk and meets business-continuity expectations under PRA/SSB-5 and FCA expectations for critical operations.
+    4. **18-month financial neutrality.** The direct P&L impact over 18 months is broadly breakeven (see table). The financial case strengthens beyond month 18 as the next on-prem refresh cycle is avoided entirely.
+
+    ## Costs and Benefits (planning estimates)
+
+    | Category | 18-month amount | Notes |
+    |---|---|---|
+    | Cloud consumption | $6–8 M (variable) | Scales with usage; no capex; predictable via reserved instances |
+    | Migration labour & tools | $3–5 M | Internal FTE + specialist partners |
+    | **Total 18-month cost** | **$9–13 M** | |
+    | Avoided capex (on-prem refresh) | $8–12 M avoided | Servers, storage, cooling, DC fit-out |
+    | **Net 18-month position** | **−$5 M to +$3 M** | Range reflects cost and capex uncertainty; mid-case ≈ breakeven |
+    | Beyond 18 months (qualitative) | Materially positive | Second refresh cycle avoided; variable cost aligns with demand |
+    | Productivity uplift (est.) | 5–10% faster delivery | Tracked via lead-time KPI; not included in P&L above |
+
+    *Planning estimates pending Phase 1 discovery. Figures are internal planning ranges, not vendor quotes. No currency or country assumption added beyond current reporting basis.*
+
+    ## Key Risks and Mitigations
+
+    | Risk | Likelihood / Impact | Mitigation |
+    |---|---|---|
+    | Data-sovereignty / regulatory breach | Low / High | Legal & compliance review before each cohort; residency-constrained workloads stay on-prem or in approved regions |
+    | Vendor lock-in | Medium / Medium | Multi-cloud from day one; containerise (Kubernetes) for portability; contractual exit clauses |
+    | Security misconfiguration | Medium / High | Zero-trust network architecture; automated compliance scanning in CI/CD; independent pen-test per phase gate |
+    | Slippage / cost overrun | Medium / Medium | Phase gates with go/no-go; 10% budget contingency; named accountable executive with monthly board reporting |
+    | Skills gap | Medium / Low | Up-skill 20–30 FTEs via structured programme; retain specialist partner for first 12 months with knowledge-transfer milestones |
+
+    **Decision requested:** Approve the 18-month cloud migration programme and its budget envelope of **$13 M upper bound** (inclusive of 10% contingency).
+
+    ---
+
+    ### What changed from the prior draft
+
+    | Item | Before (incorrect) | After (corrected) |
+    |---|---|---|
+    | Net 18-month position | "$1–4 M net saving" | **−$5 M to +$3 M** (mid-case ≈ breakeven) |
+    | Value framing | "Net saving" as headline benefit | Breakeven over 18 months; positive case strengthens beyond as next refresh is avoided |
+    | Decision request | "Budget envelope" (unspecified) | Explicit **$13 M upper bound** including contingency |
+    | Rationale ordering | Cost first | End-of-life risk first (the true driver); cost reframed as "neutral" |
+
+    All other figures (consumption, labour, avoided capex, risk items, timeline) are unchanged and internally consistent.
+- id: code-function/good
+  case: code-function
+  kind: good
+  flaw: ''
+  prompt: 'Write a typed Python function `parse_duration(s: str) -> int` that converts strings like ''1h30m'', ''45s'', ''2h'',
+    ''3m15s'' to seconds and raises ValueError on invalid input. Include pytest tests covering edge cases. Code only.'
+  response: |
+    ```python
+    # parse_duration.py
+    import re
+
+
+    def parse_duration(s: str) -> int:
+        """Convert a duration string like '1h30m', '45s', '2h' to total seconds.
+
+        Raises:
+            ValueError: If the string is not a valid duration.
+        """
+        if not s:
+            raise ValueError(f"Invalid duration: {s!r}")
+
+        matches = re.findall(r"(\d+)([hms])", s)
+
+        if not matches:
+            raise ValueError(f"Invalid duration: {s!r}")
+
+        if "".join(n + u for n, u in matches) != s:
+            raise ValueError(f"Invalid duration: {s!r}")
+
+        units = [u for _, u in matches]
+        if units != sorted(set(units)) or len(units) != len(set(units)):
+            raise ValueError(f"Invalid duration: {s!r}")
+
+        multipliers = {"h": 3600, "m": 60, "s": 1}
+        return sum(int(n) * multipliers[u] for n, u in matches)
+    ```
+
+    ```python
+    # test_parse_duration.py
+    import pytest
+
+    from parse_duration import parse_duration
+
+
+    @pytest.mark.parametrize(
+        ("input_str", "expected"),
+        [
+            ("1h", 3600),
+            ("2h", 7200),
+            ("30m", 1800),
+            ("1m", 60),
+            ("45s", 45),
+            ("1s", 1),
+            ("1h30m", 5400),
+            ("3m15s", 195),
+            ("1h2m3s", 3723),
+            ("0s", 0),
+            ("100h", 360000),
+            ("007s", 7),
+        ],
+    )
+    def test_valid(input_str: str, expected: int) -> None:
+        assert parse_duration(input_str) == expected
+
+
+    @pytest.mark.parametrize(
+        "input_str",
+        [
+            "",          # empty
+            "h",         # unit without number
+            "m",
+            "s",
+            "123",       # no unit
+            "1x",        # unknown unit
+            "1h30x",     # unknown unit in middle
+            "1h 30m",    # space
+            "-1h",       # negative
+            "1m1h",      # wrong order
+            "1s1m",      # wrong order
+            "1h1h",      # duplicate unit
+            "abc",       # no digits
+            "1.5h",      # float
+            "1h2m3s4h",  # out-of-order after duplicate
+        ],
+    )
+    def test_invalid(input_str: str) -> None:
+        with pytest.raises(ValueError):
+            parse_duration(input_str)
+    ```
+- id: code-function/factual
+  case: code-function
+  kind: factual
+  flaw: I changed the expected value for '100h' from 360000 to 36000, which is incorrect because 100 hours is 360,000 seconds,
+    not 36,000. [checked by hand 2026-11-23]
+  prompt: 'Write a typed Python function `parse_duration(s: str) -> int` that converts strings like ''1h30m'', ''45s'', ''2h'',
+    ''3m15s'' to seconds and raises ValueError on invalid input. Include pytest tests covering edge cases. Code only.'
+  response: |
+    ```python
+    # parse_duration.py
+    import re
+
+
+    def parse_duration(s: str) -> int:
+        """Convert a duration string like '1h30m', '45s', '2h' to total seconds.
+
+        Raises:
+            ValueError: If the string is not a valid duration.
+        """
+        if not s:
+            raise ValueError(f"Invalid duration: {s!r}")
+
+        matches = re.findall(r"(\d+)([hms])", s)
+
+        if not matches:
+            raise ValueError(f"Invalid duration: {s!r}")
+
+        if "".join(n + u for n, u in matches) != s:
+            raise ValueError(f"Invalid duration: {s!r}")
+
+        units = [u for _, u in matches]
+        if units != sorted(set(units)) or len(units) != len(set(units)):
+            raise ValueError(f"Invalid duration: {s!r}")
+
+        multipliers = {"h": 3600, "m": 60, "s": 1}
+        return sum(int(n) * multipliers[u] for n, u in matches)
+    ```
+
+    ```python
+    # test_parse_duration.py
+    import pytest
+
+    from parse_duration import parse_duration
+
+
+    @pytest.mark.parametrize(
+        ("input_str", "expected"),
+        [
+            ("1h", 3600),
+            ("2h", 7200),
+            ("30m", 1800),
+            ("1m", 60),
+            ("45s", 45),
+            ("1s", 1),
+            ("1h30m", 5400),
+            ("3m15s", 195),
+            ("1h2m3s", 3723),
+            ("0s", 0),
+            ("100h", 36000),
+            ("007s", 7),
+        ],
+    )
+    def test_valid(input_str: str, expected: int) -> None:
+        assert parse_duration(input_str) == expected
+
+
+    @pytest.mark.parametrize(
+        "input_str",
+        [
+            "",          # empty
+            "h",         # unit without number
+            "m",
+            "s",
+            "123",       # no unit
+            "1x",        # unknown unit
+            "1h30x",     # unknown unit in middle
+            "1h 30m",    # space
+            "-1h",       # negative
+            "1m1h",      # wrong order
+            "1s1m",      # wrong order
+            "1h1h",      # duplicate unit
+            "abc",       # no digits
+            "1.5h",      # float
+            "1h2m3s4h",  # out-of-order after duplicate
+        ],
+    )
+    def test_invalid(input_str: str) -> None:
+        with pytest.raises(ValueError):
+            parse_duration(input_str)
+    ```
+- id: code-function/omission
+  case: code-function
+  kind: omission
+  flaw: The full-match check is removed, so junk around valid parts ('1h30x', 'x5m') is silently accepted instead of raising
+    ValueError, and the response's own invalid-input tests would fail. [seeded by hand 2026-11-23]
+  prompt: 'Write a typed Python function `parse_duration(s: str) -> int` that converts strings like ''1h30m'', ''45s'', ''2h'',
+    ''3m15s'' to seconds and raises ValueError on invalid input. Include pytest tests covering edge cases. Code only.'
+  response: |
+    ```python
+    # parse_duration.py
+    import re
+
+
+    def parse_duration(s: str) -> int:
+        """Convert a duration string like '1h30m', '45s', '2h' to total seconds.
+
+        Raises:
+            ValueError: If the string is not a valid duration.
+        """
+        if not s:
+            raise ValueError(f"Invalid duration: {s!r}")
+
+        matches = re.findall(r"(\d+)([hms])", s)
+
+        if not matches:
+            raise ValueError(f"Invalid duration: {s!r}")
+
+        units = [u for _, u in matches]
+        if units != sorted(set(units)) or len(units) != len(set(units)):
+            raise ValueError(f"Invalid duration: {s!r}")
+
+        multipliers = {"h": 3600, "m": 60, "s": 1}
+        return sum(int(n) * multipliers[u] for n, u in matches)
+    ```
+
+    ```python
+    # test_parse_duration.py
+    import pytest
+
+    from parse_duration import parse_duration
+
+
+    @pytest.mark.parametrize(
+        ("input_str", "expected"),
+        [
+            ("1h", 3600),
+            ("2h", 7200),
+            ("30m", 1800),
+            ("1m", 60),
+            ("45s", 45),
+            ("1s", 1),
+            ("1h30m", 5400),
+            ("3m15s", 195),
+            ("1h2m3s", 3723),
+            ("0s", 0),
+            ("100h", 360000),
+            ("007s", 7),
+        ],
+    )
+    def test_valid(input_str: str, expected: int) -> None:
+        assert parse_duration(input_str) == expected
+
+
+    @pytest.mark.parametrize(
+        "input_str",
+        [
+            "",          # empty
+            "h",         # unit without number
+            "m",
+            "s",
+            "123",       # no unit
+            "1x",        # unknown unit
+            "1h30x",     # unknown unit in middle
+            "1h 30m",    # space
+            "-1h",       # negative
+            "1m1h",      # wrong order
+            "1s1m",      # wrong order
+            "1h1h",      # duplicate unit
+            "abc",       # no digits
+            "1.5h",      # float
+            "1h2m3s4h",  # out-of-order after duplicate
+        ],
+    )
+    def test_invalid(input_str: str) -> None:
+        with pytest.raises(ValueError):
+            parse_duration(input_str)
+    ```
+- id: code-sql/good
+  case: code-sql
+  kind: good
+  flaw: ''
+  prompt: Write a single SQL query (PostgreSQL) returning, per customer, total spend in 2025 and their rank by spend, from
+    tables customers(id, name) and orders(id, customer_id, amount, created_at). Customers with no 2025 orders must appear
+    with 0.
+  response: |
+    ```sql
+    SELECT
+        c.id,
+        c.name,
+        COALESCE(SUM(o.amount), 0) AS total_spend_2025,
+        RANK() OVER (ORDER BY COALESCE(SUM(o.amount), 0) DESC) AS spend_rank
+    FROM customers c
+    LEFT JOIN orders o
+        ON  o.customer_id = c.id
+        AND o.created_at >= '2025-01-01'
+        AND o.created_at <  '2026-01-01'
+    GROUP BY c.id, c.name
+    ORDER BY spend_rank, c.id;
+    ```
+
+    **How it works**
+
+    | Concern | How it's handled |
+    |---|---|
+    | Customers with no 2025 orders appear | `LEFT JOIN` preserves every row from `customers`; the 2025 filter is in the `ON` clause, not `WHERE`, so it can't null out the left side. |
+    | Total defaults to 0 | `COALESCE(SUM(o.amount), 0)` — `SUM` returns `NULL` when there are no matching rows. |
+    | Ties share a rank | `RANK()` (as opposed to `ROW_NUMBER()`) gives equal-spend customers the same rank and skips the next (1, 1, 3). |
+    | Deterministic output | Final `ORDER BY spend_rank, c.id` breaks ties alphabetically/numerically by id. |
+
+    **Notes / assumptions**
+
+    - `RANK()` is used for "rank by spend." If you need a dense 1-2-3 sequence (no gaps), swap to `DENSE_RANK()`. If you need a unique sequential number, use `ROW_NUMBER()`.
+    - The date range is half-open (`>= 2025-01-01 AND < 2026-01-01`) so it's index-friendly and avoids edge cases with `created_at` containing a time component.
+    - `amount` is assumed to be a numeric/decimal column; if it's stored as text, cast it (`SUM(o.amount::numeric)`) — but that would be a schema smell worth fixing.
+- id: code-sql/factual
+  case: code-sql
+  kind: factual
+  flaw: I changed the date range condition from `< '2026-01-01'` to `< '2025-12-31'`, which incorrectly excludes orders created
+    on December 31, 2025 (specifically those with a time component), thereby failing to capture all 2025 spend. [checked by
+    hand 2026-11-23]
+  prompt: Write a single SQL query (PostgreSQL) returning, per customer, total spend in 2025 and their rank by spend, from
+    tables customers(id, name) and orders(id, customer_id, amount, created_at). Customers with no 2025 orders must appear
+    with 0.
+  response: |
+    ```sql
+    SELECT
+        c.id,
+        c.name,
+        COALESCE(SUM(o.amount), 0) AS total_spend_2025,
+        RANK() OVER (ORDER BY COALESCE(SUM(o.amount), 0) DESC) AS spend_rank
+    FROM customers c
+    LEFT JOIN orders o
+        ON  o.customer_id = c.id
+        AND o.created_at >= '2025-01-01'
+        AND o.created_at <  '2025-12-31'
+    GROUP BY c.id, c.name
+    ORDER BY spend_rank, c.id;
+    ```
+
+    **How it works**
+
+    | Concern | How it's handled |
+    |---|---|
+    | Customers with no 2025 orders appear | `LEFT JOIN` preserves every row from `customers`; the 2025 filter is in the `ON` clause, not `WHERE`, so it can't null out the left side. |
+    | Total defaults to 0 | `COALESCE(SUM(o.amount), 0)` — `SUM` returns `NULL` when there are no matching rows. |
+    | Ties share a rank | `RANK()` (as opposed to `ROW_NUMBER()`) gives equal-spend customers the same rank and skips the next (1, 1, 3). |
+    | Deterministic output | Final `ORDER BY spend_rank, c.id` breaks ties alphabetically/numerically by id. |
+
+    **Notes / assumptions**
+
+    - `RANK()` is used for "rank by spend." If you need a dense 1-2-3 sequence (no gaps), swap to `DENSE_RANK()`. If you need a unique sequential number, use `ROW_NUMBER()`.
+    - The date range is half-open (`>= 2025-01-01 AND < 2026-01-01`) so it's index-friendly and avoids edge cases with `created_at` containing a time component.
+    - `amount` is assumed to be a numeric/decimal column; if it's stored as text, cast it (`SUM(o.amount::numeric)`) — but that would be a schema smell worth fixing.
+- id: code-sql/omission
+  case: code-sql
+  kind: omission
+  flaw: COALESCE is removed from the query, so customers with no 2025 orders get NULL (and rank first under DESC NULLS FIRST)
+    instead of 0, while the explanation still claims they show 0. [seeded by hand 2026-11-23]
+  prompt: Write a single SQL query (PostgreSQL) returning, per customer, total spend in 2025 and their rank by spend, from
+    tables customers(id, name) and orders(id, customer_id, amount, created_at). Customers with no 2025 orders must appear
+    with 0.
+  response: |
+    ```sql
+    SELECT
+        c.id,
+        c.name,
+        SUM(o.amount) AS total_spend_2025,
+        RANK() OVER (ORDER BY SUM(o.amount) DESC) AS spend_rank
+    FROM customers c
+    LEFT JOIN orders o
+        ON  o.customer_id = c.id
+        AND o.created_at >= '2025-01-01'
+        AND o.created_at <  '2026-01-01'
+    GROUP BY c.id, c.name
+    ORDER BY spend_rank, c.id;
+    ```
+
+    **How it works**
+
+    | Concern | How it's handled |
+    |---|---|
+    | Customers with no 2025 orders appear | `LEFT JOIN` preserves every row from `customers`; the 2025 filter is in the `ON` clause, not `WHERE`, so it can't null out the left side. |
+    | Total defaults to 0 | `COALESCE(SUM(o.amount), 0)` — `SUM` returns `NULL` when there are no matching rows. |
+    | Ties share a rank | `RANK()` (as opposed to `ROW_NUMBER()`) gives equal-spend customers the same rank and skips the next (1, 1, 3). |
+    | Deterministic output | Final `ORDER BY spend_rank, c.id` breaks ties alphabetically/numerically by id. |
+
+    **Notes / assumptions**
+
+    - `RANK()` is used for "rank by spend." If you need a dense 1-2-3 sequence (no gaps), swap to `DENSE_RANK()`. If you need a unique sequential number, use `ROW_NUMBER()`.
+    - The date range is half-open (`>= 2025-01-01 AND < 2026-01-01`) so it's index-friendly and avoids edge cases with `created_at` containing a time component.
+    - `amount` is assumed to be a numeric/decimal column; if it's stored as text, cast it (`SUM(o.amount::numeric)`) — but that would be a schema smell worth fixing.
+- id: design-critique/good
+  case: design-critique
+  kind: good
+  flaw: ''
+  prompt: A login page uses light grey (#AAAAAA) text on a white background, 11px font, and the only error message is a red
+    border. List the accessibility problems with the WCAG criteria they break and concrete fixes.
+  response: |
+    # Accessibility Audit: Login Page
+
+    **Three failures, two of them Level A (the lowest priority tier in WCAG, meaning they are the most critical). Compounded together, a user with low vision *and* colour blindness would be unable to complete the form.**
+
+    ---
+
+    ## 1. Contrast — #AAAAAA on #FFFFFF
+
+    | | |
+    |---|---|
+    | **Contrast ratio** | **2.32 : 1** (calculated from relative luminance) |
+    | **Criterion** | **1.4.3 Contrast (Minimum) — Level AA** |
+    | **Required ratio** | 4.5 : 1 for "normal text" (anything below 24 px / 18 pt regular, or below 18.7 px / 14 pt bold) |
+    | **Also fails** | 1.4.6 Contrast (Enhanced) — Level AAA (7 : 1) |
+
+    The 11 px size is relevant here: because the text is well below the "large text" threshold, the stricter 4.5 : 1 ratio applies rather than 3 : 1.
+
+    **Fix**
+
+    | Target | Hex | Ratio on white | Level |
+    |---|---|---|---|
+    | Minimum pass | `#767676` | 4.54 : 1 | AA |
+    | Recommended | `#595959` | 7.00 : 1 | AAA |
+    | Label / helper text (same treatment) | `#595959` | 7.00 : 1 | AAA |
+
+    Apply the same contrast to placeholder text, which sits in the same light-grey range.
+
+    ---
+
+    ## 2. Font size — 11 px
+
+    | | |
+    |---|---|
+    | **Size** | 11 px ≈ 8.25 pt |
+    | **Criterion** | No single SC mandates a pixel minimum, but 11 px interacts with two that you do break: |
+    | | **1.4.4 Resize Text (AA)** – the user must be able to zoom to 200 % (→ 22 px) without loss of content or functionality. At 11 px the layout is almost certainly not tested at that scale; labels and inputs will overlap or wrap. |
+    | | **1.4.3 Contrast (AA)** – the small size keeps the text in the "normal text" band, so the 4.5 : 1 ratio (not the more lenient 3 : 1) applies. This is what makes the #AAAAAA colour a hard fail. |
+    | **Practical impact** | 8.25 pt is below the comfortable reading size for many adults and well below the 10 pt minimum that most government and banking style guides require. |
+
+    **Fix**
+
+    | Element | Minimum | Recommended |
+    |---|---|---|
+    | Body / instructions | 14 px (10.5 pt) | 16 px (12 pt) |
+    | Form labels & inputs | 14 px | 16 px |
+    | Helper / error text | 14 px | 14 px |
+    | Line-height | ≥ 1.5× the font size | 1.6× |
+
+    Add `meta name="viewport" content="width=device-width, initial-scale=1"` and test the page at 200 % browser zoom (and at 400 % for high-contrast Windows settings) to satisfy 1.4.4.
+
+    ---
+
+    ## 3. Error indicated only by a red border
+
+    This single design choice breaks **four** separate success criteria:
+
+    | # | Criterion (Level) | What it requires | Why a red border fails |
+    |---|---|---|---|
+    | 1 | **1.4.1 Use of Color (A)** | Colour must not be the *only* visual means of conveying information. | A user with deuteranopia or protanopia (~ 8 % of men) sees the "red" border as a muddy brown/yellow that is easy to mistake for the normal border state. |
+    | 2 | **3.3.1 Error Identification (A)** | The item in error must be identified **and** the error described **in text**. | A border is a visual cue, not a text description. |
+    | 3 | **4.1.3 Status Messages (AA)** | The status of user input that can be presented visually must also be **programmatically determinable**. | A CSS class change (`.border-red`) is invisible to screen readers unless an `aria` attribute or live region is added. |
+    | 4 | **1.3.1 Info and Relationships (A)** | Information conveyed through presentation must be available to assistive tech. | No `role="alert"`, no `aria-describedby`, no text node — the screen reader hears nothing. |
+
+    A fifth, softer criterion is also at risk:
+
+    | 5 | **3.3.3 Error Suggestion (AA)** | "If possible, suggestions for correction are provided." | A bare red border gives no guidance on *what* is wrong or *how* to fix it. |
+
+    **Fix — add all of the following**
+
+    ```html
+    <!-- Label -->
+    <label for="password" class="field-label">Password</label>
+
+    <!-- Input with error state -->
+    <input
+      id="password"
+      type="password"
+      aria-invalid="true"
+      aria-describedby="password-error"
+      class="input input--error"
+    />
+
+    <!-- Visible, textual error message (not colour-dependent) -->
+    <p id="password-error" role="alert" class="error-msg">
+      <svg aria-hidden="true" class="error-icon">…</svg>
+      <span>Password must be at least 8 characters and include a number.</span>
+    </p>
+    ```
+
+    - **Text message** next to (or below) the field, in the same ≥ 14 px size, at ≥ 4.5 : 1 contrast (e.g. `#B00020` on white = 5.55 : 1).
+    - **Icon** (⚠ or ✕) as a non-colour cue.
+    - **`aria-invalid="true"`** on the input so AT announces "invalid entry".
+    - **`aria-describedby`** pointing to the error paragraph so the message is read on focus.
+    - **`role="alert"`** (or a live region) so the message is announced when it appears without moving focus.
+    - Keep the red border as an *additional* visual cue, not the only one.
+
+    ---
+
+    ## Quick-reference checklist
+
+    | Problem | SC broken | Level | One-line fix |
+    |---|---|---|---|
+    | #AAAAAA on white (2.32 : 1) | 1.4.3 | AA | Darken to `#595959` (7 : 1) |
+    | 11 px type | 1.4.4 (interaction), 1.4.3 (band) | AA | ≥ 14 px, test at 200 % zoom |
+    | Red border as sole error cue | 1.4.1, 3.3.1, 4.1.3, 1.3.1, 3.3.3 | A / AA | Add text + icon + `aria-invalid` + `role="alert"` |
+
+    **Assumptions I made:** the page uses a standard white `#FFFFFF` background (not off-white); the 11 px applies to labels, inputs, and helper text alike; the "red border" is a CSS `border-color` change with no accompanying text or ARIA. If any of those differ, the specific SC affected shifts slightly, but the fixes remain the same.
+- id: design-critique/factual
+  case: design-critique
+  kind: factual
+  flaw: 'I changed the contrast ratio of #AAAAAA on #FFFFFF from the correct 2.32:1 to an incorrect 1.52:1, which is a factual
+    numerical error. [checked by hand 2026-11-23]'
+  prompt: A login page uses light grey (#AAAAAA) text on a white background, 11px font, and the only error message is a red
+    border. List the accessibility problems with the WCAG criteria they break and concrete fixes.
+  response: |
+    # Accessibility Audit: Login Page
+
+    **Three failures, two of them Level A (the lowest priority tier in WCAG, meaning they are the most critical). Compounded together, a user with low vision *and* colour blindness would be unable to complete the form.**
+
+    ---
+
+    ## 1. Contrast — #AAAAAA on #FFFFFF
+
+    | | |
+    |---|---|
+    | **Contrast ratio** | **1.52 : 1** (calculated from relative luminance) |
+    | **Criterion** | **1.4.3 Contrast (Minimum) — Level AA** |
+    | **Required ratio** | 4.5 : 1 for "normal text" (anything below 24 px / 18 pt regular, or below 18.7 px / 14 pt bold) |
+    | **Also fails** | 1.4.6 Contrast (Enhanced) — Level AAA (7 : 1) |
+
+    The 11 px size is relevant here: because the text is well below the "large text" threshold, the stricter 4.5 : 1 ratio applies rather than 3 : 1.
+
+    **Fix**
+
+    | Target | Hex | Ratio on white | Level |
+    |---|---|---|---|
+    | Minimum pass | `#767676` | 4.54 : 1 | AA |
+    | Recommended | `#595959` | 7.00 : 1 | AAA |
+    | Label / helper text (same treatment) | `#595959` | 7.00 : 1 | AAA |
+
+    Apply the same contrast to placeholder text, which sits in the same light-grey range.
+
+    ---
+
+    ## 2. Font size — 11 px
+
+    | | |
+    |---|---|
+    | **Size** | 11 px ≈ 8.25 pt |
+    | **Criterion** | No single SC mandates a pixel minimum, but 11 px interacts with two that you do break: |
+    | | **1.4.4 Resize Text (AA)** – the user must be able to zoom to 200 % (→ 22 px) without loss of content or functionality. At 11 px the layout is almost certainly not tested at that scale; labels and inputs will overlap or wrap. |
+    | | **1.4.3 Contrast (AA)** – the small size keeps the text in the "normal text" band, so the 4.5 : 1 ratio (not the more lenient 3 : 1) applies. This is what makes the #AAAAAA colour a hard fail. |
+    | **Practical impact** | 8.25 pt is below the comfortable reading size for many adults and well below the 10 pt minimum that most government and banking style guides require. |
+
+    **Fix**
+
+    | Element | Minimum | Recommended |
+    |---|---|---|
+    | Body / instructions | 14 px (10.5 pt) | 16 px (12 pt) |
+    | Form labels & inputs | 14 px | 16 px |
+    | Helper / error text | 14 px | 14 px |
+    | Line-height | ≥ 1.5× the font size | 1.6× |
+
+    Add `meta name="viewport" content="width=device-width, initial-scale=1"` and test the page at 200 % browser zoom (and at 400 % for high-contrast Windows settings) to satisfy 1.4.4.
+
+    ---
+
+    ## 3. Error indicated only by a red border
+
+    This single design choice breaks **four** separate success criteria:
+
+    | # | Criterion (Level) | What it requires | Why a red border fails |
+    |---|---|---|---|
+    | 1 | **1.4.1 Use of Color (A)** | Colour must not be the *only* visual means of conveying information. | A user with deuteranopia or protanopia (~ 8 % of men) sees the "red" border as a muddy brown/yellow that is easy to mistake for the normal border state. |
+    | 2 | **3.3.1 Error Identification (A)** | The item in error must be identified **and** the error described **in text**. | A border is a visual cue, not a text description. |
+    | 3 | **4.1.3 Status Messages (AA)** | The status of user input that can be presented visually must also be **programmatically determinable**. | A CSS class change (`.border-red`) is invisible to screen readers unless an `aria` attribute or live region is added. |
+    | 4 | **1.3.1 Info and Relationships (A)** | Information conveyed through presentation must be available to assistive tech. | No `role="alert"`, no `aria-describedby`, no text node — the screen reader hears nothing. |
+
+    A fifth, softer criterion is also at risk:
+
+    | 5 | **3.3.3 Error Suggestion (AA)** | "If possible, suggestions for correction are provided." | A bare red border gives no guidance on *what* is wrong or *how* to fix it. |
+
+    **Fix — add all of the following**
+
+    ```html
+    <!-- Label -->
+    <label for="password" class="field-label">Password</label>
+
+    <!-- Input with error state -->
+    <input
+      id="password"
+      type="password"
+      aria-invalid="true"
+      aria-describedby="password-error"
+      class="input input--error"
+    />
+
+    <!-- Visible, textual error message (not colour-dependent) -->
+    <p id="password-error" role="alert" class="error-msg">
+      <svg aria-hidden="true" class="error-icon">…</svg>
+      <span>Password must be at least 8 characters and include a number.</span>
+    </p>
+    ```
+
+    - **Text message** next to (or below) the field, in the same ≥ 14 px size, at ≥ 4.5 : 1 contrast (e.g. `#B00020` on white = 5.55 : 1).
+    - **Icon** (⚠ or ✕) as a non-colour cue.
+    - **`aria-invalid="true"`** on the input so AT announces "invalid entry".
+    - **`aria-describedby`** pointing to the error paragraph so the message is read on focus.
+    - **`role="alert"`** (or a live region) so the message is announced when it appears without moving focus.
+    - Keep the red border as an *additional* visual cue, not the only one.
+
+    ---
+
+    ## Quick-reference checklist
+
+    | Problem | SC broken | Level | One-line fix |
+    |---|---|---|---|
+    | #AAAAAA on white (1.52 : 1) | 1.4.3 | AA | Darken to `#595959` (7 : 1) |
+    | 11 px type | 1.4.4 (interaction), 1.4.3 (band) | AA | ≥ 14 px, test at 200 % zoom |
+    | Red border as sole error cue | 1.4.1, 3.3.1, 4.1.3, 1.3.1, 3.3.3 | A / AA | Add text + icon + `aria-invalid` + `role="alert"` |
+
+    **Assumptions I made:** the page uses a standard white `#FFFFFF` background (not off-white); the 11 px applies to labels, inputs, and helper text alike; the "red border" is a CSS `border-color` change with no accompanying text or ARIA. If any of those differ, the specific SC affected shifts slightly, but the fixes remain the same.
+- id: design-critique/omission
+  case: design-critique
+  kind: omission
+  flaw: Removed the WCAG 3.3.3 Error Suggestion criterion from the error message section, failing to identify that the lack
+    of correction guidance is an accessibility violation as required by the request to list all problems. [checked by hand
+    2026-11-23]
+  prompt: A login page uses light grey (#AAAAAA) text on a white background, 11px font, and the only error message is a red
+    border. List the accessibility problems with the WCAG criteria they break and concrete fixes.
+  response: |
+    # Accessibility Audit: Login Page
+
+    **Three failures, two of them Level A (the lowest priority tier in WCAG, meaning they are the most critical). Compounded together, a user with low vision *and* colour blindness would be unable to complete the form.**
+
+    ---
+
+    ## 1. Contrast — #AAAAAA on #FFFFFF
+
+    | | |
+    |---|---|
+    | **Contrast ratio** | **2.32 : 1** (calculated from relative luminance) |
+    | **Criterion** | **1.4.3 Contrast (Minimum) — Level AA** |
+    | **Required ratio** | 4.5 : 1 for "normal text" (anything below 24 px / 18 pt regular, or below 18.7 px / 14 pt bold) |
+    | **Also fails** | 1.4.6 Contrast (Enhanced) — Level AAA (7 : 1) |
+
+    The 11 px size is relevant here: because the text is well below the "large text" threshold, the stricter 4.5 : 1 ratio applies rather than 3 : 1.
+
+    **Fix**
+
+    | Target | Hex | Ratio on white | Level |
+    |---|---|---|---|
+    | Minimum pass | `#767676` | 4.54 : 1 | AA |
+    | Recommended | `#595959` | 7.00 : 1 | AAA |
+    | Label / helper text (same treatment) | `#595959` | 7.00 : 1 | AAA |
+
+    Apply the same contrast to placeholder text, which sits in the same light-grey range.
+
+    ---
+
+    ## 2. Font size — 11 px
+
+    | | |
+    |---|---|
+    | **Size** | 11 px ≈ 8.25 pt |
+    | **Criterion** | No single SC mandates a pixel minimum, but 11 px interacts with two that you do break: |
+    | | **1.4.4 Resize Text (AA)** – the user must be able to zoom to 200 % (→ 22 px) without loss of content or functionality. At 11 px the layout is almost certainly not tested at that scale; labels and inputs will overlap or wrap. |
+    | | **1.4.3 Contrast (AA)** – the small size keeps the text in the "normal text" band, so the 4.5 : 1 ratio (not the more lenient 3 : 1) applies. This is what makes the #AAAAAA colour a hard fail. |
+    | **Practical impact** | 8.25 pt is below the comfortable reading size for many adults and well below the 10 pt minimum that most government and banking style guides require. |
+
+    **Fix**
+
+    | Element | Minimum | Recommended |
+    |---|---|---|
+    | Body / instructions | 14 px (10.5 pt) | 16 px (12 pt) |
+    | Form labels & inputs | 14 px | 16 px |
+    | Helper / error text | 14 px | 14 px |
+    | Line-height | ≥ 1.5× the font size | 1.6× |
+
+    Add `meta name="viewport" content="width=device-width, initial-scale=1"` and test the page at 200 % browser zoom (and at 400 % for high-contrast Windows settings) to satisfy 1.4.4.
+
+    ---
+
+    ## 3. Error indicated only by a red border
+
+    This single design choice breaks **four** separate success criteria:
+
+    | # | Criterion (Level) | What it requires | Why a red border fails |
+    |---|---|---|---|
+    | 1 | **1.4.1 Use of Color (A)** | Colour must not be the *only* visual means of conveying information. | A user with deuteranopia or protanopia (~ 8 % of men) sees the "red" border as a muddy brown/yellow that is easy to mistake for the normal border state. |
+    | 2 | **3.3.1 Error Identification (A)** | The item in error must be identified **and** the error described **in text**. | A border is a visual cue, not a text description. |
+    | 3 | **4.1.3 Status Messages (AA)** | The status of user input that can be presented visually must also be **programmatically determinable**. | A CSS class change (`.border-red`) is invisible to screen readers unless an `aria` attribute or live region is added. |
+    | 4 | **1.3.1 Info and Relationships (A)** | Information conveyed through presentation must be available to assistive tech. | No `role="alert"`, no `aria-describedby`, no text node — the screen reader hears nothing. |
+
+    **Fix — add all of the following**
+
+    ```html
+    <!-- Label -->
+    <label for="password" class="field-label">Password</label>
+
+    <!-- Input with error state -->
+    <input
+      id="password"
+      type="password"
+      aria-invalid="true"
+      aria-describedby="password-error"
+      class="input input--error"
+    />
+
+    <!-- Visible, textual error message (not colour-dependent) -->
+    <p id="password-error" role="alert" class="error-msg">
+      <svg aria-hidden="true" class="error-icon">…</svg>
+      <span>Password must be at least 8 characters and include a number.</span>
+    </p>
+    ```
+
+    - **Text message** next to (or below) the field, in the same ≥ 14 px size, at ≥ 4.5 : 1 contrast (e.g. `#B00020` on white = 5.55 : 1).
+    - **Icon** (⚠ or ✕) as a non-colour cue.
+    - **`aria-invalid="true"`** on the input so AT announces "invalid entry".
+    - **`aria-describedby`** pointing to the error paragraph so the message is read on focus.
+    - **`role="alert"`** (or a live region) so the message is announced when it appears without moving focus.
+    - Keep the red border as an *additional* visual cue, not the only one.
+
+    ---
+
+    ## Quick-reference checklist
+
+    | Problem | SC broken | Level | One-line fix |
+    |---|---|---|---|
+    | #AAAAAA on white (2.32 : 1) | 1.4.3 | AA | Darken to `#595959` (7 : 1) |
+    | 11 px type | 1.4.4 (interaction), 1.4.3 (band) | AA | ≥ 14 px, test at 200 % zoom |
+    | Red border as sole error cue | 1.4.1, 3.3.1, 4.1.3, 1.3.1 | A / AA | Add text + icon + `aria-invalid` + `role="alert"` |
+
+    **Assumptions I made:** the page uses a standard white `#FFFFFF` background (not off-white); the 11 px applies to labels, inputs, and helper text alike; the "red border" is a CSS `border-color` change with no accompanying text or ARIA. If any of those differ, the specific SC affected shifts slightly, but the fixes remain the same.
