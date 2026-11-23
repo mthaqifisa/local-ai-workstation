@@ -334,3 +334,21 @@ def test_files_the_agent_sent_itself_are_not_attached_again(tmp_path, monkeypatc
     monkeypatch.setattr(deliver, "already_sent", lambda _p: real(log))
     job = {"kind": "task", "started": _t.time() - 60, "payload": {"dir": str(folder)}}
     assert [f.name for f in telegram_bot.deliverables(job)] == ["b.md"]
+
+
+async def test_a_rate_limited_edit_does_not_post_a_new_message():
+    from types import SimpleNamespace
+
+    posted: list[str] = []
+
+    async def edit(*_a, **_k):
+        raise RuntimeError("Telegram server says - Too Many Requests: retry after 5")
+
+    async def send(chat, text, **_k):
+        posted.append(text)
+        return SimpleNamespace(message_id=2)
+
+    bot = SimpleNamespace(bot=SimpleNamespace(edit_message_text=edit, send_message=send))
+    reply = {"chat_id": 7, "status_id": 1}
+    await telegram_bot.LawBot._edit(bot, reply, "… writing", rich=False)  # type: ignore[arg-type]
+    assert posted == [] and reply["status_id"] == 1

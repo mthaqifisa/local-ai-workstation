@@ -623,7 +623,7 @@ class LawBot:
             await asyncio.sleep(every_s)
 
     async def _follow(self, job_id: str, reply: dict[str, Any], since: float = 0.0) -> None:
-        last = ""
+        last, edited = "", 0.0
         while True:  # stream progress; reconnect and poll if the API restarts
             try:
                 async with httpx.AsyncClient(timeout=httpx.Timeout(None, connect=10)) as client, \
@@ -639,7 +639,9 @@ class LawBot:
                         msg = ev.get("data", {}).get("message")
                         if ev.get("event") == "progress" and msg and msg != last:
                             last = msg
-                            await self._edit(reply, f"… {msg}")
+                            if time.monotonic() - edited >= EDIT_EVERY_S:  # flood control: the latest line wins
+                                edited = time.monotonic()
+                                await self._edit(reply, f"… {msg}")
             except httpx.HTTPError:
                 pass
             final = await self._get(job_id)
@@ -755,6 +757,8 @@ class LawBot:
                 return
             except Exception as exc:
                 if "not modified" in str(exc).lower():  # the same text again: nothing to do
+                    return
+                if is_rate_limited(exc):  # Telegram's flood control: skip this update, never post a new message
                     return
                 if rich:  # maybe the markup: try plain text in the same message before giving up on it
                     try:
@@ -1078,6 +1082,14 @@ def deliverables(job: dict[str, Any]) -> list[Path]:
                 and since <= f.stat().st_mtime and f.stat().st_size <= DOC_MAX_BYTES and str(f.resolve()) not in sent):
             found.append(f)
     return sorted(found, key=lambda f: f.stat().st_mtime, reverse=True)[:DOCS_SENT]
+
+
+EDIT_EVERY_S = 3.0  # Telegram allows about one edit per second per chat; agents report several actions a second
+
+
+def is_rate_limited(exc: Exception) -> bool:
+    """Telegram's flood control ("Too Many Requests: retry after N")."""
+    return type(exc).__name__ == "TelegramRetryAfter" or "too many requests" in str(exc).lower()
 
 
 TELEGRAM_LIMIT = 4000
