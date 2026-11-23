@@ -28,7 +28,7 @@ brew "mermaid-cli"   # diagrams in documents (/proposal); its headless browser i
 brew "tesseract"
 brew "cliclick"
 brew "peekaboo"
-brew "opencode"
+# opencode: pinned by settings/registry.yaml (pins.opencode), installed from npm by `law install`
 brew "gitleaks"
 brew "shellcheck"
 brew "jundot/omlx/omlx", args: ["with-custom-kernel"]

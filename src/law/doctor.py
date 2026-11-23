@@ -47,6 +47,16 @@ def _screen_ok(paths: LawPaths) -> bool:
     return ok
 
 
+def _version(cmd: list[str]) -> str:
+    """The version a runtime reports, or "" if it is missing or fails."""
+    from law.install.steps import tool_version
+    try:
+        res = subprocess.run([*cmd, "--version"], capture_output=True, text=True, timeout=60, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return tool_version(res.stdout + res.stderr) if res.returncode == 0 else ""
+
+
 def run_doctor(paths: LawPaths, con: Console) -> bool:
     reg = registry.load(paths.registry_file)
     ok = True
@@ -71,6 +81,15 @@ def run_doctor(paths: LawPaths, con: Console) -> bool:
     for name, ok_now in (("Mac control (Automation)", _automation_ok()), ("Screen capture", _screen_ok(paths))):
         table.add_row(name, "[green]granted[/]" if ok_now else "[yellow]not granted[/]",
                       "" if ok_now else "System Settings → Privacy & Security")
+
+    if reg.pins:
+        for tool, want, cmd in (("opencode", reg.pins.opencode, [str(paths.runtime / "bin" / "opencode")]),
+                                ("oMLX", reg.pins.omlx, ["omlx"])):
+            have = _version(cmd)
+            match = have == want
+            ok = ok and match
+            table.add_row(f"{tool} version", "[green]pinned[/]" if match else "[red]mismatch[/]",
+                          have if match else f"{have or 'missing'} (want {want}; run law install)")
 
     values = secrets.read(paths.env_file)
     tg = "configured" if values.get("LAW_TELEGRAM_TOKEN") else "not set"

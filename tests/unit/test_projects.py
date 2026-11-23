@@ -362,3 +362,15 @@ def test_adopt_brings_a_hand_made_project_to_the_board(tmp_path: Path) -> None:
     assert "P-01 Setup" in (folder / ".law" / "PROMPT.md").read_text()
     assert projects.decide(adopted, "go") == "develop"
     assert store.adopt(folder).id == "pantry-ios"  # twice is harmless
+
+
+def test_repo_may_sit_in_one_group_folder_and_keeps_a_flat_id(tmp_path: Path) -> None:
+    from law.projects import Projects, TemplateError, parse_template, project_id
+    fields = parse_template("name: Digital Bank\nsummary: A book.\nrepo: RnD/digital-bank\ndetails: all of it")
+    assert fields["repo"] == "RnD/digital-bank" and project_id(fields["repo"]) == "digital-bank"
+    paths = LawPaths(repo=tmp_path, home=tmp_path / "LAW", user_home=tmp_path)
+    project = Projects(paths).create(fields, chat=None)
+    assert project.id == "digital-bank" and project.dir == str(tmp_path / "SourceCode" / "RnD" / "digital-bank")
+    for bad in ("R&D/x", "Digital Bank", "a/b/c", "../x"):
+        with pytest.raises(TemplateError):
+            parse_template(f"name: x\nsummary: s\nrepo: {bad}\ndetails: d")

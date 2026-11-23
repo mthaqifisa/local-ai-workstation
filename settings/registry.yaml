@@ -152,6 +152,11 @@ comfyui:
   tag: v0.41.3
   python: "3.12"
 
+# Exact runtime versions (ADR-0001, ADR-0008). The installer repairs a mismatch; `law doctor` fails on one.
+pins:
+  opencode: "1.18.7"  # stay on 1.x until the OpenCode 2 gates pass (ADR-0024)
+  omlx: "0.8.0"
+
 tools:
   - name: huggingface_hub
     spec: "huggingface_hub[cli,hf_xet]==2.2.0"

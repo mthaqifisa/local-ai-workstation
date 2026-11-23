@@ -4,7 +4,7 @@ name: law6
 
 services:
   open-webui:
-    image: ghcr.io/open-webui/open-webui:v0.12.3
+    image: ghcr.io/open-webui/open-webui:v0.12.5@sha256:03443b8de6b617da9d900edd09b4bf1cb0ddbfdcba6afb42c548336a0b821ded
     restart: unless-stopped
     ports: ["0.0.0.0:${OPEN_WEBUI_PORT:-3000}:8080"]
     volumes: ["${LAW_HOME}/docker/open-webui:/app/backend/data"]

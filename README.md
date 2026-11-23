@@ -125,13 +125,13 @@ LAW creates it directly under `~/SourceCode/`.
 
 | Layer | Component | Version | Licence | Why |
 |---|---|---|---|---|
-| LLM runtime | [oMLX](https://github.com/jundot/omlx) | 0.7.1 | Apache-2.0 | MLX on Metal; OpenAI **and** Anthropic APIs; batching; SSD KV cache; load/unload API |
+| LLM runtime | [oMLX](https://github.com/jundot/omlx) | 0.8.0 (pinned) | Apache-2.0 | MLX on Metal; OpenAI **and** Anthropic APIs; batching; SSD KV cache; load/unload API |
 | LAN front door | Caddy | 2.11 | Apache-2.0 | Exposes the LLM API on the LAN without a key (oMLX requires one off-loopback) |
 | Queue | Valkey | 9.1 | BSD-3 | Durable jobs, leases, events; Redis-compatible |
 | API / CLI / worker | LAW (`src/law`) | 6.0 | — | FastAPI, Typer, pydantic; model-aware scheduler; quality loop |
-| Chat UI | Open WebUI | 0.12.3 | Open WebUI licence | Chat, RAG, voice, image tools for every device |
+| Chat UI | Open WebUI | 0.12.5 (pinned by digest) | Open WebUI licence | Chat, RAG, voice, image tools for every device |
 | Search | SearXNG | 2026.10.17 | AGPL-3.0 | Private meta-search for agents and chat |
-| Agents | OpenCode | 1.18 | MIT | Coding/operator agents on local models; per-role configs |
+| Agents | OpenCode | 1.18.7 (pinned, npm) | MIT | Coding/operator agents on local models; per-role configs |
 | Images | mflux | 0.23 | MIT | Qwen-Image 2.1 generate + edit, SeedVR2 upscaling |
 | Workflows | ComfyUI | 0.41.3 | GPL-3.0 | Node-based image/video workflows (Metal) |
 | Video | mlx-gen | 0.38 | MIT | Wan 2.2 14B text-to-video and image-to-video |
@@ -186,6 +186,31 @@ Chosen by the owner for a home network: user-facing services are open to the LAN
 the user's permissions (open apps, run commands). Telegram, being internet-reachable, answers only allow-listed user IDs.
 Valkey and oMLX bind to loopback. Secrets live only in `~/LAW/state/.env` (mode 600). Don't run LAW on untrusted
 networks (hotel or office Wi-Fi). See `docs/adr/0006-network-and-access.md`.
+
+This repo is public, so git hooks (`.githooks/`, set up by `law install`) and gitleaks rules (`.gitleaks.toml`) block
+commits and pushes that contain secrets or personal data: email addresses, home-folder paths, Mac hostnames or LAN
+addresses. Commits use the GitHub noreply address only. See `docs/adr/0023-privacy-guards-public-repo.md`.
+
+## Ports
+
+Every port LAW opens, from `settings/registry.yaml` (`ports:`). "LAN" means `0.0.0.0` with no login (see above).
+
+| Port | Service | Binds to | Used by |
+|---|---|---|---|
+| 3000 | Open WebUI (chat, RAG, voice) | LAN | Browsers on any device |
+| 3010 | Homepage dashboard | LAN | Browsers; embedded in the Console's Services tab |
+| 6379 | Valkey (job queue) | loopback | LAW API and worker only |
+| 8000 | Caddy, the LAN front door to the LLM API | LAN | OpenAI/Anthropic clients, VS Code, Claude Code, apps the agents build |
+| 8001 | oMLX (LLM, VLM, embeddings, rerank) | loopback | Caddy, the worker and OpenCode |
+| 8100 | LAW job API and LAW Console | LAN | `law` CLI, Telegram bot, Console, `law` on other machines |
+| 8110 | Read-only Console | loopback | The only port that is safe to forward to the internet (ADR-0022) |
+| 8188 | ComfyUI | LAN | Image/video workflows |
+| 8888 | SearXNG | LAN | Web search for agents and chat |
+| 9000 | Portainer (own admin login) | LAN | Docker management |
+
+The Telegram bot uses long polling, so it opens no inbound port. Projects the agents build publish their own ports while
+they run (Pantry, for example, uses 443, 8080 and 5432); those come from each project's `compose.yaml`, not from LAW.
+To change a port, edit `settings/registry.yaml` and run `law install`.
 
 ## Install
 

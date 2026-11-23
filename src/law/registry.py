@@ -152,6 +152,12 @@ class Tool(_Strict):
     link: bool = True  # own_venv only: link `check` into runtime/bin (off when the name would clash)
 
 
+class Pins(_Strict):
+    """Exact versions of the agent and model runtimes: one source of truth for the installer and `law doctor`."""
+    opencode: str  # npm opencode-ai, installed into ~/LAW/runtime/opencode and linked into ~/LAW/runtime/bin
+    omlx: str      # Homebrew jundot/omlx/omlx (Brewfile keeps with-custom-kernel)
+
+
 class ComfyUI(_Strict):
     repo: str
     tag: str
@@ -180,6 +186,7 @@ class Registry(_Strict):
     llm_models: list[LlmModel]
     media: dict[str, Media] = {}
     tools: list[Tool] = []
+    pins: Pins | None = None
     comfyui: ComfyUI | None = None
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
     retention: Retention = Field(default_factory=Retention)

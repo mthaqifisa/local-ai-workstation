@@ -619,9 +619,10 @@ class MediaModels:
 
 def model_options(effort: str, sampling: Sampling | None = None) -> dict[str, Any]:
     """What OpenCode sends the model for a thinking level. "off" turns the Qwen chat template's thinking off
-    (checked on the wire: OpenCode passes chat_template_kwargs through); reasoning_effort cannot (measured:
-    'none' still thinks). With the model card's sampling, its top_p, top_k, min_p and presence penalty go along
-    (the temperature is the agent's own field)."""
+    (checked on the wire: OpenCode passes chat_template_kwargs through). Since oMLX 0.8.0, reasoning_effort
+    'none' also disables thinking (measured 2026-11-21: 3 tokens, no reasoning); the template switch stays because it
+    works on every oMLX version and with any client. With the model card's sampling, its top_p, top_k, min_p and
+    presence penalty go along (the temperature is the agent's own field)."""
     extra = {k: v for k, v in sampling.body().items() if k != "temperature"} if sampling else {}
     if effort == "off":
         return {"chat_template_kwargs": {"enable_thinking": False}, **extra}
@@ -1200,6 +1201,53 @@ class ApiTools:
         return self.plan()
 
 
+def tool_version(text: str) -> str:
+    """The first dotted version number in a `--version` output ("" if none)."""
+    m = re.search(r"\d+\.\d+\.\d+(?:[-.]?[A-Za-z0-9]+)*", text)
+    return m.group(0) if m else ""
+
+
+class OpenCodePin:
+    """OpenCode at the exact registry version (npm opencode-ai), ahead of any Homebrew copy on PATH.
+
+    Homebrew's formula moves on its own, so a fresh Mac would otherwise get whatever is newest.
+    """
+
+    name = "opencode-pin"
+
+    def __init__(self, c: Ctx) -> None:
+        self.c = c
+        self.root = c.paths.runtime / "opencode"
+        self.link = c.paths.runtime / "bin" / "opencode"
+
+    def want(self) -> str | None:
+        return self.c.reg.pins.opencode if self.c.reg.pins else None
+
+    def plan(self) -> list[str]:
+        want = self.want()
+        if not want:
+            return []
+        res = self.c.sys.run([str(self.link), "--version"], timeout=60)
+        have = tool_version(res.out) if res.ok else ""
+        return [] if have == want else [f"opencode {have or 'missing'} -> {want}"]
+
+    def apply(self) -> None:
+        want = self.want()
+        if not want:
+            return
+        res = self.c.sys.run(["npm", "install", "--prefix", str(self.root), "--no-audit", "--no-fund",
+                              "--save-exact", f"opencode-ai@{want}"], timeout=900)
+        if not res.ok:
+            raise RuntimeError(res.out[-1500:])
+        self.link.parent.mkdir(parents=True, exist_ok=True)
+        if self.link.is_symlink() or self.link.exists():
+            self.link.unlink()
+        self.link.symlink_to(self.root / "node_modules" / ".bin" / "opencode")
+
+    def verify(self) -> list[str]:
+        return self.plan()
+
+
 class GitHooks:
     """Point the repo at its committed hooks (.githooks/): gitleaks privacy rules on commit and push, plus Git LFS."""
 
@@ -1230,7 +1278,7 @@ class GitHooks:
 
 def default_steps(c: Ctx) -> list[Step]:
     return [
-        Skeleton(c), EnvProfile(c), Secrets(c), Brew(c), GitHooks(c), LawVenv(c), CalcEnv(c), DocTools(c), ApiTools(c),
-        MediaTools(c), Models(c), MediaModels(c), OpenCodeConfig(c), Services(c), OmlxSettings(c), ComfyUIStep(c),
-        Colima(c), Compose(c), OpenWebUIState(c),
+        Skeleton(c), EnvProfile(c), Secrets(c), Brew(c), OpenCodePin(c), GitHooks(c), LawVenv(c), CalcEnv(c),
+        DocTools(c), ApiTools(c), MediaTools(c), Models(c), MediaModels(c), OpenCodeConfig(c), Services(c),
+        OmlxSettings(c), ComfyUIStep(c), Colima(c), Compose(c), OpenWebUIState(c),
     ]

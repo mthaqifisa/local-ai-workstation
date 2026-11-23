@@ -1,0 +1,127 @@
+{
+  "_note": "Reconstructed OpenCode coder turn (Pantry ticket P-37.2) for scripts/bench_models.py; ADR-0025. No personal data.",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are the coder agent working on the project in the current folder. Work one ticket at a time. Use the tools; never guess file contents. Read the file before you edit it."
+    },
+    {
+      "role": "user",
+      "content": "Ticket P-37.2: add the Open Food Facts fallback to the barcode lookup chain. The chain lives in api/src/main/java/app/pantry/lookup/LookupChain.java. Start by reading that file."
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "read",
+        "description": "Read a file from the project. Returns numbered lines.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "filePath": {
+              "type": "string",
+              "description": "Absolute or project-relative path"
+            },
+            "offset": {
+              "type": "integer"
+            },
+            "limit": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "filePath"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "edit",
+        "description": "Replace an exact string in a file.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "filePath": {
+              "type": "string"
+            },
+            "oldString": {
+              "type": "string"
+            },
+            "newString": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "filePath",
+            "oldString",
+            "newString"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "bash",
+        "description": "Run a shell command in the project folder.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "command": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "command",
+            "description"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "glob",
+        "description": "Find files by glob pattern.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "pattern"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "grep",
+        "description": "Search file contents with a regex.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "type": "string"
+            },
+            "include": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "pattern"
+          ]
+        }
+      }
+    }
+  ]
+}

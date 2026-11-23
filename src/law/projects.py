@@ -28,6 +28,8 @@ State = Literal["proposing", "awaiting_go", "developing", "awaiting_verification
 Action = Literal["go", "nogo", "changes", "allgood", "resume", "push"]
 EFFORTS = {"low": "low", "medium": "medium", "high": "xhigh"}
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,39}$")
+# An optional group folder above the project (e.g. RnD/digital-bank): shell-safe characters only, case kept.
+GROUP_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$")
 URL_RE = re.compile(r"^(https://[^\s@/:]+(?::\d+)?/[^\s@]+|git@[^\s:]+:[^\s]+)$")
 
 Mode = Literal["project", "code"]
@@ -121,15 +123,22 @@ def parse_template(text: str) -> dict[str, str]:
     if depth not in DEPTHS:
         raise TemplateError("proposal must be brief or full")
     fields["proposal"] = depth
-    repo = (fields.get("repo") or slugify(fields["name"])).lower()
-    if not NAME_RE.match(repo):
-        raise TemplateError("repo must be a folder name: letters, numbers, - . _ (e.g. office-chat)")
+    group, _, name = (fields.get("repo") or slugify(fields["name"])).strip("/").rpartition("/")
+    repo = f"{group}/{name.lower()}" if group else name.lower()
+    if not NAME_RE.match(name.lower()) or (group and not GROUP_RE.match(group)):
+        raise TemplateError("repo must be a folder name: letters, numbers, - . _ (e.g. office-chat), optionally "
+                            "inside one group folder (e.g. RnD/digital-bank); no spaces or &")
     fields["repo"] = repo
     url = fields.get("repo_url", "")
     if url and not URL_RE.match(url):
         raise TemplateError("repo_url must be https://host/owner/repo or git@host:owner/repo, without a password "
                             "or token in it")
     return fields
+
+
+def project_id(repo: str) -> str:
+    """The id Telegram, the board and the Console use: the folder name without its group (RnD/x -> x)."""
+    return repo.rsplit("/", 1)[-1]
 
 
 def slugify(text: str) -> str:
@@ -216,9 +225,10 @@ class Projects:
 
     def create(self, fields: dict[str, str], chat: int | None, mode: Mode = "project") -> Project:
         folder = self.paths.projects / fields["repo"]
-        if fields["repo"] in self._index():
-            raise TemplateError(f"a project named {fields['repo']} already exists; pick another repo name")
-        project = Project(id=fields["repo"], name=fields["name"], dir=str(folder),
+        pid = project_id(fields["repo"])
+        if pid in self._index():
+            raise TemplateError(f"a project named {pid} already exists; pick another repo name")
+        project = Project(id=pid, name=fields["name"], dir=str(folder),
                           repo_url=fields.get("repo_url", ""), stack=fields.get("stack", ""),
                           thinking=fields["thinking"], mode=mode, proposal=fields.get("proposal", "brief"),
                           summary=fields["summary"], details=fields["details"], chat=chat)

@@ -43,6 +43,9 @@ PROJECT_TOOL: dict[str, Any] = {
                 "summary": {"type": "string", "description": "One sentence: what it is."},
                 "details": {"type": "string", "description": "Everything the user asked for, with every detail."},
                 "stack": {"type": "string", "description": "The technology, if the user or the chat settled it."},
+                "folder": {"type": "string",
+                           "description": ("Only if the user named one: the folder under ~/SourceCode, e.g. "
+                                           "RnD/digital-bank. Leave empty to derive it from the name.")},
                 "mode": {"type": "string", "enum": ["code", "project"],
                          "description": ("code: a short plan and tickets for the user's go, no documents; project: "
                                          "research and a proposal PDF first, for a full engagement.")},
@@ -256,18 +259,20 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         """`start_agent` for this chat message: queues one agent task that reports to the same chat."""
         async def start_project(args: dict[str, Any], chat: int | None, reply: dict[str, Any] | None) -> str:
             from law.app import resolver
-            from law.projects import Projects, TemplateError, parse_template
+            from law.projects import Projects, TemplateError, parse_template, project_id
             from law.queue.jobs import Job
 
             summary = " ".join(str(args.get("summary", "")).split())
             mode = "project" if args.get("mode") == "project" else "code"
+            folder = str(args.get("folder") or "").strip()
             template = (f"name: {args.get('name', '')}\nstack: {args.get('stack', '')}\nsummary: {summary}\n"
-                        f"details: {args.get('details', '')}")
+                        + (f"repo: {folder}\n" if folder else "")  # before details, which takes the rest
+                        + f"details: {args.get('details', '')}")
             try:
                 fields = parse_template(template)
             except TemplateError as exc:
                 return f"error: {exc}"
-            if any(p.id == fields["repo"] for p in Projects(rt.paths).all()):
+            if any(p.id == project_id(fields["repo"]) for p in Projects(rt.paths).all()):
                 return f"error: project {fields['repo']} already exists; use revise_project to redo it"
             job = await ctx.store.submit(resolver(rt)(Job(
                 kind="project_new", payload={"fields": fields, "chat": chat, "mode": mode}, source=ctx.job.source,

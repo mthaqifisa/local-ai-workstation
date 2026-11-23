@@ -66,7 +66,7 @@ class LLM:
         error (retried by the queue at lower effort) rather than a silent empty result."""
         body: dict[str, Any] = {"model": model, "messages": messages, "temperature": temperature,
                                 "max_tokens": max_tokens, "stream": False, **(extra or {})}
-        if reasoning == "off":  # the chat template's switch; reasoning_effort cannot turn thinking off
+        if reasoning == "off":  # the chat template's switch (oMLX >= 0.8.0 also honours reasoning_effort 'none')
             body["chat_template_kwargs"] = {"enable_thinking": False}
         elif reasoning:
             body["reasoning_effort"] = reasoning

@@ -313,3 +313,11 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - 2026-11-20 22:55 Sanitize P3: filter-repo rewrote 378 commits; report ~/LAW/logs/sanitize-report-20261120.md: 0 content/message hits, identities noreply only, gitleaks clean (allow-listed test line), 531 tests + ruff + mypy pass. Awaiting the owner's yes for the force-push.
 - 2026-11-20 23:05 Sanitize P4-P5: force-pushed 8 branches (owner yes); fresh GitHub mirror 379 commits, 0 hits, noreply identities only, gitleaks clean. Closed PR #1/#2 refs still pin old commits: owner sends the drafted GitHub Support request. 0 forks.
 - 2026-11-20 23:25 Sanitize P6: privacy rules in .gitleaks.toml (37 rule tests), hooks in .githooks/ (7 hook tests), CI privacy workflow, scrub for law save and TEST-REPORT; .gitleaksignore replaced by a path allowlist (ADR-0023). 583 unit tests, ruff, mypy pass; law install set core.hooksPath and restarted services; doctor all healthy.
+
+### v6.1 enhancements (owner brief 2026-11-20; brief kept outside the repo)
+- [x] E1 Pins + runtime upgrade: registry `pins:` (OpenCode 1.18.7 via npm, oMLX 0.8.0), Open WebUI 0.12.5 by digest, doctor version check (ADR-0024)
+- [ ] E2/E3 Speculative decoding (27B MTP vs DFlash 2) and fast-lane 4-bit: benchmarks, owner yes for cut-over
+- [ ] Digital Bank book via Tony (project RnD/digital-bank), monitored every 2 h
+- [ ] E5 judge A/B, E6 OpenCode 2 (gated), E7 finish P7/P8, E8 lead-note approval
+- [ ] README + HTML documentation page (docs/index.html) once stable
+- 2026-11-23 11:25 E1 done: oMLX 0.8.0 (needed Xcode MetalToolchain for the custom kernels), Open WebUI 0.12.5, OpenCode pinned 1.18.7; thinking-off re-measured (template switch and reasoning_effort none both work); install re-run 0 changes; doctor healthy; integration 10/10 (stale ADR-0017 test fixed); golden eval 10/10. Projects may sit in one group folder (RnD/digital-bank). README ports table. bench_models.py ready.

@@ -11,3 +11,8 @@ v5 was pinned to mlx-openai-server 1.8.1 (300 s prompt limit, vision hang, leake
 
 ## Consequences
 One endpoint (`http://<mac>:8000/v1`) for every client. Model swaps are delegated to oMLX; the LAW scheduler coordinates heavy media jobs by asking oMLX to unload.
+
+## Update 2026-11-21 (v6.1, ADR-0024)
+
+Runtimes are pinned in `settings/registry.yaml` (`pins:`): oMLX 0.8.0 and OpenCode 1.18.7; Open WebUI 0.12.5 is pinned
+by digest in `compose.yaml`. `law doctor` fails on a version mismatch.

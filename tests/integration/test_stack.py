@@ -64,10 +64,12 @@ def test_quality_pipeline_end_to_end() -> None:
     final = httpx.get(f"{API}/jobs/{job_id}", timeout=10).json()
     assert final["status"] == "done"
     assert "tokyo" in final["result"]["answer"].lower()
+    # ADR-0017: the draft runs inside the ask job and only long answers get an independent review, so a one-word
+    # answer has no children; when a review does run, the judge is the non-Qwen model.
     children = httpx.get(f"{API}/jobs/{job_id}/children", timeout=10).json()
-    assert {c["kind"] for c in children} == {"draft", "judge", "revise"}
-    judge = next(c for c in children if c["kind"] == "judge")
-    assert "gemma" in judge["resource"]
+    assert {c["kind"] for c in children} <= {"judge", "revise"}
+    for judge in (c for c in children if c["kind"] == "judge"):
+        assert "gemma" in judge["resource"]
 
 
 def _run_job(kind: str, payload: dict[str, object], timeout: float = 900) -> dict[str, object]:
