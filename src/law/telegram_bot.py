@@ -619,6 +619,11 @@ class LawBot:
         await self._edit(reply, parts[0], rich=True)
         for part in parts[1:]:
             await self._send(chat, part)
+        for doc in deliverables(final):  # an agent's documents arrive with its answer, not on request
+            try:
+                await self.bot.send_document(chat, FSInputFile(str(doc)))
+            except Exception:  # the answer names the file; a failed upload must not lose the reply
+                log.warning("could not attach %s", doc)
 
     async def _offer_recovery(self, chat: int, job: dict[str, Any]) -> None:
         """Every failed or cancelled job asks the owner what to do: Retry (and Skip for multi-step jobs)."""
@@ -964,6 +969,28 @@ def roles_text() -> str:
 
     loaded = roles.load(LawPaths.from_env().settings / "roles.yaml")
     return "**Roles for /agent**\n" + "\n".join(f"`{n}` — {r.summary}" for n, r in loaded.roles.items())
+DOC_SUFFIXES = {".md", ".pdf", ".docx", ".xlsx", ".pptx", ".csv", ".txt", ".html", ".png", ".jpg", ".jpeg",
+                ".svg", ".mp3", ".wav", ".mp4"}
+DOCS_SENT = 5
+DOC_MAX_BYTES = 45 * 1024 * 1024  # Telegram bots may send up to 50 MB
+
+
+def deliverables(job: dict[str, Any]) -> list[Path]:
+    """Documents an agent task wrote in its folder during the job (newest first): reports, memos, PDFs, sheets,
+    images, audio. Code projects and LAW's own .law/ notes are not documents."""
+    payload = job.get("payload") or {}
+    if job.get("kind") != "task" or not payload.get("dir") or payload.get("project"):
+        return []
+    folder, since = Path(str(payload["dir"])), float(job.get("started") or job.get("created") or 0)
+    skip = {".law", ".git", "node_modules", ".venv", "venv", "__pycache__", "build", "dist"}
+    found = []
+    for f in folder.rglob("*") if folder.is_dir() else []:
+        if (f.is_file() and f.suffix.lower() in DOC_SUFFIXES and not skip & set(f.relative_to(folder).parts)
+                and since <= f.stat().st_mtime and f.stat().st_size <= DOC_MAX_BYTES):
+            found.append(f)
+    return sorted(found, key=lambda f: f.stat().st_mtime, reverse=True)[:DOCS_SENT]
+
+
 TELEGRAM_LIMIT = 4000
 TYPING_LIMIT_S = 600.0
 REPEAT_CHARS = 20  # "yes" and "go on" are meant each time

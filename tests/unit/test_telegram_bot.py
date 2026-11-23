@@ -301,3 +301,19 @@ async def test_typing_is_shown_and_renewed_until_the_limit():
     bot = SimpleNamespace(bot=SimpleNamespace(send_chat_action=action))
     await telegram_bot.LawBot._typing(bot, 7, every_s=0.01, limit_s=0.035)  # type: ignore[arg-type]
     assert sent and all(s == (7, "typing") for s in sent) and len(sent) >= 2
+
+
+def test_an_agents_documents_are_attached(tmp_path):
+    import os
+    import time as _t
+
+    folder = tmp_path / "out"
+    (folder / ".law").mkdir(parents=True)
+    (folder / "memo.md").write_text("memo")
+    (folder / ".law" / "PROGRESS.md").write_text("notes")
+    (folder / "old.pdf").write_text("old")
+    os.utime(folder / "old.pdf", (_t.time() - 3600, _t.time() - 3600))
+    job = {"kind": "task", "started": _t.time() - 60, "payload": {"dir": str(folder)}}
+    assert [f.name for f in telegram_bot.deliverables(job)] == ["memo.md"]
+    assert telegram_bot.deliverables({**job, "kind": "ask"}) == []
+    assert telegram_bot.deliverables({**job, "payload": {"dir": str(folder), "project": "p"}}) == []
