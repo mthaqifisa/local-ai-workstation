@@ -1,9 +1,9 @@
 {
   "stage": "E-enhance-v6.1",
-  "task": "E6 OpenCode 2",
-  "status": "done: deferred (ADR-0028); v1+v2 contract fixtures, parsers accept v2 events",
-  "next_step": "Chapter-1 trial of the Digital Bank book via /rnd from Tony",
-  "timestamp": "2026-11-24T06:08:06+08:00",
+  "task": "Ch.1 trial (/rnd via Tony)",
+  "status": "writing (approved 06:29)",
+  "next_step": "Monitor ch.1 trial; verify writer, editor, page check; fix LAW and restart on any issue",
+  "timestamp": "2026-11-24T06:30:10+08:00",
   "files_touched": [
     "src/law/handlers/tasks.py",
     "tests/unit/test_opencode_contract.py",

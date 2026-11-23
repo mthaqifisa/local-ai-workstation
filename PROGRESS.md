@@ -335,3 +335,4 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - 2026-11-23 22:20 Speed-ups measured: 2 concurrent requests (none at 32K), SpecPrefill (lossy, rejected), ANE prefill (7%, rejected), 35B-A3B 4-bit (+58% but wrong tool calls, rejected, deleted). ADR-0025/0002.
 - 2026-11-24 E5 judge A/B: Gemma 65/16.7/93.3 vs Glimmer 80/26.7/83.3, 6× slower; Gemma stays, Glimmer deleted (ADR-0007).
 - 2026-11-24 E6 OpenCode 2.4.0 tried isolated: compatible, no gain (17.2 s vs 19.5 s), CLI breaks (--dir gone, bash→shell); deferred (ADR-0028). Contract tests on recorded v1/v2 streams.
+- 2026-11-24 Ch.1 trial via Tony /rnd: 3 LAW fixes before Go (planner now reads files the request names; replan replaces unstarted tickets and continues ticket IDs; doc plans name every diagram). Restarted from scratch, plan approved 06:29, writing.
