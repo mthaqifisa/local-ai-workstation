@@ -1,6 +1,6 @@
 # Model benchmarks
 
-Generated 2026-11-23 17:39 by `scripts/bench_models.py report` from raw results in `~/LAW/outputs/bench/`. Do not edit by hand. Medians of the timed runs; memory is the peak oMLX reported for loaded models. Tool-call rows have no decode figure (the call arrives as one chunk), so their TTFT is the whole turn; the Calls column says whether every run made the baseline's call. Protocol: ADR-0025.
+Generated 2026-11-23 22:01 by `scripts/bench_models.py report` from raw results in `~/LAW/outputs/bench/`. Do not edit by hand. Medians of the timed runs; memory is the peak oMLX reported for loaded models. Tool-call rows have no decode figure (the call arrives as one chunk), so their TTFT is the whole turn; the Calls column says whether every run made the baseline's call. Protocol: ADR-0025.
 
 | Config | Model | oMLX | Workload | Context | Decode tok/s | Prefill tok/s | TTFT s | Peak GB | Runs | Calls |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -40,3 +40,9 @@ Generated 2026-11-23 17:39 by `scripts/bench_models.py report` from raw results 
 | 27b-8bit-dflash2-b4 | qwen3.8-27b-8bit | 0.8.0 | toolcall | 4K | - | 288.8 | 10.21 | 33.63 | 3/3 | ok |
 | 27b-8bit-dflash2-b4 | qwen3.8-27b-8bit | 0.8.0 | toolcall | 32K | - | 326.9 | 93.65 | 33.63 | 3/3 | ok |
 | 27b-8bit-dflash2-b4 | qwen3.8-27b-8bit | 0.8.0 | toolcall | 64K | - | 298.3 | 207.66 | 33.63 | 3/3 | ok |
+| 27b-dflash-aneprefill | qwen3.8-27b-8bit | 0.8.0 | code | 4K | 26.3 | 363.7 | 9.54 | 33.63 | 3/3 | - |
+| 27b-dflash-aneprefill | qwen3.8-27b-8bit | 0.8.0 | code | 32K | 24.2 | 357.1 | 87.29 | 33.63 | 3/3 | - |
+| 27b-dflash-aneprefill | qwen3.8-27b-8bit | 0.8.0 | prose | 4K | 18.3 | 346.9 | 9.75 | 33.63 | 3/3 | - |
+| 27b-dflash-aneprefill | qwen3.8-27b-8bit | 0.8.0 | prose | 32K | 16.5 | 361.6 | 85.97 | 33.63 | 3/3 | - |
+| 27b-dflash-aneprefill | qwen3.8-27b-8bit | 0.8.0 | toolcall | 4K | - | 300.6 | 9.81 | 33.63 | 3/3 | ok |
+| 27b-dflash-aneprefill | qwen3.8-27b-8bit | 0.8.0 | toolcall | 32K | - | 350.7 | 87.18 | 33.63 | 3/3 | ok |

@@ -33,6 +33,15 @@ golden eval scored 10/10.
   install step.
 - The MTP quant (28 GB) is deleted. No new main model was needed.
 
+## Later measurements (2026-11-23)
+- **Two requests at once** on the 27B with DFlash: about 1.3x total output at 4K, none at 32K. Prefill runs one
+  request at a time and dominates long inputs, so parallel tickets are not worth building.
+- **SpecPrefill** (oMLX): rejected without a run. It keeps only part of the prompt (a draft model picks about 20% of
+  the tokens), so the model does not see the whole input: a quality loss by design.
+- **ANE prefill** (Neural Engine): time to first token 87 s instead of 94 s at 32K (about 7%), no change at 4K, and
+  part of the work runs on an approximate path (oMLX log). Not adopted: too small a gain for a possible accuracy cost.
+- Conclusion: prefill on this Mac is near its limit; time is saved by agents wasting fewer steps.
+
 ## Follow-up
-TensorFold (Apache-2.0, exact speculative decoding on MLX) reports about 2x oMLX's DFlash figures on the same chip.
-It is a candidate for the same protocol, not adopted on reported numbers.
+TensorFold (Apache-2.0) reports about 2x oMLX's DFlash figures on the same chip; the owner chose to skip it
+(2026-11-23): young, self-reported gains, no proof on this Mac.
