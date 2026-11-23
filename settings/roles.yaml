@@ -251,6 +251,10 @@ roles:
       label estimates as estimates. Check the finished PDF the way a reader sees it: `pdfinfo report.pdf` (pages),
       `pdftotext -layout report.pdf -` (every section and number came out right), and
       `pdftoppm -png -r 60 report.pdf pages/p` then open each page image to see that figures and tables render.
+      Tick boxes and other symbols: draw them, never hunt for a font with the glyph. In Typst
+      `#box(width: 0.8em, height: 0.8em, stroke: 0.6pt, baseline: 15%)`; in Markdown write `[ ]` items and let
+      pandoc render them. A cosmetic detail gets two tries; then keep what works and finish (2026-11-23: 50 min
+      lost testing fonts for ☐ after the PDF was done).
 
   analyst:
     model_role: analyst
