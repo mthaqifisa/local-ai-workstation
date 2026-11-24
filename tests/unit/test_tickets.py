@@ -649,7 +649,8 @@ async def test_a_writer_paging_through_sources_is_told_to_write_from_its_notes(
     monkeypatch.setattr(tasks, "uncommitted", lambda folder: [])
     seen: list[str | None] = []
     prompts: list[str] = []
-    reading = (["▶ running sed -n '100,200p' sources/framework.txt"] * 10 + ["✏️ writing chapters/01.md"]
+    reading = ([f"▶ running sed -n '{n}00,{n + 1}00p' sources/framework.txt" for n in range(10)]  # paging on
+               + ["✏️ writing chapters/01.md"]
                + ["📖 reading ~/x/sources/faq.txt"] * tasks.SOURCE_READ_LIMIT)
 
     async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
@@ -935,7 +936,7 @@ async def test_an_agent_running_the_same_command_again_and_again_is_told_to_move
     seen: list[str | None] = []
     prompts: list[str] = []
     same = '▶ running rg -n "principal plus" chapters/01.md'
-    actions = [same, same, "✏️ editing notes.md", same, same, same, same]
+    actions = [same, same, "✏️ editing notes.md", *[same] * 6]
 
     async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
         if cmd[0] != "opencode":
@@ -953,5 +954,5 @@ async def test_an_agent_running_the_same_command_again_and_again_is_told_to_move
 
     monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
     await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx({**_payload(project), "role": "writer"}))
-    assert seen[:6] == [None] * 6 and seen[6] and seen[6].startswith(tasks.REPEAT_HEAD)  # a save in between resets
+    assert seen[:8] == [None] * 8 and seen[8] and seen[8].startswith(tasks.REPEAT_HEAD)  # a save in between resets
     assert "principal plus" in prompts[1]  # the nudge goes into the same session

@@ -553,8 +553,9 @@ WEB_DIG_NUDGE = ("Stop trying to get around websites (decrypting a site's API, w
                  "Write your findings now. A fact you could not get from an official page that opens goes in as "
                  "\"owner to confirm: <the fact and where it should be>\", not as more fetching.")
 # The same command or read again and again with nothing in between (seen 2026-11-25: the editor ran one rg 94 times in
-# 12 minutes, each step 6 s). Any role; counted only when the identical action repeats back to back.
-REPEAT_LIMIT = 4
+# 12 minutes, each step 6 s). Shell commands of any role but the coder (whose re-reads and lookups have their
+# own guards); counted only when the identical command repeats back to back.
+REPEAT_LIMIT = 6
 REPEAT_NUDGES = 3  # then a repeat counts as a strike, like a stall
 REPEAT_HEAD = "You have run the same thing"
 REPEAT_NUDGE = (REPEAT_HEAD + " {times} times in a row: {action}. It gives the same result every time. Use the "
@@ -1027,7 +1028,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             nonlocal told_law, told_probe, told_shell_write, told_wrap
             if finished is not None and finished():
                 return TICKET_DONE
-            if summary.startswith(("▶", "📖", "🔎")):
+            if role != "coder" and summary.startswith("▶"):  # a coder's repeats have their own guards
                 repeats = repeats + 1 if summary == last_action else 1
                 last_action = summary
                 if repeats >= REPEAT_LIMIT:
