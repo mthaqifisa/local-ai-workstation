@@ -466,3 +466,43 @@ async def test_qa_cannot_verify_a_bug_the_fix_stage_never_fixed(tmp_path: Path,
     assert done.result["review"]["issues"][0].startswith("BUG-1 (open")
     qa_prompt = next(p for p in prompts if "independent user" in p)
     assert "{now}" not in qa_prompt and not re.search(r"<YYYY", qa_prompt)
+
+
+async def test_a_later_round_checks_only_the_sections_that_changed(tmp_path: Path,
+                                                                  monkeypatch: pytest.MonkeyPatch) -> None:
+    """Owner 2026-11-25: round 2 re-checked every section for a handful of edits. The retests still run every round."""
+    from law.handlers import project as _registers_project_specs  # noqa: F401
+    from law.handlers import tasks
+
+    monkeypatch.setattr(tasks, "SECTION_WORDS_MIN", 5)
+    book = tmp_path / "RnD" / "bank"
+    (book / ".law").mkdir(parents=True)
+    (book / "chapters").mkdir()
+    chapter = book / "chapters" / "01-one.md"
+    chapter.write_text(CHAPTER)
+    prompts: list[str] = []
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        agent = cmd[cmd.index("--agent") + 1] if "--agent" in cmd else ""
+        if agent == "editor":
+            prompts.append(cmd[-1])
+            reply = '{"tested": ["unit: pass"], "summary": "ok"}'
+        elif agent == "designer":
+            reply = '{"screens": ["page 1: pass"], "summary": "fine"}'
+        else:
+            reply = '{"score": 5, "issues": [], "summary": "fine"}'
+        return '{"type": "text", "part": {"type": "text", "text": ' + json.dumps(reply) + '}}'
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    rt = _review_rt(tmp_path)
+    payload = {"prompt": "write a book", "dir": str(book), "role": "writer", "project": "bank",
+               "rubric_ref": "project.review", "version": 1,
+               "spec_args": {"name": "Bank", "out": "docs/proposal", "version": 1, "kind": "document",
+                             "spec_file": ".law/PROMPT.md (the agreed plan)"},
+               "_carry": {"answer": "done"}}
+    await tasks.make_handlers(rt)["task_review"](_ctx(payload))
+    assert len(prompts) == 3  # whole + 2 sections
+    prompts.clear()
+    chapter.write_text(CHAPTER.replace("RM100 million", "RM300 million"))  # the fix stage edits one section
+    await tasks.make_handlers(rt)["task_review"](_ctx({**payload, "version": 2}))
+    assert len(prompts) == 2 and "Other sessions" in prompts[0] and "RM300 million" in prompts[1]

@@ -725,6 +725,16 @@ def section_key(sec: dict[str, str]) -> str:
     return f"{sec['file']}#{sec['heading']}#{digest}"
 
 
+def checked_key(sec: dict[str, str]) -> str:
+    """A section's identity across rounds: its text and its footnotes. While both are unchanged, an earlier round's
+    fact-check of it still holds (its findings are retested by the whole-document unit every round)."""
+    return f"{section_key(sec)}#{hashlib.sha256(sec['notes'].encode()).hexdigest()[:8]}"
+
+
+def checked_file(cache: Path, folder: Path) -> Path:
+    return cache / "review" / f"checked-{hashlib.sha256(str(folder).encode()).hexdigest()[:12]}.json"
+
+
 def review_progress_file(cache: Path, job_id: str, version: object) -> Path:
     return cache / "review" / f"{job_id}-v{version}.json"
 
@@ -1579,6 +1589,10 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         the job time limit) goes on from the next unit instead of starting the round over."""
         done_file = review_progress_file(rt.paths.cache, ctx.job.id, fill["version"])
         done = load_review_progress(done_file)
+        # sections an earlier round fact-checked, by text and footnotes: a later round checks only what the fix stage
+        # changed (owner 2026-11-25: round 2 re-checked every section, 1.5 hours, for a handful of edits)
+        earlier_file = checked_file(rt.paths.cache, folder)
+        earlier = load_review_progress(earlier_file)
 
         async def unit(key: str, template: str, **extra: Any) -> dict[str, Any]:
             if key in done:
@@ -1603,18 +1617,29 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         tested = [str(t) for t in whole.get("tested", [])]
         summaries = [str(whole["summary"])] if whole.get("summary") else []
         unchecked = [] if tested else ["retests, build and coverage"]
+        unchanged = []
         for n, sec in enumerate(sections, start=1):
-            key = section_key(sec)
-            if key not in done:
-                await ctx.progress(f"🧐 editor: section {n}/{len(sections)} \"{sec['heading']}\"")
-            got = await unit(key, EDITOR_SECTION, n=n, total=len(sections), **sec)
+            key, same = section_key(sec), checked_key(sec)
+            if key not in done and earlier.get(same, {}).get("tested"):
+                got = earlier[same]
+                unchanged.append(sec["heading"])
+            else:
+                if key not in done:
+                    await ctx.progress(f"🧐 editor: section {n}/{len(sections)} \"{sec['heading']}\"")
+                got = await unit(key, EDITOR_SECTION, n=n, total=len(sections), **sec)
+                if got.get("tested"):
+                    earlier[same] = got
+                    save_review_progress(earlier_file, earlier)
             if got.get("tested"):
                 tested += [str(t) for t in got["tested"]]
                 if got.get("summary"):
                     summaries.append(str(got["summary"]))
             else:
                 unchecked.append(sec["heading"])
-        done_file.unlink(missing_ok=True)  # the round is over: the next one checks everything again
+        if unchanged:
+            await ctx.progress(f"🧐 editor: {len(unchanged)} sections unchanged since an earlier round's check: "
+                               + ", ".join(unchanged)[:200])
+        done_file.unlink(missing_ok=True)  # the round is over
         summary = " ".join(summaries)[:600]
         if unchecked:
             summary = f"Not checked: {', '.join(unchecked)}. {summary}"
