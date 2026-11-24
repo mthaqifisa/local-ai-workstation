@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -373,3 +374,59 @@ async def test_a_document_with_chapters_is_fact_checked_one_section_at_a_time(
     assert len(prompts) == 4  # whole, section 1, section 2 and its one retry
     review = done.result["review"]
     assert review["score"] < 4 and any("section not fact-checked: Short + Capital" in i for i in review["issues"])
+
+
+async def test_a_review_that_runs_again_goes_on_from_the_next_unit(tmp_path: Path,
+                                                                   monkeypatch: pytest.MonkeyPatch) -> None:
+    """Seen 2026-11-25: a review round hit the 6-hour job limit in section 4 of 6 and started over from scratch.
+    Each unit also runs with the chapter, RESEARCH.md and sources unreadable whole (they are searched), which keeps
+    the judge model's sessions under the size where oMLX stopped reusing its prompt cache."""
+    from law.handlers import project as _registers_project_specs  # noqa: F401
+    from law.handlers import tasks
+
+    monkeypatch.setattr(tasks, "SECTION_WORDS_MIN", 5)
+    book = tmp_path / "RnD" / "bank"
+    (book / ".law").mkdir(parents=True)
+    (book / "chapters").mkdir()
+    (book / "chapters" / "01-one.md").write_text(CHAPTER)
+    rt = _review_rt(tmp_path)
+    first = tasks.doc_sections(book)[0]
+    progress = tasks.review_progress_file(rt.paths.cache, "j1", 1)
+    tasks.save_review_progress(progress, {"whole": {"tested": ["retest: pass"], "summary": "earlier run"},
+                                          tasks.section_key(first): {"tested": ["s1: pass"], "summary": "s1 ok"}})
+    prompts: list[str] = []
+    limits: list[str] = []
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        agent = cmd[cmd.index("--agent") + 1] if "--agent" in cmd else ""
+        if agent == "editor":
+            prompts.append(cmd[-1])
+            limits.append(kw["env"].get("OPENCODE_CONFIG_CONTENT", ""))
+            reply = '{"tested": ["unit: pass"], "summary": "ok"}'
+        elif agent == "designer":
+            reply = '{"screens": ["page 1: pass"], "summary": "fine"}'
+        else:
+            reply = '{"score": 5, "issues": [], "summary": "fine"}'
+        return '{"type": "text", "part": {"type": "text", "text": ' + json.dumps(reply) + '}}'
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    payload = {"prompt": "write a book", "dir": str(book), "role": "writer", "project": "bank",
+               "rubric_ref": "project.review", "version": 1,
+               "spec_args": {"name": "Bank", "out": "docs/proposal", "version": 1, "kind": "document",
+                             "spec_file": ".law/PROMPT.md (the agreed plan)"},
+               "_carry": {"answer": "done"}}
+    await tasks.make_handlers(rt)["task_review"](_ctx(payload))
+    assert len(prompts) == 1 and "section 2 of 2" in prompts[0]  # only the unit not done before
+    assert not re.search(r"<YYYY-MM-DD HH:MM>", prompts[0]) and re.search(r"editor · \d{4}-\d\d-\d\d \d\d:\d\d",
+                                                                          prompts[0])
+    deny = json.loads(limits[0])["permission"]["read"]
+    assert deny["*chapters/*"] == deny["*.law/RESEARCH.md"] == deny["*sources/*"] == "deny" and deny["*"] == "allow"
+    assert not progress.exists()  # the round is over: the next round checks everything again
+
+
+def test_an_edited_section_is_checked_again() -> None:
+    from law.handlers import tasks
+
+    sec = {"file": "chapters/01.md", "heading": "Capital", "text": "RM100 million"}
+    assert tasks.section_key(sec) != tasks.section_key({**sec, "text": "RM300 million"})
+    assert tasks.read_limits(()) == {}

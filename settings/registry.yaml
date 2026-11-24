@@ -124,8 +124,11 @@ llm_models:
     # 32768 left the editor ~26K tokens after the 6K reserved for output: a whole 7,600-word chapter in one session
     # compacted every 5 minutes (2026-11-24). 65536 went past what this Mac holds: oMLX's prefill guard (48 GB
     # ceiling) rejected an uncached 35,456-token prompt with 40.3 GB in use, and the error failed the pipeline.
-    # 36864 compacts at ~30.7K, under that limit; the editor checks a document one section at a time, which fits.
-    context: 36864
+    # 36864 compacted at ~30.7K, under that limit, but above ~23K tokens oMLX stopped reusing this model's prompt
+    # cache: a step took 110-130 s instead of 6 s (2026-11-25, 1,000 editor steps: fast below 22K, slow from 24K),
+    # and one review round ran 6 hours. 28672 compacts at ~22.5K; the editor's units start near 6K because LAW
+    # blocks reading the chapter, RESEARCH.md and sources whole (they search them).
+    context: 28672
     roles: [judge]
     sampling:  # huggingface.co/google/gemma-4-31b-it (2026-10-26): one set for every use
       thinking: {temperature: 1.0, top_p: 0.95, top_k: 64}

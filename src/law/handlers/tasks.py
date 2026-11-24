@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import itertools
 import json
 import re
@@ -609,7 +610,7 @@ and every change the owner asked for in {folder}/.law/REQUESTS.md. The findings 
    must appear in the source as written; check terms and numbers agree across chapters and with the glossary, and
    that every part of the outline and every owner request is covered.
    For each new finding append:
-   ## BUG-<next number> · open · editor · <YYYY-MM-DD HH:MM>
+   ## BUG-<next number> · open · editor · {now}
    <one-line title of what is wrong>
    Severity: blocker | major | minor
    Where: <file, section, page>  Evidence: <the source's words or the command output>  Correct: <what it should say>
@@ -626,6 +627,9 @@ asked for in {folder}/.law/REQUESTS.md. The findings list is {folder}/.law/BUGS.
 reopened). The document's headings, in order:
 {headings}
 
+LAW's read tool will not open the chapter files, .law/RESEARCH.md or sources/ whole (they would fill your memory):
+search them with `rg -n -C 3 "<words>" <path>`.
+
 1. Retest: for every finding that is open, fixed or reopened, check it again (search the chapter for the words it
    names). Set its status word in the heading to verified if it is resolved, or reopened if not, and add a line
    "Retest <date>: <result>".
@@ -633,26 +637,27 @@ reopened). The document's headings, in order:
 3. Coverage: compare the headings above with the outline and the owner's requests. Every part of the outline and every
    request must be covered; a missing one is a finding.
    For each new finding append:
-   ## BUG-<next number> · open · editor · <YYYY-MM-DD HH:MM>
+   ## BUG-<next number> · open · editor · {now}
    <one-line title of what is wrong>
    Severity: blocker | major | minor
    Where: <file, section>  Evidence: <what is missing or the command output>  Correct: <what it should be>
 4. Reply with JSON only: {{"tested": ["retest: pass|fail", "build: pass|fail", "coverage: pass|fail"],
    "summary": "<one sentence>"}}"""
 EDITOR_SECTION = """Fact-check one section of {name} version {version}, the document in {folder}, as its independent
-editor. This is section {n} of {total}: "{heading}" in {file}. Its text and footnotes are below, so do not open the
-chapter file, and do not read .law/RESEARCH.md or a source whole: search them.
+editor. This is section {n} of {total}: "{heading}" in {file}. Its text and footnotes are below. LAW's read
+tool will not open the chapter files, .law/RESEARCH.md or sources/ whole (they would fill your memory): search them
+with `rg`.
 
 For each factual statement, figure, date and regulation reference in the section:
 - find its source: the footnote, and the entry for it in .law/RESEARCH.md (`rg -n "<a few words>" .law/RESEARCH.md`),
   which names the saved copy in sources/;
 - confirm it there: search the saved copy for the quoted words or the figure (`rg -n -i "<exact words>" sources/<file>`)
-  and read only the lines around a hit. A quote must appear in the source as written, a figure must match, and the
-  claim must say what the source says. A fact with no source is a finding.
+  with a few lines of context (`rg -n -i -C 3`). A quote must appear in the source as written, a figure must
+  match, and the claim must say what the source says. A fact with no source is a finding.
 Also check that the section follows .law/STYLE.md (search it for the terms you need) and has both layers: a plain
 explanation first, then the detail.
 For each finding append to {folder}/.law/BUGS.md (read its last lines first for the next number):
-   ## BUG-<next number> · open · editor · <YYYY-MM-DD HH:MM>
+   ## BUG-<next number> · open · editor · {now}
    <one-line title of what is wrong>
    Severity: blocker | major | minor
    Where: {file}, "{heading}"  Evidence: <the source's words or what is missing>  Correct: <what it should say>
@@ -698,6 +703,37 @@ def doc_sections(folder: Path) -> list[dict[str, str]]:
                 out.append({"file": f.relative_to(folder).as_posix(), "heading": f.stem, "text": pending.strip(),
                             "notes": "(none)"})
     return out
+
+
+# Files the editor's read tool refuses: the chapter (13K tokens for one chapter), the research notes and the saved
+# sources. Above ~23K tokens oMLX stops reusing the judge model's prompt cache and every step re-reads the whole
+# session: 110-130 s instead of 6 s (2026-11-25; one section took 2 hours 25 minutes). The editor searches them.
+EDITOR_DENY_READ = ("*chapters/*", "*.law/RESEARCH.md", "*sources/*")
+
+
+def section_key(sec: dict[str, str]) -> str:
+    """A section unit's identity within a round: its place and its text, so an edited section is checked again."""
+    digest = hashlib.sha256(sec["text"].encode()).hexdigest()[:12]
+    return f"{sec['file']}#{sec['heading']}#{digest}"
+
+
+def review_progress_file(cache: Path, job_id: str, version: object) -> Path:
+    return cache / "review" / f"{job_id}-v{version}.json"
+
+
+def load_review_progress(file: Path) -> dict[str, dict[str, Any]]:
+    try:
+        data = json.loads(file.read_text())
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_review_progress(file: Path, done: dict[str, dict[str, Any]]) -> None:
+    file.parent.mkdir(parents=True, exist_ok=True)
+    tmp = file.with_suffix(".tmp")
+    tmp.write_text(json.dumps(done))
+    tmp.replace(file)
 
 
 def doc_headings(folder: Path) -> str:
@@ -901,6 +937,14 @@ def agent_env(rt: Runtime, role: str, effort: str | None = None) -> dict[str, st
             "TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE": "/var/run/docker.sock"}
 
 
+def read_limits(deny: tuple[str, ...]) -> dict[str, str]:
+    """OpenCode config merged over the role's (OPENCODE_CONFIG_CONTENT): its read tool refuses these patterns."""
+    if not deny:
+        return {}
+    return {"OPENCODE_CONFIG_CONTENT": json.dumps({"permission": {"read": {"*": "allow",
+                                                                            **dict.fromkeys(deny, "deny")}}})}
+
+
 _lead_tasks: set[asyncio.Task[None]] = set()
 
 
@@ -920,10 +964,12 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
 
     async def _agent(ctx: Context, role: str, prompt: str, workdir: Path, *, writes: bool = True,
                      memory: ProjectMemory | None = None, timeout_s: float | None = None,
-                     finished: Callable[[], bool] | None = None, ticket: str | None = None) -> str:
+                     finished: Callable[[], bool] | None = None, ticket: str | None = None,
+                     deny_read: tuple[str, ...] = ()) -> str:
         """Run one OpenCode agent. A writing agent that stalls (no file change for STALL_MINUTES) is stopped and
         its session resumed with a nudge to build and fix. With project memory, the session is recorded in
-        `.law/session.json`, and a job that restarts (e.g. after a worker restart) resumes that session."""
+        `.law/session.json`, and a job that restarts (e.g. after a worker restart) resumes that session.
+        `deny_read` are file patterns OpenCode's read tool refuses in this session (search still finds them)."""
         rt.roles.get(role)  # validate
         model = f"law/{rt.model_id(role)}"
         stall_min = float(ctx.job.payload.get("stall_min", STALL_MINUTES))
@@ -1057,7 +1103,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         work = is_code_change if code_only else is_file_change
         while True:
             try:
-                env = {**agent_env(rt, role, ctx.job.payload.get("effort")), **project_env(workdir)}
+                env = {**agent_env(rt, role, ctx.job.payload.get("effort")), **project_env(workdir),
+                       **read_limits(deny_read)}
                 out = await run_cmd(ctx, cmd, cwd=workdir, env=env, describe=describe,
                                     timeout_s=max(1.0, deadline - time.monotonic()),
                                     stall_s=stall_min * 60 if writes and stall_min > 0 else None,
@@ -1448,7 +1495,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         """QA for a document: the editor (judge model, another family than the writer) fact-checks and checks the
         build; the designer (a vision model) checks every rendered page for cut or unreadable figures."""
         fill = {"name": a.get("name", folder.name), "version": p.get("version", 1), "folder": folder,
-                "spec_file": spec_file}
+                "spec_file": spec_file, "now": time.strftime("%Y-%m-%d %H:%M")}
         sections = doc_sections(folder)
         if sections:
             report = await _editor_by_section(ctx, fill, folder, sections)
@@ -1482,36 +1529,51 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                                  sections: list[dict[str, str]]) -> dict[str, Any]:
         """The editor's fact-check in small units: the whole-document checks, then one session per section. The report
         has a result for every unit; a unit that ended without one (after one retry) is left out, so it counts as
-        missing evidence."""
-        async def unit(prompt: str) -> dict[str, Any]:
+        missing evidence. A unit's result is kept until the round ends, so a job that runs again (a worker restart,
+        the job time limit) goes on from the next unit instead of starting the round over."""
+        done_file = review_progress_file(rt.paths.cache, ctx.job.id, fill["version"])
+        done = load_review_progress(done_file)
+
+        async def unit(key: str, template: str, **extra: Any) -> dict[str, Any]:
+            if key in done:
+                return done[key]
             report: dict[str, Any] = {}
-            for extra in ("", QA_NO_REPORT):  # one retry for a unit that ends without its report
+            for retry in ("", QA_NO_REPORT):  # one retry for a unit that ends without its report
+                prompt = template.format(**{**fill, "now": time.strftime("%Y-%m-%d %H:%M")}, **extra) + retry
                 before = bugs.path(folder).read_text() if bugs.path(folder).exists() else ""
-                report = json_report(await _agent(ctx, "editor", prompt + extra, folder, writes=False))
+                report = json_report(await _agent(ctx, "editor", prompt, folder, writes=False,
+                                                  deny_read=EDITOR_DENY_READ))
                 restored = bugs.restore_lost(folder, before)
                 if restored:
                     await ctx.progress(f"⚠️ the editor rewrote .law/BUGS.md: LAW put back {', '.join(restored)}")
                 if report.get("tested"):
                     break
+            done[key] = report
+            save_review_progress(done_file, done)
             return report
 
-        if bugs.ensure_format(folder):
+        if not done and bugs.ensure_format(folder):
             await ctx.progress("📋 .law/BUGS.md had no finding in LAW's format: reset to LAW's header")
 
-        await ctx.progress(f"🧐 editor: retests, build and coverage, then {len(sections)} sections one at a time")
-        whole = await unit(EDITOR_WHOLE.format(**fill, headings=doc_headings(folder)))
+        left = len(sections) + 1 - len(done)
+        await ctx.progress(f"🧐 editor: retests, build and coverage, then {len(sections)} sections one at a time"
+                           + (f" (going on: {left} of {len(sections) + 1} units left)" if done else ""))
+        whole = await unit("whole", EDITOR_WHOLE, headings=doc_headings(folder))
         tested = [str(t) for t in whole.get("tested", [])]
         summaries = [str(whole["summary"])] if whole.get("summary") else []
         unchecked = [] if tested else ["retests, build and coverage"]
         for n, sec in enumerate(sections, start=1):
-            await ctx.progress(f"🧐 editor: section {n}/{len(sections)} \"{sec['heading']}\"")
-            got = await unit(EDITOR_SECTION.format(**fill, n=n, total=len(sections), **sec))
+            key = section_key(sec)
+            if key not in done:
+                await ctx.progress(f"🧐 editor: section {n}/{len(sections)} \"{sec['heading']}\"")
+            got = await unit(key, EDITOR_SECTION, n=n, total=len(sections), **sec)
             if got.get("tested"):
                 tested += [str(t) for t in got["tested"]]
                 if got.get("summary"):
                     summaries.append(str(got["summary"]))
             else:
                 unchecked.append(sec["heading"])
+        done_file.unlink(missing_ok=True)  # the round is over: the next one checks everything again
         summary = " ".join(summaries)[:600]
         if unchecked:
             summary = f"Not checked: {', '.join(unchecked)}. {summary}"
