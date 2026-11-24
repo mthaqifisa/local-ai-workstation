@@ -532,7 +532,11 @@ SHELL_WRITE_NUDGE = ("Change files with the edit and write tools, not with shell
 PROBE_LIMIT = 2  # probe writes in one session before LAW calls time
 # Writers loop on cosmetic details through numbered test files or files in a temp folder (seen 2026-11-23: a
 # one-page checklist PDF was done at minute 13, then 17 test files t1.typ..t17.typ over 80 min chasing a ☐ glyph).
-DOC_PROBE = re.compile(r"(?:cat\s*>|tee|✏️ \w+)\s+\S*(?:/(?:tmp|cache/tmp)/\S*|(?<![\w.-])(?:t|test|try|tmp)\d+\.\w+)")
+# A scratch build file (Typst, Mermaid, a script) in a temp folder, or t17.typ-style names. A source saved for
+# research (.txt, .pdf, .html, .json) is not a probe (2026-11-24: saving four BNM press releases set it off).
+PROBE_EXT = r"\.(?:typ|typst|tex|mmd|dot|sh|py|lua|css|md)\b"
+DOC_PROBE = re.compile(rf"(?:cat\s*>|tee|✏️ \w+)\s+\S*(?:/(?:tmp|cache/tmp)/\S*{PROBE_EXT}"
+                       rf"|(?<![\w.-])(?:t|test|try|tmp)\d+\.\w+)")
 DOC_PROBE_LIMIT = 3
 DOC_PROBE_NUDGE = ("You are trying variations in test files. Stop: keep the version that already works, put it in "
                    "the deliverable, delete the test files and finish the remaining steps of your plan. A cosmetic "
@@ -583,8 +587,10 @@ and every change the owner asked for in {folder}/.law/REQUESTS.md. The findings 
    verified if it is resolved, or reopened if not, and add a line "Retest <date>: <result>".
 2. Run {folder}/.law/check.sh (it builds the PDF and HTML). A failure is a finding.
 3. Fact-check every chapter: open the cited source of each factual statement, figure, date and regulation reference
-   and confirm it; check terms and numbers agree across chapters and with the glossary, and that every part of the
-   outline and every owner request is covered. For each new finding append:
+   (the saved copy in {folder}/sources/ when .law/RESEARCH.md names one, else the link) and confirm it: a quote
+   must appear in the source as written; check terms and numbers agree across chapters and with the glossary, and
+   that every part of the outline and every owner request is covered.
+   For each new finding append:
    ## BUG-<next number> · open · editor · <YYYY-MM-DD HH:MM>
    <one-line title of what is wrong>
    Severity: blocker | major | minor

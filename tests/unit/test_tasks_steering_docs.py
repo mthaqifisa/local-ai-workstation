@@ -15,6 +15,9 @@ from law.handlers.tasks import DOC_PROBE
     ("▶ running typst compile house-1-week-checklist.typ house-1-week-checklist.pdf", False),
     ("📖 reading ~/LAW/cache/tmp/opencode/typst-test/t8-1.png", False),
     ("✏️ writing ~/RnD/digital-bank/book/07-ledger.md", False),
+    ("✏️ writing ~/LAW/cache/tmp/opencode/digital-bank-research/pr-2021-07-02-29-applications.txt", False),
+    ("✏️ writing ~/LAW/cache/tmp/opencode/research/framework.pdf", False),
+    ("✏️ writing ~/LAW/cache/tmp/opencode/typst-test/cover.typ", True),
 ])
 def test_doc_probe_spots_throwaway_test_files(summary: str, probe: bool) -> None:
     assert bool(DOC_PROBE.search(summary)) is probe

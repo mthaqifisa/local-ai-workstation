@@ -279,10 +279,12 @@ features:
   .law/STYLE.md, which says how to use them. Write the book; do not build, probe or replace the tooling, and do not
   experiment with pandoc or Typst in scratch folders. Change tools/ only when a check is wrong, and say why in
   .law/PROGRESS.md.
-- Research before writing: a research ticket reads the primary sources for its chapter and records every fact in
-  .law/RESEARCH.md under the chapter's heading: the fact, the source (who, title, version or date, clause or page),
-  the link, and the exact quote or figure. A writing ticket uses only facts recorded there (add any it still needs,
-  the same way, before writing them). A fact that cannot be verified is not written; say plainly what is unknown.
+- Research before writing: a research ticket reads the primary sources for its chapter, saves each one it uses in
+  sources/ (the PDF or page, plus its text from pdftotext; the editor checks quotes against them, and sources/ is
+  not committed), and records every fact in .law/RESEARCH.md under the chapter's heading: the fact, the source
+  (who, title, version or date, clause or page), the link, the file in sources/ and the exact quote or figure.
+  A writing ticket uses only facts recorded there (add any it still needs, the same way, before writing them). A
+  fact that cannot be verified is not written; say plainly what is unknown.
 - One ticket = one chapter or sub-chapter in its own file (chapters/07-ledger.md) with its citations and diagrams
   (diagrams/<name>.mmd or .dot). Write it completely in one session.
 - Read only what the ticket needs: its research notes, .law/STYLE.md and the sources for this chapter. Do not re-read

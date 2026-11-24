@@ -1,4 +1,5 @@
 build/
+sources/
 book.pdf
 book.html
 .DS_Store
