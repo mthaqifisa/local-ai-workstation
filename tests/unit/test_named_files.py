@@ -34,3 +34,12 @@ def test_long_file_is_cut_with_a_note(tmp_path: Path) -> None:
 
 def test_doc_plan_forbids_facts_and_follows_the_request() -> None:
     assert "State no facts, figures, dates" in DOC_PLAN and "word for word" in DOC_PLAN
+
+
+def test_kit_conventions_reach_the_document_planner(tmp_path: Path) -> None:
+    from law.handlers.project import kit_conventions
+    assert kit_conventions(tmp_path) == ""
+    (tmp_path / ".law").mkdir()
+    (tmp_path / ".law" / "STYLE.md").write_text("Each chapter is its own file in chapters/.")
+    out = kit_conventions(tmp_path)
+    assert "no ticket integrates, assembles or rebuilds" in out and "chapters/" in out

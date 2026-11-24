@@ -208,6 +208,21 @@ NAMED_SUFFIXES = {".md", ".txt", ".rst", ".adoc", ".typ", ".yaml", ".yml", ".jso
 NAMED_MAX_CHARS = 60_000
 
 
+KIT_NOTE = """
+
+LAW's book kit is installed in this project (2026-11-24: a plan that did not know it planned Typst files, figs/,
+bracketed citations and four "integrate and rebuild" tickets). Plan and ticket only the content: the build is one
+command and runs after every ticket, so no ticket integrates, assembles or rebuilds. Follow its conventions:
+
+{style}"""
+
+
+def kit_conventions(folder: Path) -> str:
+    """The installed book kit's style guide, for the planner of a document project ("" when it has none)."""
+    style = folder / ".law" / "STYLE.md"
+    return KIT_NOTE.format(style=style.read_text().strip()) if style.is_file() else ""
+
+
 def named_files(text: str, home: Path | None = None) -> str:
     """The text of each readable text file the request names, as a block to append to it ("" when none)."""
     home = home or Path.home()
@@ -474,6 +489,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         request = project.request()
         prompt = template.format(request=request + named_files(request), folder=folder,
                                   listing=project_listing(folder), memory=memory.context() or "(none)")
+        kit = kit_conventions(folder) if project.kind == "document" else ""
+        prompt += kit
         await ctx.progress(f"🗺 planning v{project.version}")
         plan = (await answer(rt, "translator", [{"role": "user", "content": prompt}], ctx)).strip()
         if not plan:
@@ -483,7 +500,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         memory.drop_unstarted_builds()  # a revised plan replaces the tickets of one nobody started
         key = _base(project)["spec_args"]["key"]
         tickets = (await answer(rt, "translator", [{"role": "user", "content": CODE_TICKETS.format(
-            plan=plan, version=project.version, key=key, start=memory.next_ticket(key))}], ctx)).strip()
+            plan=plan, version=project.version, key=key, start=memory.next_ticket(key)) + kit}], ctx)).strip()
         if LEFT.search(tickets):  # the board shows them before the go; the build sessions work from them
             memory.add_build_section(f"## Build version {project.version}\n\n{tickets}\n")
         return Done({"plan": plan})
