@@ -21,8 +21,8 @@ building a pandoc/Typst template and 0 min on research before it was stopped.
 4. **Lessons**: an agent records a problem other projects will hit in `.law/LESSONS.md`; LAW keeps it only after
    that ticket's gate passed, in `~/LAW/data/lessons/<role>.md` (machine-local), and gives later sessions of the
    role the newest 3,000 characters.
-5. **Estimates**: tickets carry `[est …]`; LAW calibrates them by the project's real pace (ADR-free, see
-   `law/estimate.py`) for the Console's countdowns.
+5. **Estimates**: tickets carry `[est …]`; LAW calibrates them by the project's real pace
+   (`law/estimate.py`) for the Console's countdowns.
 
 ## Results (ch.1 trial, same request)
 | | Before | After |
