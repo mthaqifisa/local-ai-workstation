@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from law import bugs, specs
+from law import book_kit, bugs, specs
 from law.handlers.base import Runtime, run_cmd
 from law.handlers.core import answer
 from law.handlers.proposal import proposal_stages
@@ -183,6 +183,8 @@ Plain Markdown, at most about 450 words, no preamble, with exactly these parts:
 **Outline**: every part and chapter in order, each with its main sources (standards, official documents, papers)
 and each diagram it will have, by name (a cover, when the document has one, is a part of its own).
 **Milestones**: 3 to 8 parts in writing order, each ending with a PDF and HTML build that passes .law/check.sh.
+Each chapter starts with a research ticket (primary sources read, every fact recorded with its source in
+.law/RESEARCH.md); its writing tickets follow. LAW's book kit is already installed: plan no tooling or template work.
 **Style**: voice, depth, diagram and citation conventions (kept in .law/STYLE.md).
 **Assumptions**: the defaults you chose where the request is silent.
 **Out of scope**: what the document will not cover.
@@ -255,17 +257,33 @@ scope against them, and run the build and tests yourself."""
 
 DOC_RULES = """
 
-This is a document project (a book, report or guide). Its tickets are chapters and sub-chapters, not features:
-- One ticket = one chapter or sub-chapter in its own Markdown file (e.g. book/07-ledger.md) with its citations and
-  its diagrams (Mermaid source next to it, rendered to PNG). Write it completely in one session.
-- Read only what the ticket needs: the outline, .law/STYLE.md and the sources for this chapter. Do not re-read other
-  chapters; .law/STYLE.md holds the voice, the glossary terms and decisions every chapter must follow (add to it
+This is a document project (a book, report or guide). Its tickets are research, chapters and sub-chapters, not
+features:
+- LAW installed its tested book kit: book.md (metadata), chapters/, diagrams/, tools/build.sh, tools/verify.py and
+  .law/STYLE.md, which says how to use them. Write the book; do not build, probe or replace the tooling, and do not
+  experiment with pandoc or Typst in scratch folders. Change tools/ only when a check is wrong, and say why in
+  .law/PROGRESS.md.
+- Research before writing: a research ticket reads the primary sources for its chapter and records every fact in
+  .law/RESEARCH.md under the chapter's heading: the fact, the source (who, title, version or date, clause or page),
+  the link, and the exact quote or figure. A writing ticket uses only facts recorded there (add any it still needs,
+  the same way, before writing them). A fact that cannot be verified is not written; say plainly what is unknown.
+- One ticket = one chapter or sub-chapter in its own file (chapters/07-ledger.md) with its citations and diagrams
+  (diagrams/<name>.mmd or .dot). Write it completely in one session.
+- Read only what the ticket needs: its research notes, .law/STYLE.md and the sources for this chapter. Do not re-read
+  other chapters; .law/STYLE.md holds the voice, glossary terms and decisions every chapter must follow (add to it
   when you decide something others must match).
-- `.law/check.sh` is the gate: it builds the whole PDF and HTML from the sources and fails on a build error, a
-  missing image or citation, a diagram wider than the A4 text width, or a broken internal link. The UI and
-  test-suite rules above do not apply; after the gate, look at the rendered pages of your chapter
-  (pdftoppm page images) and fix what reads or looks wrong.
+- `.law/check.sh` is the gate: it builds the PDF and HTML and fails, with a list, on a build error, a missing image,
+  a citation without a link, a diagram whose text would be unreadable or that is taller than a page (split it), or a
+  code line too long for the page. The UI and test-suite rules above do not apply. After the gate, look at the
+  rendered pages of your chapter (`pdftoppm -png -r 70 -f <first> -l <last> book.pdf ~/LAW/cache/tmp/<name>`) and
+  fix what reads or looks wrong.
 - Cosmetic details get two tries; then keep what works and move on."""
+
+DOC_ENV = """This stage checks the Mac for a document project; write no content.
+LAW installed its tested book kit (tools/, .law/check.sh, .law/STYLE.md). Run `bash .law/check.sh` once. If it
+passes, record the versions of pandoc, typst, mmdc and dot in .law/ENVIRONMENT.md, write .law/env.sh with
+`export PATH="/opt/homebrew/bin:$PATH"`, commit .law/ and stop: do not test the tools any further. If it fails,
+fix only the tool it names (install it with Homebrew), run it again, then record and commit as above."""
 
 DOC_RUBRIC = """You are reviewing a chapter of a book for a demanding professional reader. Score it 1-5:
 5 = accurate, complete for its scope, every claim cited, clear for both a beginner and an expert, diagrams correct
@@ -283,7 +301,7 @@ def spec_file(a: dict[str, Any]) -> str:
 
 @specs.register("project.env")
 def env_spec(a: dict[str, Any]) -> str:
-    return ENV_SPEC.format(spec_file=spec_file(a))
+    return DOC_ENV if a.get("kind") == "document" else ENV_SPEC.format(spec_file=spec_file(a))
 
 
 def law_services() -> str:
@@ -403,6 +421,17 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             if project.repo_url:
                 await run_cmd(ctx, ["git", "remote", "add", "origin", project.repo_url], cwd=folder, timeout_s=60)
 
+    async def _install_kit(ctx: Context, project: Project) -> None:
+        """A document project starts with LAW's tested book kit, committed, so no session builds its own tooling."""
+        folder = Path(project.dir)
+        added = book_kit.install(rt.paths.repo / "templates" / "rnd", folder, project.name)
+        if not added:
+            return
+        await ctx.progress(f"📚 LAW book kit installed ({len(added)} files: build, checks, style guide)")
+        await run_cmd(ctx, ["git", "add", "--", *added], cwd=folder, timeout_s=60)
+        await run_cmd(ctx, ["git", "commit", "-q", "-m", "LAW book kit: build, checks and style guide"], cwd=folder,
+                      timeout_s=60)
+
     async def project_new(ctx: Context) -> Outcome:
         p = ctx.job.payload
         mode = p.get("mode", "project")
@@ -411,6 +440,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         except TemplateError as exc:
             raise Fatal(str(exc)) from exc
         await _prepare_repo(ctx, project)
+        if project.kind == "document":
+            await _install_kit(ctx, project)
         store.save(project)
         await ctx.progress(f"📁 {project.dir}: " + ("planning" if mode == "code" else
                                                      "researching and writing proposal v1"))

@@ -1,0 +1,21 @@
+/* LAW book kit: book.html, the same content as book.pdf in a readable single page. */
+:root { --accent: #0b3d2e; --accent-light: #e8f0ec; --muted: #5b6770; --text: #1d2327; }
+html { background: #fff; }
+body { max-width: 46rem; margin: 0 auto; padding: 2rem 1rem 6rem; color: var(--text);
+       font: 17px/1.65 "Helvetica Neue", Arial, sans-serif; }
+h1, h2, h3 { color: var(--accent); line-height: 1.25; }
+h1 { border-bottom: 2px solid var(--accent); padding-bottom: .3rem; margin-top: 3rem; }
+header#title-block-header { background: var(--accent); color: #fff; padding: 3rem 2rem; border-radius: 6px; }
+header#title-block-header h1, header#title-block-header .subtitle { color: #fff; border: 0; }
+nav#TOC { background: var(--accent-light); padding: .5rem 1.5rem; border-radius: 6px; margin: 2rem 0; }
+figure { margin: 2rem 0; text-align: center; }
+figure img { max-width: 100%; height: auto; }
+figcaption { color: var(--muted); font-size: .9rem; font-style: italic; }
+table { border-collapse: collapse; width: 100%; font-size: .92rem; margin: 1.5rem 0; }
+th { background: var(--accent); color: #fff; text-align: left; }
+th, td { padding: .45rem .6rem; border-bottom: 1px solid #c9d1d6; vertical-align: top; }
+tbody tr:nth-child(even) { background: var(--accent-light); }
+pre { background: #f4f6f7; padding: .8rem; border-radius: 4px; overflow-x: auto; font-size: .85rem; }
+blockquote { background: var(--accent-light); border-left: 4px solid var(--accent); margin: 1.2rem 0; padding: .6rem 1rem; }
+a { color: var(--accent); }
+section.footnotes { font-size: .88rem; color: var(--muted); }
