@@ -118,6 +118,41 @@ def add(project: Path, title: str, details: str = "", *, reporter: str = "owner"
     return bug
 
 
+FORMAT = ("\nEach finding is a level-2 heading, appended at the end of this file (never rewrite the file):\n\n"
+          "    ## BUG-<next number> · open · <reporter> · <YYYY-MM-DD HH:MM>\n    <one-line title>\n"
+          "    Severity: blocker | major | minor\n    <where, the evidence, and what it should be>\n")
+
+
+def ensure_format(project: Path) -> bool:
+    """Give a findings file with no finding in LAW's format LAW's header (seen 2026-11-24: the first editor session
+    made BUGS.md a Markdown table; later findings followed the table and LAW could not read them). True when reset."""
+    file = path(project)
+    text = file.read_text() if file.exists() else ""
+    if parse(text) or text.startswith(HEADER):
+        return False
+    file.parent.mkdir(parents=True, exist_ok=True)
+    file.write_text(HEADER + FORMAT)
+    return True
+
+
+def sections(text: str) -> dict[str, str]:
+    """Each finding's raw text by its id."""
+    heads = [m for m in re.finditer(r"^##\s+(BUG-\d+)\b.*$", text, re.MULTILINE)]
+    return {m.group(1): text[m.start():heads[i + 1].start() if i + 1 < len(heads) else len(text)].rstrip() + "\n"
+            for i, m in enumerate(heads)}
+
+
+def restore_lost(project: Path, before: str) -> list[str]:
+    """Put back findings an agent removed by rewriting the file (they are never deleted, only given a status).
+    Returns the ids restored."""
+    file = path(project)
+    now = file.read_text() if file.exists() else HEADER
+    lost = {k: v for k, v in sections(before).items() if k not in sections(now)}
+    if lost:
+        file.write_text(now.rstrip("\n") + "\n\n" + "\n".join(lost.values()))
+    return sorted(lost)
+
+
 def as_issues(bugs: list[Bug]) -> list[str]:
     """Bugs in the shape the fix stage takes."""
     return [f"{b.id} ({b.status}, {b.severity}, found by {b.reporter}): {b.title} (details in .law/BUGS.md)"

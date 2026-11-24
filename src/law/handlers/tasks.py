@@ -1484,10 +1484,19 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         has a result for every unit; a unit that ended without one (after one retry) is left out, so it counts as
         missing evidence."""
         async def unit(prompt: str) -> dict[str, Any]:
-            report = json_report(await _agent(ctx, "editor", prompt, folder, writes=False))
-            if not report.get("tested"):
-                report = json_report(await _agent(ctx, "editor", prompt + QA_NO_REPORT, folder, writes=False))
+            report: dict[str, Any] = {}
+            for extra in ("", QA_NO_REPORT):  # one retry for a unit that ends without its report
+                before = bugs.path(folder).read_text() if bugs.path(folder).exists() else ""
+                report = json_report(await _agent(ctx, "editor", prompt + extra, folder, writes=False))
+                restored = bugs.restore_lost(folder, before)
+                if restored:
+                    await ctx.progress(f"⚠️ the editor rewrote .law/BUGS.md: LAW put back {', '.join(restored)}")
+                if report.get("tested"):
+                    break
             return report
+
+        if bugs.ensure_format(folder):
+            await ctx.progress("📋 .law/BUGS.md had no finding in LAW's format: reset to LAW's header")
 
         await ctx.progress(f"🧐 editor: retests, build and coverage, then {len(sections)} sections one at a time")
         whole = await unit(EDITOR_WHOLE.format(**fill, headings=doc_headings(folder)))
