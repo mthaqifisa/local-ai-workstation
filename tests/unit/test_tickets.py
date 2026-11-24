@@ -905,3 +905,15 @@ def test_law_refuses_to_commit_a_dependency_dump(tmp_path: Path) -> None:
     problem = tasks.finish_ticket(project, "A-1 Setup", "done", before)
     assert "did not commit A-1" in problem and ".gitignore" in problem
     assert "- [ ] A-1" in (project / ".law" / "PLAN.md").read_text()
+
+
+def test_a_failed_agent_reports_the_error_a_person_can_read() -> None:
+    from law.handlers.base import readable_error
+
+    out = ('{"type":"error","sessionID":"ses_1","error":{"name":"APIError","data":{"message":"oMLX prefill memory '
+           'guard rejected this prompt: Prefill would require ~46.56 GB peak","statusCode":400,"responseBody":'
+           '"{\\"error\\":{\\"message\\":\\"same again\\",\\"code\\":\\"prefill_memory_exceeded\\"}}"}}}')
+    text = readable_error(out)
+    assert text.startswith("oMLX prefill memory guard rejected this prompt") and len(text) < 200
+    assert text.endswith("[prefill_memory_exceeded]")  # LAW still sees the code (tasks.TOO_BIG)
+    assert readable_error("plain failure output") == "plain failure output"

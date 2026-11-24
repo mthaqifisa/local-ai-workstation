@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -154,5 +155,21 @@ async def run_cmd(ctx: Context, cmd: list[str], *, cwd: Path | None = None, env:
     if stalled:
         raise Stalled(out, time.monotonic() - last_work)
     if proc.returncode != 0:
-        raise Fatal(f"{Path(cmd[0]).name} exited {proc.returncode}: {out[-1500:]}")
+        raise Fatal(f"{Path(cmd[0]).name} exited {proc.returncode}: {readable_error(out)}")
     return out
+
+
+ERROR_MESSAGE = re.compile(r'"message"\s*:\s*"((?:[^"\\]|\\.)*)"')
+ERROR_CODE = re.compile(r'\\?"(?:omlx_code|code)\\?"\s*:\s*\\?"([a-z_]+)')  # also inside escaped JSON
+
+
+def readable_error(out: str) -> str:
+    """The error a failed command printed, as a person reads it (seen 2026-11-24: Telegram showed 2,000 characters
+    of OpenCode's JSON for one sentence from the model server). The error code stays, for LAW to act on."""
+    tail = out[-4000:]
+    m = ERROR_MESSAGE.search(tail)
+    if not m:
+        return out[-1500:]
+    message = m.group(1).replace('\\"', '"').replace("\\n", " ")
+    code = ERROR_CODE.search(tail)
+    return message[:600] + (f" [{code.group(1)}]" if code and code.group(1) not in message else "")
