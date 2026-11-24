@@ -551,6 +551,14 @@ WEB_DIG_NUDGE = ("Stop trying to get around websites (decrypting a site's API, w
                  "referers). Work from what you already have: the files in sources/ and the pages that open normally. "
                  "Write your findings now. A fact you could not get from an official page that opens goes in as "
                  "\"owner to confirm: <the fact and where it should be>\", not as more fetching.")
+# A writing ticket paging through the raw sources again instead of writing from .law/RESEARCH.md (seen 2026-11-24:
+# DBCT-9 spent 25 min in sed ranges of the framework, the FAQ and the IFSA, all already recorded with their quotes).
+SOURCE_READ_LIMIT = 15  # reads or searches of sources/ since the writer last saved anything
+RESEARCH_TICKET = re.compile(r"^\S+\s+research\b", re.IGNORECASE)
+SOURCE_READ_NUDGE = ("You have read the sources {reads} times without saving anything. The facts for this section are "
+                     "in .law/RESEARCH.md with their quotes: write the section now from those entries, and open "
+                     "sources/ again only to look up one specific fact the notes lack (search for it, read a few "
+                     "lines).")
 WRAP_MINUTES = 45  # a one-off document task (not a project ticket) past this is polishing
 WRAP_NUDGE = ("You have worked {minutes} minutes on this task. Finish now with what works: complete the deliverable, "
               "check it once, deliver it and stop. Note anything left as \"could improve: ...\" in your answer.")
@@ -858,12 +866,14 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 del recent[:-200]
             return summary
 
-        digs = lookups = blind_edits = reads = probes = 0
+        digs = lookups = blind_edits = reads = probes = source_reads = 0
+        writing = ticket is not None and not RESEARCH_TICKET.match(ticket)
         told_law = told_probe = told_shell_write = told_wrap = False
         opened: dict[str, int] = {}  # file -> times read since it was last edited
 
         def steer(summary: str) -> str | None:
-            nonlocal digs, lookups, blind_edits, reads, probes, told_law, told_probe, told_shell_write, told_wrap
+            nonlocal digs, lookups, blind_edits, reads, probes, source_reads
+            nonlocal told_law, told_probe, told_shell_write, told_wrap
             if finished is not None and finished():
                 return TICKET_DONE
             # a handover writer only documents: a change request waits for an agent that can build it (seen 2026-10-30:
@@ -883,6 +893,13 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 if not told_wrap and not ctx.job.payload.get("project") and time.time() - started > WRAP_MINUTES * 60:
                     told_wrap = True
                     return WRAP_NUDGE.format(minutes=int((time.time() - started) // 60))
+                if summary.startswith("✏️"):
+                    source_reads = 0
+                elif writing and summary.startswith(("▶", "📖")) and "sources/" in summary:
+                    source_reads += 1
+                    if source_reads >= SOURCE_READ_LIMIT:
+                        reads_then, source_reads = source_reads, 0
+                        return SOURCE_READ_NUDGE.format(reads=reads_then)
                 if summary.startswith("▶") and WEB_DIG.search(summary):
                     digs += 1
                     if digs % WEB_DIG_LIMIT == 0:
@@ -979,6 +996,10 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                     continue
                 if exc.message == SHELL_WRITE_NUDGE and sid is not None:  # a reminder of the house standard
                     await ctx.progress("⚠️ edited a file with a shell command: reminding the agent to use the edit tool")
+                    cmd = [*base, "--session", sid, exc.message]
+                    continue
+                if exc.message.startswith("You have read the sources") and sid is not None:  # guidance
+                    await ctx.progress("⚠️ re-reading the sources: telling the writer to write from .law/RESEARCH.md")
                     cmd = [*base, "--session", sid, exc.message]
                     continue
                 if exc.message == WEB_DIG_NUDGE and sid is not None:  # guidance, not a strike

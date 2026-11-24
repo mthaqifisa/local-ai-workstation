@@ -633,6 +633,49 @@ async def test_a_writer_getting_around_websites_is_sent_back_to_its_sources_with
     assert prompts[1] == tasks.WEB_DIG_NUDGE  # sent into the same session
 
 
+@pytest.mark.parametrize(("title", "nudged"), [("products", True), ("Research products", False)])
+async def test_a_writer_paging_through_sources_is_told_to_write_from_its_notes(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, title: str, nudged: bool) -> None:
+    """Seen 2026-11-24: DBCT-9 re-read the framework for 25 min; its facts were in RESEARCH.md. Research may read."""
+    from law.handlers import project as _registers_project_specs  # noqa: F401
+    from law.handlers import tasks
+    from law.handlers.base import Steered
+
+    project = tmp_path / "pantry"
+    (project / ".law").mkdir(parents=True)
+    plan = project / ".law" / "PLAN.md"
+    plan.write_text(PLAN.replace("- [ ] P-3 batches\n", "").replace("P-2 products", f"P-2 {title}"))
+    (project / ".law" / "check.sh").write_text("exit 0\n")
+    monkeypatch.setattr(tasks, "uncommitted", lambda folder: [])
+    seen: list[str | None] = []
+    prompts: list[str] = []
+    reading = (["▶ running sed -n '100,200p' sources/framework.txt"] * 10 + ["✏️ writing chapters/01.md"]
+               + ["📖 reading ~/x/sources/faq.txt"] * tasks.SOURCE_READ_LIMIT)
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        if cmd[0] != "opencode":
+            return ""
+        prompts.append(cmd[-1])
+        if len(prompts) == 1:
+            for line in reading:
+                message = kw["steer"](line)
+                seen.append(message)
+                if message:
+                    raise Steered('{"type": "text", "sessionID": "ses_s", "part": {"type": "text", "text": "x"}}',
+                                  message)
+        plan.write_text(plan.read_text().replace("- [ ] P-2 ", "- [x] P-2 "))
+        return json.dumps({"type": "text", "part": {"type": "text", "text": "done"}})
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx({**_payload(project), "role": "writer"}))
+    fired = [m for m in seen if m]
+    if nudged:  # the save reset the count: it fires on the 15th read after it
+        assert len(seen) == len(reading) and fired == [tasks.SOURCE_READ_NUDGE.format(reads=15)]
+        assert prompts[1] == fired[0]
+    else:
+        assert fired == [] and len(prompts) == 1
+
+
 def test_shell_file_writes_are_recognised() -> None:
     """Seen 2026-10-29: two sessions appended to .law notes with `cat >> file <<'EOF'`."""
     from law.handlers.tasks import SHELL_WRITE

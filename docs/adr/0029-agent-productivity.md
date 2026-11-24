@@ -45,3 +45,14 @@ normally, and write anything missing as "owner to confirm". This is guidance, no
 browser user agent, does not count. Replayed on today's log, it would have stepped in at 12:07 instead of the owner's
 approval at 12:48. DBCT-1 to 3 had no such commands. `DOC_PROBE_NUDGE` now gets its own handling and progress line;
 before, it was reported as "reading library internals".
+
+## Addendum 2026-11-24: writers write from the notes
+
+DBCT-9 (licensing path) spent about 25 minutes paging through the raw framework, FAQ and IFSA texts with `sed` ranges. Its
+facts were already in `.law/RESEARCH.md`, quoted and with their clauses. Every page it read also stayed in the
+prompt, which slowed each later step. DOC_RULES now tells writers to search RESEARCH.md for their entries, write from
+them, and open `sources/` only to look up one specific fact. In a writing ticket (one whose title does not start with
+"Research"), 15 reads of `sources/` without a save send `SOURCE_READ_NUDGE`, which is guidance, not a strike.
+Replayed on today's log, it fires only in DBCT-9, at 15:48 (20 minutes in). It does not fire in DBCT-6 to 8, which
+took 21 to 35 minutes, and research tickets are not counted. Quality is unchanged: facts still come only from
+verified entries, and the editor checks quotes against `sources/`.

@@ -287,9 +287,10 @@ features:
   fact that cannot be verified is not written; say plainly what is unknown.
 - One ticket = one chapter or sub-chapter in its own file (chapters/07-ledger.md) with its citations and diagrams
   (diagrams/<name>.mmd or .dot). Write it completely in one session.
-- Read only what the ticket needs: its research notes, .law/STYLE.md and the sources for this chapter. Do not re-read
-  other chapters; .law/STYLE.md holds the voice, glossary terms and decisions every chapter must follow (add to it
-  when you decide something others must match).
+- Read only what the ticket needs: its entries in .law/RESEARCH.md (search for them; they are verified quotes, so
+  write from them) and .law/STYLE.md. Open sources/ only to look up one specific fact the notes lack; do not page
+  through a source again. Do not re-read other chapters; .law/STYLE.md holds the voice, glossary terms and
+  decisions every chapter must follow (add to it when you decide something others must match).
 - `.law/check.sh` is the gate: it builds the PDF and HTML and fails, with a list, on a build error, a missing image,
   a citation without a link, a diagram whose text would be unreadable or that is taller than a page (split it), or a
   code line too long for the page. The UI and test-suite rules above do not apply. After the gate, look at the
