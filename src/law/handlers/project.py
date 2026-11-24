@@ -182,7 +182,9 @@ DOC_PLAN = """Plan this document (a book, report or research paper) for the owne
 Plain Markdown, at most about 450 words, no preamble, with exactly these parts:
 **What I'll write**: the document, its readers and its formats in two or three sentences.
 **Outline**: every part and chapter in order, each with its main sources (standards, official documents, papers)
-and each diagram it will have, by name (a cover, when the document has one, is a part of its own).
+and each diagram it will have, by name (a cover, when the document has one, is a part of its own). Each diagram
+shows something no other diagram does (the ch.1 trial drew the same licensing path twice), and each fact has one
+home section that the others refer back to.
 **Milestones**: 3 to 8 parts in writing order, each ending with a PDF and HTML build that passes .law/check.sh.
 Each chapter starts with a research ticket (primary sources read, every fact recorded with its source in
 .law/RESEARCH.md); its writing tickets follow. LAW's book kit is already installed: plan no tooling or template work.
