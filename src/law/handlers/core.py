@@ -11,7 +11,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-from law import calc
+from law import calc, web
 from law.handlers.base import Runtime
 from law.llm import TruncatedError, chat_with_tools, image_part
 from law.paths import LawPaths, display
@@ -284,11 +284,24 @@ async def answer(rt: Runtime, role: str, messages: list[dict[str, Any]], ctx: Co
     r = rt.roles.get(role)
     model_id = model or rt.model_id(role)
     on_thought = ctx.thought if ctx is not None else None
-    tools = [calc.TOOL_SPEC] if "python" in r.tools else []
+    tools = [*web.TOOLS, *([calc.TOOL_SPEC] if "python" in r.tools else [])]  # the web is every role's default
     tools += [AGENT_TOOL, PROJECT_TOOL, REVISE_TOOL] if agents is not None else []
     tools += [SEND_FILE_TOOL, PROPOSE_TOOL] if files is not None else []
 
     async def run_tool(name: str, args: dict[str, Any]) -> str:
+        if name == "web_search":
+            query = str(args.get("query", ""))
+            if ctx is not None:
+                await ctx.progress(f"🌐 {role} searching: {query[:100]}")
+            try:
+                return json.dumps(await web.search(rt.reg.ports.searxng, query), ensure_ascii=False)
+            except Exception as exc:
+                return f"error: search failed: {exc}"
+        if name == "fetch_page":
+            url = str(args.get("url", ""))
+            if ctx is not None:
+                await ctx.progress(f"🌐 {role} reading {url[:120]}")
+            return await web.fetch(url, str(args.get("find", "")))
         if name == "run_python" and "python" in r.tools:
             python, code = rt.paths.runtime / "calc" / "bin" / "python", str(args.get("code", ""))
             out = await calc.run_python(python, rt.paths.tmp / "calc", code)

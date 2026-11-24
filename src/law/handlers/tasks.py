@@ -14,7 +14,7 @@ from typing import Any
 
 import httpx
 
-from law import bugs, deliver, lead, specs
+from law import bugs, deliver, lead, specs, web
 from law.handlers.base import Runtime, Stalled, Steered, run_cmd
 from law.handlers.core import PASS_SCORE, answer, parse_verdict
 from law.lessons import INSTRUCTION as LESSON_RULE
@@ -76,13 +76,7 @@ Reply with JSON only: {"score": <1-5>, "issues": ["<file:line problem and fix>"]
 
 
 async def searx(rt: Runtime, query: str, limit: int = 8) -> list[dict[str, Any]]:
-    url = f"http://127.0.0.1:{rt.reg.ports.searxng}/search"
-    async with httpx.AsyncClient(timeout=30) as client:
-        r = await client.get(url, params={"q": query, "format": "json"})
-        r.raise_for_status()
-        results = r.json().get("results", [])[:limit]
-    return [{"title": x.get("title", ""), "url": x.get("url", ""), "snippet": x.get("content", "")}
-            for x in results]
+    return await web.search(rt.reg.ports.searxng, query, limit)
 
 
 TOOL_ICONS = {"write": "✏️ writing", "edit": "✏️ editing", "patch": "✏️ patching", "read": "📖 reading",

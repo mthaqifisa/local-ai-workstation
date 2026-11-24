@@ -1,4 +1,5 @@
-"""Roles that may use the web are told how to search (OpenCode itself has only webfetch)."""
+"""The web is every agent's default: every role is told how to search, and every OpenCode agent can run
+`law search` and fetch pages (owner 2026-11-24)."""
 
 from __future__ import annotations
 
@@ -9,13 +10,8 @@ from law import roles
 ROLES = Path(__file__).parents[2] / "settings" / "roles.yaml"
 
 
-def test_every_role_that_runs_commands_gets_the_web() -> None:
+def test_every_role_is_told_how_to_search() -> None:
     r = roles.load(ROLES)
-    with_search = [n for n, role in r.roles.items() if roles.WEB_TOOLS & set(role.tools)]
-    without = [n for n, role in r.roles.items() if not roles.WEB_TOOLS & set(role.tools)]
-    assert {"writer", "editor", "qa", "analyst", "reviewer", "designer", "coder"} <= set(with_search)
-    assert without == ["translator"]
-    for name in with_search:
-        assert "law search" in r.system_prompt(name)
-    for name in without:
-        assert "law search" not in r.system_prompt(name)
+    for name in r.roles:
+        prompt = r.system_prompt(name)
+        assert "law search" in prompt and "web_search tool" in prompt, name

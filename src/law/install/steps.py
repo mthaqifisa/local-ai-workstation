@@ -691,9 +691,9 @@ class OpenCodeConfig:
                 "prompt": roles.system_prompt(name),
                 "tools": {
                     "write": "files" in tools, "edit": "files" in tools, "patch": "files" in tools,
-                    "bash": bool(tools & {"shell", "mac"}),
+                    "bash": True,  # every agent can run `law search` (the web is the default: law.web)
                     "read": bool(tools & {"read", "files"}), "grep": True, "glob": True, "list": True,
-                    "webfetch": bool(tools & roles_mod.WEB_TOOLS),
+                    "webfetch": True,
                     "mac_*": "mac" in tools,
                 },
             }

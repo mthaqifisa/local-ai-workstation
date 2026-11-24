@@ -8,17 +8,15 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, ConfigDict
 
-# OpenCode has no web search, only webfetch: without this the agents guessed addresses (seen 2026-11-24: a research
-# ticket tried pidm.com.my for an hour; `law search` finds the official pidm.gov.my page with the figure at once).
-SEARCH_NOTE = ("Web search: `law search \"<query>\"` (LAW's own SearXNG) prints JSON results, each with a title, url "
-               "and snippet. Search before you fetch: do not guess a site's address. Prefer the official source (the "
-               "regulator's, the agency's or the company's own site), then reputable news, and open the page the "
-               "search found to confirm the fact.")
-
-
-# Every role that can run a command or browse has the web (owner 2026-11-24: "agent should have full web access so
-# that data is updated and accurate"); only the translator, which reads files, has none.
-WEB_TOOLS = {"search", "shell", "browser", "mac"}
+# The web is every agent's default (owner 2026-11-24: "all agents should have web search capability ... it should be a
+# default"). OpenCode has only webfetch, so without this the agents guessed addresses (a research ticket tried
+# pidm.com.my for an hour; a search finds the official pidm.gov.my page with the figure at once).
+SEARCH_NOTE = ("You have the web. Use it whenever a fact may have changed or you are not sure of it (figures, rules, "
+               "versions, dates, names): search first, do not guess a site's address. In a shell, "
+               "`law search \"<query>\"` (LAW's own SearXNG) prints JSON results with title, url and snippet; without "
+               "a shell, use the web_search tool. Prefer the official source (the regulator's, the agency's or the "
+               "company's own site), then reputable news, and open the page (webfetch, curl or fetch_page) to confirm "
+               "the fact before you use it.")
 
 
 class Role(BaseModel):
@@ -40,9 +38,7 @@ class Roles(BaseModel):
     roles: dict[str, Role]
 
     def system_prompt(self, name: str) -> str:
-        role = self.roles[name]
-        search = f"\n\n{SEARCH_NOTE}" if WEB_TOOLS & set(role.tools) else ""
-        return f"{role.prompt.strip()}{search}\n\n{self.house_standard.strip()}"
+        return f"{self.roles[name].prompt.strip()}\n\n{SEARCH_NOTE}\n\n{self.house_standard.strip()}"
 
     def get(self, name: str) -> Role:
         if name not in self.roles:
