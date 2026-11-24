@@ -421,6 +421,8 @@ async def test_a_review_that_runs_again_goes_on_from_the_next_unit(tmp_path: Pat
                                                                           prompts[0])
     deny = json.loads(limits[0])["agent"]["editor"]["permission"]["read"]
     assert deny["*chapters/*"] == deny["*.law/RESEARCH.md"] == deny["*sources/*"] == "deny" and deny["*"] == "allow"
+    shell = json.loads(limits[0])["agent"]["editor"]["permission"]["bash"]
+    assert shell["cat *chapters/*"] == shell["* cat *sources/*"] == "deny" and shell["*"] == "allow"
     assert not progress.exists()  # the round is over: the next round checks everything again
 
 

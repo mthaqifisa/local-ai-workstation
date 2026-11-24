@@ -636,7 +636,7 @@ reopened). The document's headings, in order:
 {headings}
 
 LAW's read tool will not open the chapter files, .law/RESEARCH.md or sources/ whole (they would fill your memory):
-search them with `rg -n -C 3 "<words>" <path>`.
+search them with `rg -n -C 3 "<words>" <path>`, and end a broad search with `| head -40`.
 
 1. Retest: for every finding that is open, fixed or reopened, check it again (search the chapter for the words it
    names). Set its status word in the heading to verified if it is resolved, or reopened if not, and add a line
@@ -654,7 +654,7 @@ search them with `rg -n -C 3 "<words>" <path>`.
 EDITOR_SECTION = """Fact-check one section of {name} version {version}, the document in {folder}, as its independent
 editor. This is section {n} of {total}: "{heading}" in {file}. Its text and footnotes are below. LAW's read
 tool will not open the chapter files, .law/RESEARCH.md or sources/ whole (they would fill your memory): search them
-with `rg`.
+with `rg` (end a broad search with `| head -40`).
 
 For each factual statement, figure, date and regulation reference in the section:
 - find its source: the footnote, and the entry for it in .law/RESEARCH.md (`rg -n "<a few words>" .law/RESEARCH.md`),
@@ -945,13 +945,18 @@ def agent_env(rt: Runtime, role: str, effort: str | None = None) -> dict[str, st
             "TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE": "/var/run/docker.sock"}
 
 
+WHOLE_FILE_TOOLS = ("cat", "head", "tail", "less", "more", "nl", "bat")
+
+
 def read_limits(role: str, deny: tuple[str, ...]) -> dict[str, str]:
     """OpenCode config merged over the role's (OPENCODE_CONFIG_CONTENT): its read tool refuses these patterns. The
     rule sits on the role's agent: a top-level one lost to the agent's own defaults (seen 2026-11-25: the editor
     still read the chapter)."""
     if not deny:
         return {}
-    rule = {"read": {"*": "allow", **dict.fromkeys(deny, "deny")}}
+    # the shell's whole-file readers too (seen 2026-11-25: refused the read tool, the editor ran `cat` on the chapter)
+    shell = {f"{lead}{tool} {pattern}": "deny" for pattern in deny for tool in WHOLE_FILE_TOOLS for lead in ("", "* ")}
+    rule = {"read": {"*": "allow", **dict.fromkeys(deny, "deny")}, "bash": {"*": "allow", **shell}}
     return {"OPENCODE_CONFIG_CONTENT": json.dumps({"agent": {role: {"permission": rule}}})}
 
 
