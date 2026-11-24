@@ -419,7 +419,7 @@ async def test_a_review_that_runs_again_goes_on_from_the_next_unit(tmp_path: Pat
     assert len(prompts) == 1 and "section 2 of 2" in prompts[0]  # only the unit not done before
     assert not re.search(r"<YYYY-MM-DD HH:MM>", prompts[0]) and re.search(r"editor · \d{4}-\d\d-\d\d \d\d:\d\d",
                                                                           prompts[0])
-    deny = json.loads(limits[0])["permission"]["read"]
+    deny = json.loads(limits[0])["agent"]["editor"]["permission"]["read"]
     assert deny["*chapters/*"] == deny["*.law/RESEARCH.md"] == deny["*sources/*"] == "deny" and deny["*"] == "allow"
     assert not progress.exists()  # the round is over: the next round checks everything again
 
@@ -429,4 +429,4 @@ def test_an_edited_section_is_checked_again() -> None:
 
     sec = {"file": "chapters/01.md", "heading": "Capital", "text": "RM100 million"}
     assert tasks.section_key(sec) != tasks.section_key({**sec, "text": "RM300 million"})
-    assert tasks.read_limits(()) == {}
+    assert tasks.read_limits("editor", ()) == {}

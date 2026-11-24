@@ -937,12 +937,14 @@ def agent_env(rt: Runtime, role: str, effort: str | None = None) -> dict[str, st
             "TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE": "/var/run/docker.sock"}
 
 
-def read_limits(deny: tuple[str, ...]) -> dict[str, str]:
-    """OpenCode config merged over the role's (OPENCODE_CONFIG_CONTENT): its read tool refuses these patterns."""
+def read_limits(role: str, deny: tuple[str, ...]) -> dict[str, str]:
+    """OpenCode config merged over the role's (OPENCODE_CONFIG_CONTENT): its read tool refuses these patterns. The
+    rule sits on the role's agent: a top-level one lost to the agent's own defaults (seen 2026-11-25: the editor
+    still read the chapter)."""
     if not deny:
         return {}
-    return {"OPENCODE_CONFIG_CONTENT": json.dumps({"permission": {"read": {"*": "allow",
-                                                                            **dict.fromkeys(deny, "deny")}}})}
+    rule = {"read": {"*": "allow", **dict.fromkeys(deny, "deny")}}
+    return {"OPENCODE_CONFIG_CONTENT": json.dumps({"agent": {role: {"permission": rule}}})}
 
 
 _lead_tasks: set[asyncio.Task[None]] = set()
@@ -1104,7 +1106,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         while True:
             try:
                 env = {**agent_env(rt, role, ctx.job.payload.get("effort")), **project_env(workdir),
-                       **read_limits(deny_read)}
+                       **read_limits(role, deny_read)}
                 out = await run_cmd(ctx, cmd, cwd=workdir, env=env, describe=describe,
                                     timeout_s=max(1.0, deadline - time.monotonic()),
                                     stall_s=stall_min * 60 if writes and stall_min > 0 else None,
