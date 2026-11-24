@@ -273,6 +273,58 @@ def project_map(project: Path) -> str:
     return "\n".join(rows) or "(no files yet)"
 
 
+# A ticket session used to open .law/PROMPT.md, PLAN.md and PROGRESS.md (and STYLE.md for a book) before any work:
+# 5-7 minutes a ticket on the local model (2026-11-24 trial; 10 % of all agent time measured across jobs), and
+# PROGRESS.md grows with every ticket. LAW gives their current, relevant part instead.
+CONTEXT_HEAD = ("LAW's copy of what you need from {folder}/ (current as of this session; do not open PROMPT.md, "
+                "PLAN.md, PROGRESS.md or STYLE.md again unless the ticket needs something older than this):")
+PROGRESS_ENTRIES = 2
+CONTEXT_CHARS = {"PROMPT.md": 6000, "STYLE.md": 4000, "PROGRESS.md": 3000}
+
+
+def _head(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[:limit].rsplit("\n", 1)[0] + "\n[... cut]"
+
+
+def milestone_board(project: Path, version: int, milestone: str) -> str:
+    """The ticket's milestone from the board: its heading and every ticket line with its tick."""
+    section = build_section(project, version) or ""
+    lines, inside = [], False
+    for line in section.splitlines():
+        if head := MILESTONE_HEAD.match(line):
+            inside = head.group(1) == milestone
+            if inside:
+                lines.append(line)
+            continue
+        if inside and line.strip():
+            lines.append(line)
+    return "\n".join(lines)
+
+
+def ticket_context(project: Path, version: int, milestone: str) -> str:
+    """The brief, the ticket's milestone, the latest progress entries and (for a book) the style guide."""
+    law = project / FOLDER
+    parts = [CONTEXT_HEAD.format(folder=FOLDER)]
+
+    def read(name: str) -> str:
+        path = law / name
+        return path.read_text(errors="replace").strip() if path.is_file() else ""
+
+    if brief := read("PROMPT.md"):
+        parts.append(f"--- {FOLDER}/PROMPT.md (the agreed brief) ---\n{_head(brief, CONTEXT_CHARS['PROMPT.md'])}")
+    if board := milestone_board(project, version, milestone):
+        parts.append(f"--- {FOLDER}/PLAN.md, this milestone ---\n{board}")
+    progress = read("PROGRESS.md")
+    entries = re.split(r"(?m)^(?=## )", progress)
+    latest = "".join([e for e in entries if e.startswith("## ")][:PROGRESS_ENTRIES])  # newest first
+    if latest.strip():
+        parts.append(f"--- {FOLDER}/PROGRESS.md, latest {PROGRESS_ENTRIES} entries ---\n"
+                     f"{_head(latest.strip(), CONTEXT_CHARS['PROGRESS.md'])}")
+    if style := read("STYLE.md"):
+        parts.append(f"--- {FOLDER}/STYLE.md ---\n{_head(style, CONTEXT_CHARS['STYLE.md'])}")
+    return "\n\n".join(parts) if len(parts) > 1 else ""
+
+
 FIRST_TICKET = ("This session: .law/PLAN.md has no build section for this version yet. Write it as described "
                 "above, then do its first ticket the same way (code and tests, passing, commit, tick, progress line) "
                 "and stop.")
@@ -1061,6 +1113,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 ALL_TICKED if build_section(folder, version) is not None else FIRST_TICKET
             if ticket:
                 task += "\n\n" + TARGETED.format(map=project_map(folder))
+                if context := ticket_context(folder, version, ticket[0]):
+                    task += "\n\n" + context
             prompt = f"{_scoped(p, memory)}\n\n{GATE_FAILED.format(problem=problem) if problem else ''}{task}"
             def ticket_done(session_ticket: list[tuple[str, str] | None] = [ticket]) -> bool:  # noqa: B006
                 current, now = session_ticket[0], next_ticket(folder, version)

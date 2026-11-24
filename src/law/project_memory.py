@@ -22,7 +22,8 @@ SEEDS = {
     "PROGRESS.md": "# Progress\n\nNewest first: what was done, the last gate output, and the exact next step.\n",
 }
 INSTRUCTIONS = """This project keeps its working memory in {folder}/ (like .claude/). Use it:
-- First read {folder}/PROMPT.md (the brief), then {folder}/PROGRESS.md and {folder}/PLAN.md if they have content.
+- First read {folder}/PROMPT.md (the brief), then {folder}/PROGRESS.md and {folder}/PLAN.md if they have content,
+  unless this prompt already gives LAW's copy of them: then work from that copy.
   If earlier work exists, continue from the next unchecked step; do not start over or re-read the whole codebase.
 - Before any work, add this task's to-do list to {folder}/PLAN.md under a new "## Task <date> <title>" heading:
   numbered steps with checkboxes (`- [ ]`) and a gate for each, small enough that each finishes in one step. Keep

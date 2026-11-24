@@ -354,7 +354,7 @@ async def test_a_ticket_session_gets_the_project_map_and_works_targeted(
     monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
     await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
     assert "Scan, don't read" in prompts[0] and "    3 ui/App.tsx" in prompts[0]
-    assert "package-lock.json" not in prompts[0] and ".law/PLAN.md" not in prompts[0].split("Project map")[1]
+    assert "package-lock.json" not in prompts[0] and ".law/PLAN.md" not in prompts[0].split("Project map")[1].split("LAW's copy")[0]
 
 
 def test_a_slightly_indented_milestone_is_still_read(tmp_path: Path) -> None:
