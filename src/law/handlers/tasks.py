@@ -171,6 +171,7 @@ MILESTONE_HEAD = re.compile(r"^ {0,3}#{3,}\s+(.+?)\s*$")
 OPEN_TICKET = re.compile(r"^ ?- \[ \]\s*(.+?)\s*$")
 # A line with a ticket ID is a ticket at any indent (seen 2026-10-28: split tickets P-37.2-.5 indented two spaces).
 TICKET_ID = re.compile(r"[A-Z][A-Z0-9]*-\d+(?:\.\d+)*")
+EST_TAG = re.compile(r"\s*\[\s*est[^\]]*\]", re.IGNORECASE)
 OPEN_ID_TICKET = re.compile(r"^\s*- \[ \]\s*([A-Z][A-Z0-9]*-\d+(?:\.\d+)?\b.*?)\s*$")
 
 
@@ -180,6 +181,79 @@ def uncommitted(project: Path) -> list[str]:
 
     out = subprocess.run(["git", "status", "--porcelain"], cwd=project, capture_output=True, text=True, timeout=30)
     return [ln[3:] for ln in out.stdout.splitlines() if ln[3:] and not ln[3:].startswith(f"{FOLDER}/")]
+
+
+AUTO_COMMIT_MAX_FILES = 300  # more than this in one ticket is a build output or dependency folder, not work
+AUTO_COMMIT_MAX_MB = 20
+
+
+def _git(project: Path, *args: str) -> str:
+    import subprocess
+
+    res = subprocess.run(["git", *args], cwd=project, capture_output=True, text=True, timeout=120)
+    if res.returncode != 0:
+        raise RuntimeError(f"git {' '.join(args)}: {res.stderr.strip()[-400:]}")
+    return res.stdout
+
+
+def head(project: Path) -> str:
+    try:
+        return _git(project, "rev-parse", "HEAD").strip()
+    except RuntimeError:
+        return ""  # no commit yet
+
+
+def tick(project: Path, tid: str) -> bool:
+    """Tick ticket `tid` in .law/PLAN.md; False when it is not an open ticket there."""
+    plan = project / FOLDER / "PLAN.md"
+    if not plan.is_file():
+        return False
+    text = plan.read_text()
+    new, n = re.subn(rf"(?m)^(\s*- )\[ \](\s*{re.escape(tid)}\b)", r"\1[x]\2", text, count=1)
+    if n:
+        plan.write_text(new)
+    return bool(n)
+
+
+def record_progress(project: Path, title: str, reply: str) -> None:
+    """Add the ticket's entry at the top of .law/PROGRESS.md (newest first)."""
+    progress = project / FOLDER / "PROGRESS.md"
+    text = progress.read_text() if progress.is_file() else "# Progress\n"
+    body = reply.strip()[-1500:] or "(no summary from the agent)"
+    entry = f"## {time.strftime('%Y-%m-%d %H:%M')} {title}\n\n{body}\n\n.law/check.sh passed (run by LAW).\n\n"
+    at = text.find("\n## ")
+    progress.write_text(text[:at + 1] + entry + text[at + 1:] if at >= 0 else text.rstrip() + "\n\n" + entry)
+
+
+def finish_ticket(project: Path, ticket: str, reply: str, before: str) -> str:
+    """After a session whose gate passed: commit its work as the ticket, tick it and record its progress.
+    Returns "" when the ticket is done, or the problem the next session must fix."""
+    m = TICKET_ID.match(ticket)
+    if m is None:
+        return ""
+    tid = m.group(0)
+    title = re.split(r"\s*\(acceptance", ticket, flags=re.IGNORECASE)[0].strip()
+    title = EST_TAG.sub("", title).strip()
+    status = [ln for ln in _git(project, "status", "--porcelain", "--untracked-files=all").splitlines() if ln[3:]]
+    if not status and head(project) == before:
+        return (f"The session for {tid} changed nothing in the project. Do the ticket's work (files and tests), "
+                "with .law/check.sh passing, then stop with your summary.")
+    big = []
+    for line in status:
+        path = project / line[3:].strip().strip('"')
+        if path.is_file() and path.stat().st_size > AUTO_COMMIT_MAX_MB * 1_000_000:
+            big.append(line[3:])
+    if len(status) > AUTO_COMMIT_MAX_FILES or big:
+        what = ", ".join(big[:5]) if big else f"{len(status)} files"
+        return (f"LAW did not commit {tid}: the change has {what}, which looks like build output, downloads or "
+                "dependencies, not the ticket's work. Add those paths to .gitignore (or delete them), keep "
+                ".law/check.sh passing, then stop with your summary.")
+    tick(project, tid)
+    record_progress(project, title, reply)
+    _git(project, "add", "-A")
+    if _git(project, "status", "--porcelain"):
+        _git(project, "commit", "-q", "-m", f"{title}\n\n{reply.strip()[-1500:]}".strip())
+    return ""
 
 
 def changed_since(project: Path, since: float, *, code_only: bool = False) -> bool:
@@ -243,8 +317,16 @@ MIN_SESSION_S = 30 * 60
 CHECK_SCRIPT = f"{FOLDER}/check.sh"
 CHECK_TIMEOUT_S = 30 * 60
 CHECK_TAIL = 3000
-TICKET_SESSION = ("This session: ticket {ticket} (milestone {milestone}). Do only this ticket: code and tests, the "
-                  "build and tests passing, commit, tick it in .law/PLAN.md, its line in .law/PROGRESS.md, then stop.")
+# LAW does a ticket's bookkeeping (2026-11-24): agents spent over half of their model turns editing PLAN.md and
+# PROGRESS.md and running git, at 15-45 s a turn on the local model. LAW already runs the gate after every ticket;
+# when it passes, LAW commits the work with the ticket's ID, ticks it and records the agent's reply as its progress.
+TICKET_SESSION = ("This session: ticket {ticket} (milestone {milestone}). Do only this ticket: its work and tests, "
+                  "with .law/check.sh passing. Then stop and reply in a few lines: what you did, any decision or "
+                  "gotcha the next session needs, anything the owner must confirm by hand, and the check result. "
+                  "LAW then runs .law/check.sh itself, commits your work as the ticket, ticks it on the board and "
+                  "records your reply in .law/PROGRESS.md: do not commit, tick the ticket or edit .law/PROGRESS.md "
+                  "(that replaces the bookkeeping steps described above). Split a ticket that turns out too big in "
+                  ".law/PLAN.md as described, then do its first part.")
 # A ticket is a story-sized change: the session scans the project for what exists (no duplicates), then reads only
 # what the ticket touches. Seen 2026-10-27: every Pantry session spent 25-75 min re-reading the codebase first.
 TARGETED = ("Work like a developer picking up one story: do not read the whole codebase. The project map below lists "
@@ -328,8 +410,8 @@ def ticket_context(project: Path, version: int, milestone: str) -> str:
 
 
 FIRST_TICKET = ("This session: .law/PLAN.md has no build section for this version yet. Write it as described "
-                "above, then do its first ticket the same way (code and tests, passing, commit, tick, progress line) "
-                "and stop.")
+                "above, then do its first ticket (code and tests, passing) and stop with a short reply: LAW commits "
+                "and ticks it.")
 ALL_TICKED = "Every ticket is ticked: fix the problem above, commit, and stop."
 # OpenCode continues a session on its own after it compacts one (seen 2026-10-27: P-22.4's session went on to
 # P-22.5, so LAW never checked P-22.4). LAW ends a session once its ticket is ticked and committed.
@@ -404,9 +486,9 @@ SPLIT_NUDGE = ("Twice now you have saved nothing for {minutes} minutes: this tic
                "then write the first sub-ticket at once, run the checks, commit it and tick it.")
 # A ticket session that stalls with its work done but uncommitted (seen 2026-10-28/29: the P-35 spec was complete but
 # kept being polished; P-34.6's test and gate passed, then 35 min of rereading the plan): LAW runs the gate itself.
-COMMIT_NUDGE = ("LAW ran .law/check.sh: it passes, and these files are not committed: {files}. Your ticket's work "
-                "looks done. Tick the ticket (and its parent once all its parts are ticked) in .law/PLAN.md, add its "
-                ".law/PROGRESS.md line, commit, and stop. If something in the ticket is still missing, do that first.")
+COMMIT_NUDGE = ("LAW ran .law/check.sh: it passes, with your changes to {files}. If the ticket is complete, stop "
+                "now and reply with your summary: LAW commits and ticks it. If something in the ticket is still "
+                "missing, do that first.")
 UNCOMMITTED_HEAD = "Uncommitted changes were left behind: "  # the gate passed; only the commit is missing
 # Writers, researchers and designers produce documents: the nudge is to save work, a section at a time.
 NUDGE_DOCS = ("You have not saved anything for {minutes} minutes. Save your work now: write the next section of the "
@@ -1069,9 +1151,11 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 Projects(rt.paths).adopt(_workdir(p))
         return Done({"answer": text, "dir": str(_workdir(p))})
 
-    async def _gate_problem(ctx: Context, folder: Path, *, after_ticket: bool = True) -> str:
+    async def _gate_problem(ctx: Context, folder: Path, *, after_ticket: bool = True, commit_as: str | None = None,
+                            reply: str = "", before: str = "") -> str:
         """What is wrong after a ticket, from LAW's own checks (not the agent's word): `.law/check.sh` fails, is
-        missing, or product files were left uncommitted. Empty when the ticket is really done."""
+        missing, or product files were left uncommitted. Empty when the ticket is really done. With `commit_as`
+        (the session's ticket line, still open), a passing gate makes LAW commit, tick and record the ticket."""
         script = folder / CHECK_SCRIPT
         if not script.is_file():
             return f"{CHECK_SCRIPT} does not exist. Create it now (see the build rules above)."
@@ -1086,6 +1170,17 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             return f"{CHECK_SCRIPT} failed:\n{str(exc)[-CHECK_TAIL:]}"
         except TimeoutError:
             return f"{CHECK_SCRIPT} did not finish within {CHECK_TIMEOUT_S // 60} minutes."
+        tid = TICKET_ID.match(commit_as or "")
+        plan = folder / FOLDER / "PLAN.md"
+        if tid and plan.is_file() and re.search(rf"(?m)^\s*- \[ \]\s*{re.escape(tid.group(0))}\b", plan.read_text()):
+            try:
+                unfinished = finish_ticket(folder, str(commit_as), reply, before)
+            except RuntimeError as exc:
+                unfinished = f"LAW could not commit the ticket: {exc}"
+            if unfinished:
+                await ctx.progress(f"🔸 {unfinished.split('. ')[0]}")
+                return unfinished
+            await ctx.progress(f"☑️ LAW committed and ticked {tid.group(0)}")
         status = await run_cmd(ctx, ["git", "status", "--porcelain"], cwd=folder, timeout_s=60)
         left = [ln[3:] for ln in status.splitlines() if ln[3:] and not ln[3:].startswith(f"{FOLDER}/")]
         if left:
@@ -1131,6 +1226,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                     return False
                 return not uncommitted(folder)
 
+            before = head(folder)
             try:
                 text = await _agent(ctx, p["role"], prompt, folder, memory=memory,
                                     timeout_s=min(left, float(p.get("timeout_s", 4 * 3600))),
@@ -1143,7 +1239,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             if memory is not None:
                 memory.end_session(ctx.job.id)  # the next ticket starts a fresh session, not this one
             had_problem = bool(problem)
-            problem = await _gate_problem(ctx, folder)
+            problem = await _gate_problem(ctx, folder, commit_as=ticket[1] if ticket else None,
+                                          reply=text, before=before)
             if not problem:  # proven in this project: other projects of this role get it from now on
                 for title in Lessons(rt.paths).harvest(folder, str(p["role"])):
                     await ctx.progress(f"📘 lesson kept for later projects: {title}")

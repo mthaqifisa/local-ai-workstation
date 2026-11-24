@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -17,6 +18,12 @@ from law.queue.worker import Fatal
 REPO = Path(__file__).resolve().parents[2]
 PLAN = ("# Plan\n\n## Build version 1\n### M1 API\n- [x] P-1 skeleton\n- [ ] P-2 products\n  - [ ] detail\n"
         "- [ ] P-3 batches\n### M2 UI\n- [ ] P-4 scan screen\n")
+
+
+def _git_repo(project: Path) -> None:
+    for args in (["init", "-q"], ["config", "user.email", "law@example.com"], ["config", "user.name", "LAW"],
+                 ["add", "-A"], ["commit", "-q", "-m", "start"]):
+        subprocess.run(["git", *args], cwd=project, check=True, capture_output=True)
 
 
 def _ctx(payload: dict[str, Any]) -> Any:
@@ -97,6 +104,7 @@ async def test_a_failing_gate_goes_to_the_next_session_first(tmp_path: Path,
     plan = project / ".law" / "PLAN.md"
     plan.write_text(PLAN.replace("- [ ] P-3 batches\n", ""))
     (project / ".law" / "check.sh").write_text("mvn verify\n")
+    _git_repo(project)  # LAW commits a ticket the agent left unticked
     prompts: list[str] = []
     gate = iter([Fatal("bash exited 1: [ERROR] ProductControllerTest.rejectsBlank FAILED"), "BUILD SUCCESS"])
 
@@ -736,3 +744,45 @@ def test_is_split_of() -> None:
     assert is_split_of("P-29.1 keep the URL", "P-29 Product images")
     assert not is_split_of("P-30 cards", "P-29 Product images") and not is_split_of("P-290 x", "P-29 y")
     assert not is_split_of("tidy the README", "P-29 Product images")
+
+
+def test_law_finishes_a_ticket_the_agent_left_open(tmp_path: Path) -> None:
+    """2026-11-24: agents spent over half their turns on PLAN.md, PROGRESS.md and git; LAW does it now."""
+    from law.handlers.tasks import finish_ticket, head
+
+    project = tmp_path / "book"
+    (project / ".law").mkdir(parents=True)
+    (project / ".law" / "PLAN.md").write_text(
+        "## Build version 1\n### M1\n- [ ] DB-1 Research licensing (acceptance: facts recorded) [est 40m]\n")
+    (project / ".law" / "PROGRESS.md").write_text("# Progress\n\nNewest first.\n\n## 2026-11-23 env\n\nTools ok.\n")
+    _git_repo(project)
+    before = head(project)
+    ticket = "DB-1 Research licensing (acceptance: facts recorded) [est 40m]"
+    assert "changed nothing" in finish_ticket(project, ticket, "nothing", before)
+    (project / "chapters").mkdir()
+    (project / "chapters" / "01.md").write_text("# One\n")
+    assert finish_ticket(project, ticket, "Recorded 12 facts from the framework.", before) == ""
+    assert "- [x] DB-1" in (project / ".law" / "PLAN.md").read_text()
+    progress = (project / ".law" / "PROGRESS.md").read_text()
+    assert progress.index("DB-1 Research licensing") < progress.index("2026-11-23 env")
+    assert "Recorded 12 facts" in progress and "[est" not in progress.split("\n## ")[1].splitlines()[0]
+    log = subprocess.run(["git", "log", "-1", "--format=%s"], cwd=project, capture_output=True, text=True).stdout
+    assert log.strip() == "DB-1 Research licensing"
+    assert subprocess.run(["git", "status", "--porcelain"], cwd=project, capture_output=True,
+                          text=True).stdout == ""
+
+
+def test_law_refuses_to_commit_a_dependency_dump(tmp_path: Path) -> None:
+    from law.handlers import tasks
+
+    project = tmp_path / "app"
+    (project / ".law").mkdir(parents=True)
+    (project / ".law" / "PLAN.md").write_text("## Build version 1\n### M1\n- [ ] A-1 Setup\n")
+    _git_repo(project)
+    before = tasks.head(project)
+    (project / "node_modules").mkdir()
+    for n in range(tasks.AUTO_COMMIT_MAX_FILES + 1):
+        (project / "node_modules" / f"f{n}.js").write_text("x")
+    problem = tasks.finish_ticket(project, "A-1 Setup", "done", before)
+    assert "did not commit A-1" in problem and ".gitignore" in problem
+    assert "- [ ] A-1" in (project / ".law" / "PLAN.md").read_text()

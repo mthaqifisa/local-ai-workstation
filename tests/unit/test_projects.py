@@ -245,7 +245,7 @@ def test_development_spec_asks_for_a_ticket_board(tmp_path: Path):
     store.save(p)
     out = _run(rt, "project_step", {"project": "office-chat", "action": "go"})
     spec = next(specs.resolve(s["payload"]) for s in out.specs if s["payload"].get("milestone"))
-    assert "### M1" in spec and '"OC-<n>: <summary>"' in spec and "## Build version 1" in spec
+    assert "### M1" in spec and 'commits the work as the ticket' in spec and "## Build version 1" in spec
 
 CODE_FILLED = FILLED.replace("/code new", "/code new").replace("thinking: high", "thinking: low")
 

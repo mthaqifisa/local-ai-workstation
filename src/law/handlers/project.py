@@ -114,9 +114,10 @@ Work like a team on a Jira board, in .law/PLAN.md:
   must change a file already over that size is preceded by a ticket "{key}-<next n> Split <file>" (behaviour
   unchanged, tests green), added to .law/PLAN.md right before it.
 - Each session does ONE ticket: the one LAW names at the end of this prompt (the first unticked one). Write its
-  code and tests, run the build and tests until they pass, commit as "{key}-<n>: <summary>", tick the ticket, add
-  its line to .law/PROGRESS.md, and stop. A fresh session takes the next ticket and knows only what is on disk:
-  note in .law/PROGRESS.md what it needs (decisions, gotchas, commands).
+  code and tests, run the build and tests until they pass, and stop with a short reply. LAW then runs the gate,
+  commits the work as the ticket, ticks it and records your reply in .law/PROGRESS.md. A fresh session takes the
+  next ticket and knows only what is on disk and your reply: put in it what the next session needs (decisions,
+  gotchas, commands).
 - `.law/check.sh` is the project's whole gate: the build, formatting and lint, and every test (the platform's gate
   below), exiting non-zero on any failure. Create it with the first ticket (now, if it is missing), keep it
   complete as the project grows, and never weaken it to make it pass. LAW runs it after every ticket; a failure
@@ -128,8 +129,8 @@ Work like a team on a Jira board, in .law/PLAN.md:
   another device if it is a network service.
 - Nobody answers questions during a build session: never stop to ask the owner or wait for a reply. Decide on the
   evidence you have. A check only the owner can do (a message arriving on their phone, a camera, a device) is
-  recorded in .law/PROGRESS.md as "owner to confirm: ..." and the ticket is ticked when its automated part passes;
-  the handover lists it for the owner. Clean up test data you created before you commit.
+  written in your reply as "owner to confirm: ..." and the ticket is done when its automated part passes; the
+  handover lists it for the owner. Clean up test data you created before you stop.
 - Anything that reaches the owner for real (a Telegram message, an email, a notification) is sent at most once per
   milestone, only to prove the live path; everything else is tested with fakes or a dry run. Keep the response of
   that one call as the evidence instead of sending again. The build is complete only
