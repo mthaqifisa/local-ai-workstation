@@ -917,3 +917,41 @@ def test_a_failed_agent_reports_the_error_a_person_can_read() -> None:
     assert text.startswith("oMLX prefill memory guard rejected this prompt") and len(text) < 200
     assert text.endswith("[prefill_memory_exceeded]")  # LAW still sees the code (tasks.TOO_BIG)
     assert readable_error("plain failure output") == "plain failure output"
+
+
+async def test_an_agent_running_the_same_command_again_and_again_is_told_to_move_on(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Seen 2026-11-25: the editor ran one rg 94 times in 12 minutes."""
+    from law.handlers import project as _registers_project_specs  # noqa: F401
+    from law.handlers import tasks
+    from law.handlers.base import Steered
+
+    project = tmp_path / "pantry"
+    (project / ".law").mkdir(parents=True)
+    plan = project / ".law" / "PLAN.md"
+    plan.write_text(PLAN.replace("- [ ] P-3 batches\n", ""))
+    (project / ".law" / "check.sh").write_text("exit 0\n")
+    monkeypatch.setattr(tasks, "uncommitted", lambda folder: [])
+    seen: list[str | None] = []
+    prompts: list[str] = []
+    same = '▶ running rg -n "principal plus" chapters/01.md'
+    actions = [same, same, "✏️ editing notes.md", same, same, same, same]
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        if cmd[0] != "opencode":
+            return ""
+        prompts.append(cmd[-1])
+        if len(prompts) == 1:
+            for line in actions:
+                message = kw["steer"](line)
+                seen.append(message)
+                if message:
+                    raise Steered('{"type": "text", "sessionID": "ses_r", "part": {"type": "text", "text": "x"}}',
+                                  message)
+        _tick(plan, "P-2")
+        return json.dumps({"type": "text", "part": {"type": "text", "text": "done"}})
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx({**_payload(project), "role": "writer"}))
+    assert seen[:6] == [None] * 6 and seen[6] and seen[6].startswith(tasks.REPEAT_HEAD)  # a save in between resets
+    assert "principal plus" in prompts[1]  # the nudge goes into the same session

@@ -552,6 +552,13 @@ WEB_DIG_NUDGE = ("Stop trying to get around websites (decrypting a site's API, w
                  "referers). Work from what you already have: the files in sources/ and the pages that open normally. "
                  "Write your findings now. A fact you could not get from an official page that opens goes in as "
                  "\"owner to confirm: <the fact and where it should be>\", not as more fetching.")
+# The same command or read again and again with nothing in between (seen 2026-11-25: the editor ran one rg 94 times in
+# 12 minutes, each step 6 s). Any role; counted only when the identical action repeats back to back.
+REPEAT_LIMIT = 4
+REPEAT_NUDGES = 3  # then a repeat counts as a strike, like a stall
+REPEAT_HEAD = "You have run the same thing"
+REPEAT_NUDGE = (REPEAT_HEAD + " {times} times in a row: {action}. It gives the same result every time. Use the "
+                "result you have (no match is an answer too), go on to the next step, and end with your report.")
 # A writing ticket paging through the raw sources again instead of writing from .law/RESEARCH.md (seen 2026-11-24:
 # DBCT-9 spent 25 min in sed ranges of the framework, the FAQ and the IFSA, all already recorded with their quotes).
 SOURCE_READ_LIMIT = 15  # reads or searches of sources/ since the writer last saved anything
@@ -1013,11 +1020,21 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         told_law = told_probe = told_shell_write = told_wrap = False
         opened: dict[str, int] = {}  # file -> times read since it was last edited
 
+        last_action, repeats = "", 0
+
         def steer(summary: str) -> str | None:
-            nonlocal digs, lookups, blind_edits, reads, probes, source_reads
+            nonlocal digs, lookups, blind_edits, reads, probes, source_reads, last_action, repeats
             nonlocal told_law, told_probe, told_shell_write, told_wrap
             if finished is not None and finished():
                 return TICKET_DONE
+            if summary.startswith(("▶", "📖", "🔎")):
+                repeats = repeats + 1 if summary == last_action else 1
+                last_action = summary
+                if repeats >= REPEAT_LIMIT:
+                    repeats = 0
+                    return REPEAT_NUDGE.format(times=REPEAT_LIMIT, action=summary.split(" ", 1)[-1][:200])
+            elif summary:
+                last_action, repeats = "", 0
             # a handover writer only documents: a change request waits for an agent that can build it (seen 2026-10-30:
             # the owner's icon and photo requests became "known limitations" in the handover document)
             holds_notes = ctx.job.payload.get("spec_ref") == "project.handover"
@@ -1100,7 +1117,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         # Interventions in a row without progress: an agent that saved files since the last nudge earned a fresh
         # budget (one stage runs a whole milestone for hours; seen 2026-10-21: two tickets committed between
         # nudges, then the fourth nudge failed the pipeline).
-        strikes = qa_reminders = locked = fresh = 0
+        strikes = qa_reminders = locked = fresh = repeat_nudges = 0
         code_only = finished is not None and role not in DOC_ROLES  # a coder's ticket: only code counts as work
         work = is_code_change if code_only else is_file_change
         while True:
@@ -1149,6 +1166,11 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                     continue
                 if exc.message.startswith("You have read the sources") and sid is not None:  # guidance
                     await ctx.progress("⚠️ re-reading the sources: telling the writer to write from .law/RESEARCH.md")
+                    cmd = [*base, "--session", sid, exc.message]
+                    continue
+                if exc.message.startswith(REPEAT_HEAD) and sid is not None and repeat_nudges < REPEAT_NUDGES:
+                    repeat_nudges += 1
+                    await ctx.progress("⚠️ running the same command again and again: telling the agent to move on")
                     cmd = [*base, "--session", sid, exc.message]
                     continue
                 if exc.message == WEB_DIG_NUDGE and sid is not None:  # guidance, not a strike
