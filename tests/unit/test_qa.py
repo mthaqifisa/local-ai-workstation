@@ -289,3 +289,87 @@ async def test_a_document_gets_the_editor_and_a_page_check_instead_of_qa(tmp_pat
     assert "qa" not in agents and agents[:2] == ["editor", "designer"]
     assert review["score"] < 4 and review["issues"][0].startswith("BUG-1 (open, blocker, found by editor)")
     assert any("open the cited source" in p for p in prompts) and any("pdftoppm" in p for p in prompts)
+
+
+CHAPTER = """# Chapter one
+
+Opening words.
+
+## Licensing
+
+BNM issues the licence.[^lic] It caps assets.[^cap]
+
+### A sub-part
+
+More words about licensing.
+
+## Short
+
+Tiny.
+
+## Capital
+
+Capital is RM100 million.[^ch2-cap]
+
+[^lic]: BNM, Licensing Framework, para 5.1, https://www.bnm.gov.my/x
+[^cap]: BNM FAQ, Q4, https://www.bnm.gov.my/y
+"""
+
+
+def test_a_document_is_split_into_sections_with_their_footnotes(tmp_path: Path,
+                                                                 monkeypatch: pytest.MonkeyPatch) -> None:
+    from law.handlers import tasks
+
+    monkeypatch.setattr(tasks, "SECTION_WORDS_MIN", 5)
+    (tmp_path / "chapters").mkdir()
+    (tmp_path / "chapters" / "01-one.md").write_text(CHAPTER)
+    (tmp_path / "chapters" / "02-two.md").write_text("# Two\n\n## Money\n\nIt cites one.[^cap] And more words here.\n")
+    secs = tasks.doc_sections(tmp_path)
+    assert [s["heading"] for s in secs] == ["Licensing", "Short + Capital", "Money"]
+    first, capital, money = secs
+    assert first["text"].startswith("# Chapter one") and "### A sub-part" in first["text"]  # the opening goes along
+    assert "[^lic]: BNM, Licensing" in first["notes"] and "[^cap]: BNM FAQ" in first["notes"]
+    assert "## Short" in capital["text"] and "[^lic]:" not in capital["text"]  # short one merged; no definitions
+    assert "[^ch2-cap]: (not defined anywhere)" in capital["notes"]
+    assert "[^cap]: BNM FAQ" in money["notes"]  # a definition from another chapter
+    assert "02-two.md: ## Money" in tasks.doc_headings(tmp_path)
+
+
+async def test_a_document_with_chapters_is_fact_checked_one_section_at_a_time(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Seen 2026-11-24: the whole-document check overflowed the editor's context and looped for 70 minutes."""
+    from law.handlers import project as _registers_project_specs  # noqa: F401
+    from law.handlers import tasks
+
+    monkeypatch.setattr(tasks, "SECTION_WORDS_MIN", 5)
+    book = tmp_path / "RnD" / "bank"
+    (book / ".law").mkdir(parents=True)
+    (book / "chapters").mkdir()
+    (book / "chapters" / "01-one.md").write_text(CHAPTER)
+    prompts: list[str] = []
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        agent = cmd[cmd.index("--agent") + 1] if "--agent" in cmd else ""
+        if agent == "editor":
+            prompts.append(cmd[-1])
+            silent = "section 2 of 2" in cmd[-1]  # this unit never reports, even when asked again
+            reply = "" if silent else '{"tested": ["unit: pass"], "summary": "ok"}'
+        elif agent == "designer":
+            reply = '{"screens": ["page 1: pass"], "summary": "fine"}'
+        else:
+            reply = '{"score": 5, "issues": [], "summary": "fine"}'
+        return '{"type": "text", "part": {"type": "text", "text": ' + json.dumps(reply) + '}}'
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    payload = {"prompt": "write a book", "dir": str(book), "role": "writer", "project": "bank",
+               "rubric_ref": "project.review", "version": 1,
+               "spec_args": {"name": "Bank", "out": "docs/proposal", "version": 1, "kind": "document",
+                             "spec_file": ".law/PROMPT.md (the agreed plan)"},
+               "_carry": {"answer": "done"}}
+    done = await tasks.make_handlers(_review_rt(tmp_path))["task_review"](_ctx(payload))
+    assert "Other sessions" in prompts[0] and "01-one.md: ## Capital" in prompts[0]  # the whole-document unit first
+    assert "section 1 of 2" in prompts[1] and "It caps assets" in prompts[1] and "[^cap]: BNM FAQ" in prompts[1]
+    assert "Capital is RM100 million" not in prompts[1]
+    assert len(prompts) == 4  # whole, section 1, section 2 and its one retry
+    review = done.result["review"]
+    assert review["score"] < 4 and any("section not fact-checked: Short + Capital" in i for i in review["issues"])

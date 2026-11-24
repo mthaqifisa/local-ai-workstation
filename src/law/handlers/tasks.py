@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import itertools
 import json
 import re
 import time
@@ -614,6 +615,100 @@ and every change the owner asked for in {folder}/.law/REQUESTS.md. The findings 
    Severity: blocker | major | minor
    Where: <file, section, page>  Evidence: <the source's words or the command output>  Correct: <what it should say>
 4. Reply with JSON only: {{"tested": ["<chapter or check>: pass|fail"], "summary": "<one sentence>"}}"""
+# The whole-document fact-check overflowed the editor's context (seen 2026-11-24: 7,600 words and a 77 KB
+# RESEARCH.md; it compacted, re-read both and started over every 6 minutes for 70 minutes, with no finding). So a
+# document with chapter files is checked in small units: one session per section, given its text and footnotes, that
+# looks facts up by searching; and one session for what spans the document (retests, build, coverage).
+EDITOR_WHOLE = """Check {name} version {version}, the document in {folder}, as its independent editor. Other sessions
+fact-check each section; this one checks what spans the whole document. Do not fact-check sections here.
+
+Requirements: {folder}/.law/PROMPT.md (the brief), {folder}/{spec_file} (the agreed outline) and every change the owner
+asked for in {folder}/.law/REQUESTS.md. The findings list is {folder}/.law/BUGS.md (statuses: open, fixed, verified,
+reopened). The document's headings, in order:
+{headings}
+
+1. Retest: for every finding that is open, fixed or reopened, check it again (search the chapter for the words it
+   names). Set its status word in the heading to verified if it is resolved, or reopened if not, and add a line
+   "Retest <date>: <result>".
+2. Run {folder}/.law/check.sh (it builds the PDF and HTML). A failure is a finding.
+3. Coverage: compare the headings above with the outline and the owner's requests. Every part of the outline and every
+   request must be covered; a missing one is a finding.
+   For each new finding append:
+   ## BUG-<next number> · open · editor · <YYYY-MM-DD HH:MM>
+   <one-line title of what is wrong>
+   Severity: blocker | major | minor
+   Where: <file, section>  Evidence: <what is missing or the command output>  Correct: <what it should be>
+4. Reply with JSON only: {{"tested": ["retest: pass|fail", "build: pass|fail", "coverage: pass|fail"],
+   "summary": "<one sentence>"}}"""
+EDITOR_SECTION = """Fact-check one section of {name} version {version}, the document in {folder}, as its independent
+editor. This is section {n} of {total}: "{heading}" in {file}. Its text and footnotes are below, so do not open the
+chapter file, and do not read .law/RESEARCH.md or a source whole: search them.
+
+For each factual statement, figure, date and regulation reference in the section:
+- find its source: the footnote, and the entry for it in .law/RESEARCH.md (`rg -n "<a few words>" .law/RESEARCH.md`),
+  which names the saved copy in sources/;
+- confirm it there: search the saved copy for the quoted words or the figure (`rg -n -i "<exact words>" sources/<file>`)
+  and read only the lines around a hit. A quote must appear in the source as written, a figure must match, and the
+  claim must say what the source says. A fact with no source is a finding.
+Also check that the section follows .law/STYLE.md (search it for the terms you need) and has both layers: a plain
+explanation first, then the detail.
+For each finding append to {folder}/.law/BUGS.md (read its last lines first for the next number):
+   ## BUG-<next number> · open · editor · <YYYY-MM-DD HH:MM>
+   <one-line title of what is wrong>
+   Severity: blocker | major | minor
+   Where: {file}, "{heading}"  Evidence: <the source's words or what is missing>  Correct: <what it should say>
+Do not edit the document. Reply with JSON only: {{"tested": ["{heading}: pass|fail"], "summary": "<one sentence>"}}
+
+--- the section ---
+{text}
+--- its footnotes ---
+{notes}"""
+SECTION_WORDS_MIN = 150  # a shorter section is checked with the next one
+SECTION_HEAD = re.compile(r"^## +(.+?)\s*$", re.MULTILINE)
+NOTE_DEF = re.compile(r"^\[\^([^\]]+)\]:.*(?:\n(?: {2,}|\t).*)*", re.MULTILINE)
+NOTE_REF = re.compile(r"\[\^([^\]]+)\](?!:)")
+
+
+def doc_sections(folder: Path) -> list[dict[str, str]]:
+    """The units an editor checks: each `## ` section of the chapter files (a chapter's opening goes with its first
+    section, a short section with the next one), with the footnote definitions it uses, from any chapter."""
+    files = sorted((folder / "chapters").glob("*.md"))
+    texts = {f: f.read_text(errors="replace") for f in files}
+    notes = {m.group(1): m.group(0).strip() for t in texts.values() for m in NOTE_DEF.finditer(t)}
+    out: list[dict[str, str]] = []
+    for f, text in texts.items():
+        body = NOTE_DEF.sub("", text)
+        heads = list(SECTION_HEAD.finditer(body))
+        cuts = [0] + [m.start() for m in heads[1:]] + [len(body)] if heads else [0, len(body)]
+        pending = ""
+        for a, b in itertools.pairwise(cuts):
+            part = pending + body[a:b]
+            if len(part.split()) < SECTION_WORDS_MIN and b != len(body):
+                pending = part
+                continue
+            pending = ""
+            heading = " + ".join(SECTION_HEAD.findall(part)) or f.stem
+            used = sorted(set(NOTE_REF.findall(part)), key=lambda k: part.find(f"[^{k}]"))
+            out.append({"file": f.relative_to(folder).as_posix(), "heading": heading, "text": part.strip(),
+                        "notes": "\n".join(notes.get(k, f"[^{k}]: (not defined anywhere)") for k in used)
+                        or "(none)"})
+        if pending.strip():
+            if out and out[-1]["file"] == f.relative_to(folder).as_posix():
+                out[-1]["text"] += "\n\n" + pending.strip()
+            else:
+                out.append({"file": f.relative_to(folder).as_posix(), "heading": f.stem, "text": pending.strip(),
+                            "notes": "(none)"})
+    return out
+
+
+def doc_headings(folder: Path) -> str:
+    lines = []
+    for f in sorted((folder / "chapters").glob("*.md")):
+        lines += [f"{f.name}: {ln.strip()}" for ln in f.read_text(errors="replace").splitlines()
+                  if re.match(r"#{1,3} ", ln)]
+    return "\n".join(lines) or "(no chapter files)"
+
+
 PAGES_TASK = """Check how {name} version {version}, the document in {folder}, looks on the page: you can see images.
 
 1. Build it with {folder}/.law/check.sh, then render every page of the PDF: `pdftoppm -png -r 50 <pdf> $TMPDIR/p`.
@@ -1349,15 +1444,21 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         build; the designer (a vision model) checks every rendered page for cut or unreadable figures."""
         fill = {"name": a.get("name", folder.name), "version": p.get("version", 1), "folder": folder,
                 "spec_file": spec_file}
-        await ctx.progress("🧐 editor: fact-checking every chapter against its sources")
-        reply = await _agent(ctx, "editor", EDITOR_TASK.format(**fill), folder, writes=False)
-        report = json_report(reply)
-        if not report.get("tested"):
-            reply = await _agent(ctx, "editor", EDITOR_TASK.format(**fill) + QA_NO_REPORT, folder, writes=False)
+        sections = doc_sections(folder)
+        if sections:
+            report = await _editor_by_section(ctx, fill, folder, sections)
+            reply = str(report.get("summary", ""))
+        else:
+            await ctx.progress("🧐 editor: fact-checking every chapter against its sources")
+            reply = await _agent(ctx, "editor", EDITOR_TASK.format(**fill), folder, writes=False)
             report = json_report(reply)
+            if not report.get("tested"):
+                reply = await _agent(ctx, "editor", EDITOR_TASK.format(**fill) + QA_NO_REPORT, folder, writes=False)
+                report = json_report(reply)
         await ctx.progress("🖼 page check: every page for cut or unreadable figures")
         shown = await _agent(ctx, "designer", PAGES_TASK.format(**fill), folder, writes=False)
         missing = ([] if report.get("tested") else ["no fact-check results"]) + \
+            [f"section not fact-checked: {h}" for h in report.get("unchecked", [])] + \
             ([] if json_report(shown).get("screens") else ["no page check"])
         open_bugs = bugs.unresolved(folder)
         blocking = [b for b in open_bugs if b.severity in bugs.BLOCKING]
@@ -1371,6 +1472,37 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         return {"open": [*evidence, *bugs.as_issues(blocking)],
                 "minor": bugs.as_issues([b for b in open_bugs if b not in blocking]),
                 "tested": [str(t) for t in report.get("tested", [])][:40], "summary": summary}
+
+    async def _editor_by_section(ctx: Context, fill: dict[str, Any], folder: Path,
+                                 sections: list[dict[str, str]]) -> dict[str, Any]:
+        """The editor's fact-check in small units: the whole-document checks, then one session per section. The report
+        has a result for every unit; a unit that ended without one (after one retry) is left out, so it counts as
+        missing evidence."""
+        async def unit(prompt: str) -> dict[str, Any]:
+            report = json_report(await _agent(ctx, "editor", prompt, folder, writes=False))
+            if not report.get("tested"):
+                report = json_report(await _agent(ctx, "editor", prompt + QA_NO_REPORT, folder, writes=False))
+            return report
+
+        await ctx.progress(f"🧐 editor: retests, build and coverage, then {len(sections)} sections one at a time")
+        whole = await unit(EDITOR_WHOLE.format(**fill, headings=doc_headings(folder)))
+        tested = [str(t) for t in whole.get("tested", [])]
+        summaries = [str(whole["summary"])] if whole.get("summary") else []
+        unchecked = [] if tested else ["retests, build and coverage"]
+        for n, sec in enumerate(sections, start=1):
+            await ctx.progress(f"🧐 editor: section {n}/{len(sections)} \"{sec['heading']}\"")
+            got = await unit(EDITOR_SECTION.format(**fill, n=n, total=len(sections), **sec))
+            if got.get("tested"):
+                tested += [str(t) for t in got["tested"]]
+                if got.get("summary"):
+                    summaries.append(str(got["summary"]))
+            else:
+                unchecked.append(sec["heading"])
+        summary = " ".join(summaries)[:600]
+        if unchecked:
+            summary = f"Not checked: {', '.join(unchecked)}. {summary}"
+            return {"tested": tested, "summary": summary, "unchecked": unchecked}
+        return {"tested": tested, "summary": summary}
 
     async def _alert_owner(name: str, found: list[bugs.Bug]) -> None:
         """A new blocker reaches the owner at once, with its steps and screenshot, not only at the next gate."""

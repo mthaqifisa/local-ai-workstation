@@ -56,3 +56,18 @@ them, and open `sources/` only to look up one specific fact. In a writing ticket
 Replayed on today's log, it fires only in DBCT-9, at 15:48 (20 minutes in). It does not fire in DBCT-6 to 8, which
 took 21 to 35 minutes, and research tickets are not counted. Quality is unchanged: facts still come only from
 verified entries, and the editor checks quotes against `sources/`.
+
+## Addendum 2026-11-24: the editor fact-checks one section at a time
+
+The ch.1 trial's first review ran 70 minutes and logged no findings. The editor (Gemma) was given the whole document
+(7,600 words), and for every fact it had to check a 77 KB RESEARCH.md against the sources. Its prompt reached about 44K
+tokens, and every 6 minutes it compacted, re-read both files and started again. Being read-only (`writes=False`), it
+had no stall guard. This is the owner's "small units" idea applied to review: for a document with chapter files, the
+editor now runs
+1. one session for what spans the document: retests, build, and outline and request coverage against the list of
+   headings;
+2. one session per `## ` section. LAW gives it the section's text and the footnote definitions it uses, and the
+   editor looks facts up with `rg` in RESEARCH.md and `sources/` instead of reading them whole.
+Each unit gets one retry if it ends without a report. A unit still unchecked after that is reported as missing
+evidence, so the review cannot pass on it. The trial chapter splits into 6 units of 560 to 2,160 words. Documents
+without `chapters/` keep the single-session check.
