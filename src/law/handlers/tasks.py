@@ -466,6 +466,11 @@ OWNER_NOTE = (OWNER_NOTE_HEAD + " while you work (from Telegram):\n\n{note}\n\nT
 STALL_NUDGES = 3
 DB_LOCKED = "database is locked"
 DB_LOCKED_WAITS_S = (10, 30, 90)
+# The model server refused a session's context as too big for memory (seen 2026-11-24: an editor session reached an
+# uncached 35K tokens and oMLX's prefill guard answered 400 "prefill_memory_exceeded", which failed the whole project).
+# The same session would be refused again, so LAW starts the task afresh in a new session, at most FRESH_STARTS times.
+TOO_BIG = "prefill_memory_exceeded"
+FRESH_STARTS = 2
 NUDGE = ("You have not changed any file for {minutes} minutes. Stop reading and exploring. If the plan or the "
          "project does not exist yet, write it now: the build section of .law/PLAN.md, then the first ticket's "
          "files. Otherwise run the project's build or tests now, fix the first error they report (open only the "
@@ -1047,7 +1052,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         # Interventions in a row without progress: an agent that saved files since the last nudge earned a fresh
         # budget (one stage runs a whole milestone for hours; seen 2026-10-21: two tickets committed between
         # nudges, then the fourth nudge failed the pipeline).
-        strikes = qa_reminders = locked = 0
+        strikes = qa_reminders = locked = fresh = 0
         code_only = finished is not None and role not in DOC_ROLES  # a coder's ticket: only code counts as work
         work = is_code_change if code_only else is_file_change
         while True:
@@ -1067,6 +1072,12 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 # OpenCode's own SQLite store can still be locked by the previous session closing (seen 2026-10-29:
                 # stage 13 started one second after stage 12's agent exited, OpenCode quit with "database is
                 # locked" and the whole Pantry pipeline failed). That is transient: wait and start again.
+                if TOO_BIG in str(exc) and fresh < FRESH_STARTS:
+                    fresh += 1
+                    await ctx.progress("⚠️ this session grew too big for the model server's memory: starting the "
+                                       "task again in a fresh session")
+                    cmd = [*base, prompt]
+                    continue
                 if DB_LOCKED not in str(exc) or locked >= len(DB_LOCKED_WAITS_S):
                     raise
                 await ctx.progress(f"⏳ OpenCode's database is busy: retrying in {DB_LOCKED_WAITS_S[locked]} s")

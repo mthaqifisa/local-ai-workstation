@@ -769,6 +769,42 @@ async def test_a_locked_opencode_database_is_retried(tmp_path: Path, monkeypatch
     assert runs == 2
 
 
+async def test_a_session_too_big_for_memory_starts_afresh_twice_then_fails(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Seen 2026-11-24: oMLX's prefill guard refused a 35K-token editor session and the whole project failed."""
+    from law.handlers import project as _registers_project_specs  # noqa: F401
+    from law.handlers import tasks
+
+    project = tmp_path / "pantry"
+    (project / ".law").mkdir(parents=True)
+    plan = project / ".law" / "PLAN.md"
+    plan.write_text(PLAN.replace("- [ ] P-3 batches\n", ""))
+    (project / ".law" / "check.sh").write_text("exit 0\n")
+    monkeypatch.setattr(tasks, "uncommitted", lambda folder: [])
+    cmds: list[list[str]] = []
+    refusals = 1
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        if cmd[0] != "opencode":
+            return ""
+        cmds.append(cmd)
+        if len(cmds) <= refusals:
+            raise Fatal('opencode exited 1: {"error":{"code":"prefill_memory_exceeded"}}')
+        _tick(plan, "P-2")
+        return json.dumps({"type": "text", "part": {"type": "text", "text": "done"}})
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
+    assert len(cmds) == 2 and "--session" not in cmds[1] and cmds[1][-1] == cmds[0][-1]  # the task, afresh
+
+    plan.write_text(PLAN.replace("- [ ] P-3 batches\n", ""))
+    cmds.clear()
+    refusals = 3
+    with pytest.raises(Fatal, match="prefill_memory_exceeded"):
+        await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
+    assert len(cmds) == 3
+
+
 async def test_other_agent_failures_still_fail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from law.handlers import project as _registers_project_specs  # noqa: F401
     from law.handlers import tasks
