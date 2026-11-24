@@ -89,3 +89,21 @@ Four problems were in LAW's setup, not in the writing:
 4. **Repetition across section tickets.** Capital (RM100m/RM300m) is restated in five sections and PIDM in three,
    because each ticket wrote alone. Writers now list the chapter's headings and search it, then refer back to a
    fact already stated instead of restating it.
+
+## Addendum 2026-11-25: the chapter-1 review round
+
+The first per-section review ran 6 hours, hit the job limit in section 4 of 6 and started over. Measured causes and
+fixes:
+
+1. **Judge prompt cache stops above ~23K tokens.** Over ~1,000 editor steps, a step below 22K took ~6 s; from 24K
+   oMLX re-read the whole prompt every step (110-130 s). The editor reached that size by reading the 13K-token chapter
+   whole. Fix: judge context 28672 (compacts at ~22.5K), and each editor unit runs with OpenCode's read tool refusing
+   the chapter files, RESEARCH.md and sources/ (set on the agent: a top-level rule lost to the agent's defaults); it
+   searches them. Result: section 1 in 13 min (was 42), steps ~6.4 s.
+2. **A rerun started the round over.** Each unit's result is now kept per job until the round ends.
+3. **One rg run 94 times.** Six identical shell commands in a row (any role but the coder, which has its own guards)
+   get a nudge to use the result and move on; after three nudges it counts as a stall.
+4. **The editor verified six findings nobody fixed** (the chapter had not changed). Every reviewer session (QA,
+   editor, designer) now goes through one wrapper: a removed finding is put back, the header is kept, and `verified`
+   on a finding the fix stage did not mark `fixed` is undone with a note.
+5. **Invented timestamps** on findings: LAW fills in the current time.

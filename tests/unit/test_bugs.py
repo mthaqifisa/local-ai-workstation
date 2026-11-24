@@ -46,3 +46,14 @@ def test_a_finding_the_fix_stage_never_marked_fixed_stays_open(tmp_path: Path) -
     text = bugs.path(tmp_path).read_text()
     assert text.count("kept open") == 1 and text.count("kept reopened") == 1 and "plain language" in text
     assert bugs.keep_unfixed(tmp_path, bugs.path(tmp_path).read_text()) == []
+
+
+def test_a_reviewer_rewriting_the_header_gets_it_back(tmp_path: Path) -> None:
+    (tmp_path / ".law").mkdir()
+    before = bugs.HEADER + "\n## BUG-1 · open · editor · 2026-11-25 10:00\nWrong quote\n"
+    bugs.path(tmp_path).write_text(before.replace("or reopened.", "or reopened. Only QA sets verified or reopened.")
+                                   + "\n## BUG-2 · open · editor · 2026-11-25 10:30\nNew one\n")
+    assert bugs.keep_preamble(tmp_path, before)
+    text = bugs.path(tmp_path).read_text()
+    assert text.startswith(bugs.HEADER) and text.count("Only QA sets") == 1 and "BUG-2" in text
+    assert not bugs.keep_preamble(tmp_path, text)

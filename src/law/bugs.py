@@ -153,6 +153,23 @@ def restore_lost(project: Path, before: str) -> list[str]:
     return sorted(lost)
 
 
+def keep_preamble(project: Path, before: str) -> bool:
+    """Put back the text above the first finding when a reviewer changed it (seen 2026-11-25: the header's last
+    sentence doubled). Reviewers only append findings and set statuses."""
+    file = path(project)
+    if not file.exists() or not before.strip():
+        return False
+    first = re.compile(r"^##\s+BUG-\d+", re.MULTILINE)
+    now = file.read_text()
+    old_m, new_m = first.search(before), first.search(now)
+    old_head = before[:old_m.start()] if old_m else before
+    new_head = now[:new_m.start()] if new_m else now
+    if old_head == new_head or not old_head.strip():
+        return False
+    file.write_text(old_head + now[len(new_head):])
+    return True
+
+
 UNFIXED_NOTE = ("LAW {date}: kept {status}: only a finding the fix stage marked fixed can be verified (the "
                 "reviewer set verified on an unfixed finding). A finding that was wrong goes to the fix stage, which "
                 "answers it and marks it fixed.")

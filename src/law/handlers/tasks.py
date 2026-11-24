@@ -593,7 +593,7 @@ The bug list is {folder}/.law/BUGS.md (statuses: open, fixed, verified, reopened
    verified if it is gone, or reopened if it is still there, and add a line "Retest <date>: <result>".
 2. Then test every requirement and acceptance criterion, and the edges a user hits, on the running product with the
    data already in it as well as your own test data. For each new bug append:
-   ## BUG-<next number> · open · QA · <YYYY-MM-DD HH:MM>
+   ## BUG-<next number> · open · QA · {now}
    <one-line title of what goes wrong>
    Severity: blocker (a core requirement fails) | major (a requirement works wrongly) | minor (cosmetic, or an edge
    with a workaround)
@@ -759,7 +759,7 @@ PAGES_TASK = """Check how {name} version {version}, the document in {folder}, lo
    past the margin; text too small to read; an empty or near-empty page; a missing or broken image; a heading
    alone at the bottom of a page. Check a few HTML pages the same way (a headless browser screenshot).
 3. Append each finding to {folder}/.law/BUGS.md:
-   ## BUG-<next number> · open · editor · <YYYY-MM-DD HH:MM>
+   ## BUG-<next number> · open · editor · {now}
    <one-line title>  Severity: major (cut, unreadable or missing) | minor (layout)
    Where: <page number and figure or table>  Evidence: <the page image path under $TMPDIR>
 4. Reply with JSON only: {{"screens": ["page <n>: pass|fail"], "summary": "<one sentence>"}}"""
@@ -778,7 +778,7 @@ are the design reviewer, and you can see images. Design: {design}. Owner's reque
 3. Compare what you see, one item at a time: is each screen and component there, and do its layout, density, sizes and
    wording match? Count how many items fit on one screen against the design. Do images show where the design has them?
 4. Each screen or component that is missing or clearly different is a bug. Append it to {folder}/.law/BUGS.md as:
-   ## BUG-<next number> · open · QA · <YYYY-MM-DD HH:MM>
+   ## BUG-<next number> · open · QA · {now}
    <one-line title>
    Severity: major (missing or wrong against the design) | minor (small visual difference)
    Steps: ... Expected: <the design's section> Actual: ... Evidence: <the screenshot path>
@@ -1485,12 +1485,12 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             return await _editor_round(ctx, p, folder, a, spec_file, before)
         await ctx.progress("🧪 QA: testing the product as a user (black box)")
         task = QA_TASK.format(name=a.get("name", folder.name), version=p.get("version", 1), folder=folder,
-                              spec_file=spec_file)
-        reply = await _agent(ctx, "qa", task, folder, writes=False)
+                              spec_file=spec_file, now=time.strftime("%Y-%m-%d %H:%M"))
+        reply = await _reviewer(ctx, "qa", task, folder)
         report = json_report(reply)
         if not report.get("tested"):  # seen 2026-10-29: a session stopped mid-sentence and counted as "no bugs", 5/5
             await ctx.progress("🧪 QA ended without a report: testing again")
-            reply = await _agent(ctx, "qa", task + QA_NO_REPORT, folder, writes=False)
+            reply = await _reviewer(ctx, "qa", task + QA_NO_REPORT, folder)
             report = json_report(reply)
         missing = [] if report.get("tested") else ["no test results"]
         if not qa_pack_kept(folder):
@@ -1498,9 +1498,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         docs = design_docs(folder)
         if docs:  # QA's model cannot see images, so the designer (a vision model) checks the look
             await ctx.progress("🎨 design review: the screens against the design")
-            shown = await _agent(ctx, "designer", DESIGN_TASK.format(
+            shown = await _reviewer(ctx, "designer", DESIGN_TASK.format(
                 name=a.get("name", folder.name), version=p.get("version", 1), folder=folder,
-                design=", ".join(docs)), folder, writes=False)
+                design=", ".join(docs), now=time.strftime("%Y-%m-%d %H:%M")), folder)
             if not json_report(shown).get("screens"):
                 missing.append("no design review of the screens")
         open_bugs = bugs.unresolved(folder)
@@ -1515,6 +1515,22 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 "minor": bugs.as_issues([b for b in open_bugs if b not in blocking]),
                 "tested": [str(t) for t in report.get("tested", [])][:40], "summary": summary}
 
+    async def _reviewer(ctx: Context, role: str, prompt: str, folder: Path, *,
+                        deny_read: tuple[str, ...] = ()) -> str:
+        """A QA, editor or design session, which only adds findings and sets statuses in .law/BUGS.md: a finding its
+        rewrite removed is put back, and `verified` on a finding the fix stage did not mark fixed is undone."""
+        before = bugs.path(folder).read_text() if bugs.path(folder).exists() else ""
+        reply = await _agent(ctx, role, prompt, folder, writes=False, deny_read=deny_read)
+        restored = bugs.restore_lost(folder, before)
+        if restored:
+            await ctx.progress(f"⚠️ the {role} rewrote .law/BUGS.md: LAW put back {', '.join(restored)}")
+        bugs.keep_preamble(folder, before)
+        kept = bugs.keep_unfixed(folder, before)
+        if kept:
+            await ctx.progress(f"⚠️ the {role} verified {', '.join(kept)} with no fix made: LAW kept them open for "
+                               "the fix stage")
+        return reply
+
     async def _editor_round(ctx: Context, p: dict[str, Any], folder: Path, a: dict[str, Any], spec_file: str,
                             before: set[str]) -> dict[str, Any]:
         """QA for a document: the editor (judge model, another family than the writer) fact-checks and checks the
@@ -1527,13 +1543,13 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             reply = str(report.get("summary", ""))
         else:
             await ctx.progress("🧐 editor: fact-checking every chapter against its sources")
-            reply = await _agent(ctx, "editor", EDITOR_TASK.format(**fill), folder, writes=False)
+            reply = await _reviewer(ctx, "editor", EDITOR_TASK.format(**fill), folder)
             report = json_report(reply)
             if not report.get("tested"):
-                reply = await _agent(ctx, "editor", EDITOR_TASK.format(**fill) + QA_NO_REPORT, folder, writes=False)
+                reply = await _reviewer(ctx, "editor", EDITOR_TASK.format(**fill) + QA_NO_REPORT, folder)
                 report = json_report(reply)
         await ctx.progress("🖼 page check: every page for cut or unreadable figures")
-        shown = await _agent(ctx, "designer", PAGES_TASK.format(**fill), folder, writes=False)
+        shown = await _reviewer(ctx, "designer", PAGES_TASK.format(**fill), folder)
         missing = ([] if report.get("tested") else ["no fact-check results"]) + \
             [f"section not fact-checked: {h}" for h in report.get("unchecked", [])] + \
             ([] if json_report(shown).get("screens") else ["no page check"])
@@ -1565,16 +1581,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             report: dict[str, Any] = {}
             for retry in ("", QA_NO_REPORT):  # one retry for a unit that ends without its report
                 prompt = template.format(**{**fill, "now": time.strftime("%Y-%m-%d %H:%M")}, **extra) + retry
-                before = bugs.path(folder).read_text() if bugs.path(folder).exists() else ""
-                report = json_report(await _agent(ctx, "editor", prompt, folder, writes=False,
-                                                  deny_read=EDITOR_DENY_READ))
-                restored = bugs.restore_lost(folder, before)
-                if restored:
-                    await ctx.progress(f"⚠️ the editor rewrote .law/BUGS.md: LAW put back {', '.join(restored)}")
-                kept = bugs.keep_unfixed(folder, before)
-                if kept:
-                    await ctx.progress(f"⚠️ the editor verified {', '.join(kept)} with no fix made: LAW kept them "
-                                       "open for the fix stage")
+                report = json_report(await _reviewer(ctx, "editor", prompt, folder, deny_read=EDITOR_DENY_READ))
                 if report.get("tested"):
                     break
             done[key] = report

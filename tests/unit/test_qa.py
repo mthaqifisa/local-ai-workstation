@@ -430,3 +430,37 @@ def test_an_edited_section_is_checked_again() -> None:
     sec = {"file": "chapters/01.md", "heading": "Capital", "text": "RM100 million"}
     assert tasks.section_key(sec) != tasks.section_key({**sec, "text": "RM300 million"})
     assert tasks.read_limits("editor", ()) == {}
+
+
+async def test_qa_cannot_verify_a_bug_the_fix_stage_never_fixed(tmp_path: Path,
+                                                                 monkeypatch: pytest.MonkeyPatch) -> None:
+    """The same rule as the editor's (seen 2026-11-25), for every reviewer: QA, editor and designer."""
+    from law.handlers import project as _registers_project_specs  # noqa: F401
+    from law.handlers import tasks
+
+    project = tmp_path / "shop"
+    (project / "qa").mkdir(parents=True)
+    (project / "qa" / "checkout.sh").write_text("true\n")
+    bugs.add(project, "Checkout button does nothing", "Steps: ...", reporter="QA")
+    prompts: list[str] = []
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        prompts.append(cmd[-1])
+        if "--agent" in cmd and cmd[cmd.index("--agent") + 1] == "qa":
+            f = bugs.path(project)
+            f.write_text(f.read_text().replace("· open ·", "· verified ·"))
+            reply = '{"tested": ["checkout: pass"], "summary": "works"}'
+        else:
+            reply = '{"score": 5, "issues": [], "summary": "clean code"}'
+        return '{"type": "text", "part": {"type": "text", "text": ' + json.dumps(reply) + '}}'
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    payload = {"prompt": "build a shop", "dir": str(project), "role": "coder", "project": "shop",
+               "rubric_ref": "project.review", "version": 1,
+               "spec_args": {"name": "Shop", "out": "docs/proposal", "version": 1},
+               "_carry": {"answer": "done"}}
+    done = await tasks.make_handlers(_review_rt(tmp_path))["task_review"](_ctx(payload))
+    assert [b.status for b in bugs.load(project)] == ["open"]
+    assert done.result["review"]["issues"][0].startswith("BUG-1 (open")
+    qa_prompt = next(p for p in prompts if "independent user" in p)
+    assert "{now}" not in qa_prompt and not re.search(r"<YYYY", qa_prompt)
