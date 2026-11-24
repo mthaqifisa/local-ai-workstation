@@ -2,4 +2,5 @@ build/
 sources/
 book.pdf
 book.html
+__pycache__/
 .DS_Store

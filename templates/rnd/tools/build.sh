@@ -34,7 +34,7 @@ for src in diagrams/*.dot; do
   fi
 done
 
-python3 tools/prepare.py . build/book.render.md
+PYTHONDONTWRITEBYTECODE=1 python3 tools/prepare.py . build/book.render.md
 
 echo "==> book.pdf (A4)"
 pandoc build/book.render.md -f markdown-citations -o book.pdf --pdf-engine=typst \
