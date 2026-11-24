@@ -118,10 +118,13 @@ llm_models:
     revision: 9b06d48739ea5f39e5b66880a6e90405a2cb1751
     license: apache-2.0
     disk_gb: 33.8
-    mem_gb: 38
+    mem_gb: 43
     lane: heavy
     vision: false
-    context: 32768
+    # 32768 left the editor ~10K tokens after OpenCode's own prompt: on 2026-11-24 it compacted every 5 minutes on a
+    # 7,600-word chapter and never finished. The model supports 262144; only 10 of its 60 layers keep full-length
+    # keys and values (the rest a 1024-token window), so 65536 adds about 5 GB at full use (mem_gb 38 -> 43).
+    context: 65536
     roles: [judge]
     sampling:  # huggingface.co/google/gemma-4-31b-it (2026-10-26): one set for every use
       thinking: {temperature: 1.0, top_p: 0.95, top_k: 64}
