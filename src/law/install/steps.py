@@ -693,7 +693,7 @@ class OpenCodeConfig:
                     "write": "files" in tools, "edit": "files" in tools, "patch": "files" in tools,
                     "bash": bool(tools & {"shell", "mac"}),
                     "read": bool(tools & {"read", "files"}), "grep": True, "glob": True, "list": True,
-                    "webfetch": bool(tools & {"search", "browser"}),
+                    "webfetch": bool(tools & roles_mod.WEB_TOOLS),
                     "mac_*": "mac" in tools,
                 },
             }

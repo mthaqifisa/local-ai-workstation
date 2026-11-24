@@ -16,6 +16,11 @@ SEARCH_NOTE = ("Web search: `law search \"<query>\"` (LAW's own SearXNG) prints 
                "search found to confirm the fact.")
 
 
+# Every role that can run a command or browse has the web (owner 2026-11-24: "agent should have full web access so
+# that data is updated and accurate"); only the translator, which reads files, has none.
+WEB_TOOLS = {"search", "shell", "browser", "mac"}
+
+
 class Role(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     model_role: str
@@ -36,7 +41,7 @@ class Roles(BaseModel):
 
     def system_prompt(self, name: str) -> str:
         role = self.roles[name]
-        search = f"\n\n{SEARCH_NOTE}" if "search" in role.tools else ""
+        search = f"\n\n{SEARCH_NOTE}" if WEB_TOOLS & set(role.tools) else ""
         return f"{role.prompt.strip()}{search}\n\n{self.house_standard.strip()}"
 
     def get(self, name: str) -> Role:
