@@ -153,6 +153,34 @@ def restore_lost(project: Path, before: str) -> list[str]:
     return sorted(lost)
 
 
+UNFIXED_NOTE = ("LAW {date}: kept {status}: only a finding the fix stage marked fixed can be verified (the "
+                "reviewer set verified on an unfixed finding). A finding that was wrong goes to the fix stage, which "
+                "answers it and marks it fixed.")
+
+
+def keep_unfixed(project: Path, before: str) -> list[str]:
+    """Undo `verified` on a finding that was not `fixed` before this session (seen 2026-11-25: the editor verified
+    six findings in its retests while the chapter had not changed since they were found). Returns the ids kept."""
+    file = path(project)
+    if not file.exists():
+        return []
+    was = {b.id: b.status for b in parse(before)}
+    text, kept = file.read_text(), []
+    for bug in parse(text):
+        old = was.get(bug.id)
+        if bug.status != "verified" or old in (None, "fixed", "verified"):
+            continue
+        head = re.compile(rf"^(##\s+{re.escape(bug.id)}\s*·\s*)verified(\s*·.*)$", re.MULTILINE)
+        note = UNFIXED_NOTE.format(date=time.strftime("%Y-%m-%d %H:%M"), status=old)
+        text = head.sub(rf"\g<1>{old}\g<2>", text, count=1)
+        block = sections(text)[bug.id].rstrip("\n")
+        text = text.replace(block, f"{block}\n{note}", 1)
+        kept.append(bug.id)
+    if kept:
+        file.write_text(text)
+    return kept
+
+
 def as_issues(bugs: list[Bug]) -> list[str]:
     """Bugs in the shape the fix stage takes."""
     return [f"{b.id} ({b.status}, {b.severity}, found by {b.reporter}): {b.title} (details in .law/BUGS.md)"

@@ -29,3 +29,20 @@ def test_findings_removed_by_a_rewrite_are_put_back(tmp_path: Path) -> None:
     assert found["BUG-2"].status == "verified" and found["BUG-1"].title == "first"
     assert "Evidence: x" in found["BUG-1"].body
     assert bugs.restore_lost(tmp_path, before) == []
+
+
+def test_a_finding_the_fix_stage_never_marked_fixed_stays_open(tmp_path: Path) -> None:
+    """Seen 2026-11-25: the editor verified six findings in its retests; the chapter had not changed since."""
+    (tmp_path / ".law").mkdir()
+    before = (bugs.HEADER + "\n## BUG-1 · open · editor · 2026-11-25 10:00\nWrong quote\nSeverity: major\n"
+              "\n## BUG-2 · fixed · editor · 2026-11-25 10:05\nWrong figure\nSeverity: major\n"
+              "\n## BUG-3 · reopened · editor · 2026-11-25 10:10\nWrong name\nSeverity: major")
+    after = before.replace("BUG-1 · open", "BUG-1 · verified").replace("BUG-2 · fixed", "BUG-2 · verified") \
+        .replace("BUG-3 · reopened", "BUG-3 · verified") + "\nRetest: now understood as plain language."
+    bugs.path(tmp_path).write_text(after)
+    assert bugs.keep_unfixed(tmp_path, before) == ["BUG-1", "BUG-3"]
+    status = {b.id: b.status for b in bugs.load(tmp_path)}
+    assert status == {"BUG-1": "open", "BUG-2": "verified", "BUG-3": "reopened"}  # a real fix is verified
+    text = bugs.path(tmp_path).read_text()
+    assert text.count("kept open") == 1 and text.count("kept reopened") == 1 and "plain language" in text
+    assert bugs.keep_unfixed(tmp_path, bugs.path(tmp_path).read_text()) == []

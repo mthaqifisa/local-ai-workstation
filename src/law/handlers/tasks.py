@@ -1571,6 +1571,10 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 restored = bugs.restore_lost(folder, before)
                 if restored:
                     await ctx.progress(f"⚠️ the editor rewrote .law/BUGS.md: LAW put back {', '.join(restored)}")
+                kept = bugs.keep_unfixed(folder, before)
+                if kept:
+                    await ctx.progress(f"⚠️ the editor verified {', '.join(kept)} with no fix made: LAW kept them "
+                                       "open for the fix stage")
                 if report.get("tested"):
                     break
             done[key] = report
