@@ -71,3 +71,21 @@ editor now runs
 Each unit gets one retry if it ends without a report. A unit still unchecked after that is reported as missing
 evidence, so the review cannot pass on it. The trial chapter splits into 6 units of 560 to 2,160 words. Documents
 without `chapters/` keep the single-session check.
+
+## Addendum 2026-11-24: findings from the owner-ordered review of the ch.1 trial
+
+My review of the finished chapter checked the facts against BNM's texts: every quote and figure I checked matched.
+Four problems were in LAW's setup, not in the writing:
+1. **Figure references were missing from the HTML.** The kit's STYLE.md asked for references but gave no syntax, so
+   the writer used Typst-only markup ("drawn in : the …" in the HTML). The kit now numbers figures itself:
+   `@fig:<name>` becomes "Figure N" with a link in both formats, HTML captions get their number, and verify.py fails
+   unknown references and raw Typst or HTML.
+2. **No web search.** The roles' "search" tool only turned on webfetch, and no prompt mentioned `law search`
+   (SearXNG). Research guessed addresses and missed public facts: the PIDM limit (RM250,000 on pidm.gov.my, where it
+   tried pidm.com.my) and the five banks' names and launches. Every role with "search" is now told how to search
+   before fetching, official sources first.
+3. **Gaps declared too easily, in project language.** "No source we hold …" appears throughout the chapter. Writers
+   must now search before calling a fact unknown, and never write about the project's own downloads.
+4. **Repetition across section tickets.** Capital (RM100m/RM300m) is restated in five sections and PIDM in three,
+   because each ticket wrote alone. Writers now list the chapter's headings and search it, then refer back to a
+   fact already stated instead of restating it.

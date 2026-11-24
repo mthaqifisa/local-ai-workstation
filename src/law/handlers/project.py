@@ -284,7 +284,13 @@ features:
   not committed), and records every fact in .law/RESEARCH.md under the chapter's heading: the fact, the source
   (who, title, version or date, clause or page), the link, the file in sources/ and the exact quote or figure.
   A writing ticket uses only facts recorded there (add any it still needs, the same way, before writing them). A
-  fact that cannot be verified is not written; say plainly what is unknown.
+  fact that cannot be verified is not written. Before writing that something is unknown, search for it (`law
+  search`): a figure or fact a reader would expect (a regulator's limit, the names in an announcement, a launch
+  date) is found and recorded, not left as a gap. The book speaks to the reader: never write about "the sources
+  we hold"; say what is not published, and by whom, only when the search confirms it.
+- State each fact once, in the section it belongs to. Before writing a section, list the headings of the chapter
+  so far (`rg -n "^#" chapters/<file>`) and search it for the facts you will use: refer back to a fact already
+  stated ("see <section>") instead of restating it.
 - One ticket = one chapter or sub-chapter in its own file (chapters/07-ledger.md) with its citations and diagrams
   (diagrams/<name>.mmd or .dot). Write it completely in one session.
 - Read only what the ticket needs: its entries in .law/RESEARCH.md (search for them; they are verified quotes, so

@@ -6,6 +6,8 @@
    fits the text area. A diagram that fails is split into parts, never shrunk.
 4. Every footnote is a citation the reader can open (it has an http(s) link), and every footnote used is defined.
 5. No code line is long enough to run off the page.
+6. Every figure reference (@fig:<name>) names a figure, and no text is raw Typst or HTML, which shows in one format
+   only (seen 2026-11-24: `@fig:x`{=typst} read "drawn in : the ..." in the HTML).
 Usage: python3 tools/verify.py
 """
 
@@ -17,7 +19,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from prepare import IMAGE, TEXT_W_PT, natural_pt, parts, source_text
+from prepare import FIG_REF, IMAGE, TEXT_W_PT, figure_numbers, natural_pt, parts, source_text
 
 TEXT_H_PT = 841.9 - 2 * 68.0 - 70  # A4 minus margins, less room for the caption and header
 MIN_FONT_PT = 7.0
@@ -90,6 +92,20 @@ def check_citations(text: str) -> list[str]:
     return problems
 
 
+RAW = re.compile(r"`[^`]*`\{=(?:typst|html|latex)\}|^```\{=(?:typst|html|latex)\}", re.MULTILINE)
+
+
+def check_references(text: str) -> list[str]:
+    problems = []
+    known = figure_numbers(text)
+    for label in sorted({m.group(1) for m in FIG_REF.finditer(text)} - set(known)):
+        problems.append(f"@{label} refers to no figure: give the figure {{#{label}}} or fix the name")
+    for m in RAW.finditer(text):
+        if not FIG_REF.fullmatch(m.group(0)):
+            problems.append(f"raw format-only markup {m.group(0)[:40]!r}: it shows in one format only; use Markdown")
+    return problems
+
+
 def check_code(text: str) -> list[str]:
     problems, inside = [], False
     for n, line in enumerate(text.splitlines(), start=1):
@@ -108,7 +124,7 @@ def main() -> int:
         print("verify: FAIL\n- book.md does not exist", file=sys.stderr)
         return 1
     text = source_text(root)
-    problems = check_outputs(root) + check_images(text, root) + check_citations(text)
+    problems = check_outputs(root) + check_images(text, root) + check_citations(text) + check_references(text)
     for part in parts(root):
         if part.is_file():
             problems += [f"{part.relative_to(root)}: {p}" for p in check_code(part.read_text())]

@@ -5,9 +5,13 @@ PNG cannot tell, because mmdc shrinks a PNG wider than 800 px), Graphviz's from 
 per point). A diagram
 narrower than the column keeps its natural size (no blown-up text); a wider one is scaled down to the column.
 tools/verify.py fails the build when that scaling would make its text unreadable: split such a diagram.
+Figures are numbered here, in order, the same way for the PDF and the HTML: a captioned image with
+{#fig:<name>} is Figure N, and the text refers to it as @fig:<name>, which becomes a link "Figure N" (an older
+`@fig:<name>`{=typst} is read the same way). For the HTML, whose captions pandoc does not number, the caption is
+prefixed "Figure N: "; Typst numbers its own captions in the same order.
 The book is book.md (its metadata and any front matter) followed by chapters/*.md in name order
 (01-intro.md, 02-licensing.md, ...).
-Usage: python3 tools/prepare.py <project folder> build/book.render.md
+Usage: python3 tools/prepare.py <project folder> build/book.render.md [pdf|html]
 """
 
 from __future__ import annotations
@@ -23,6 +27,9 @@ PX_PT = 0.75  # one CSS pixel in points
 FONT_PT = {".mmd": 12.0, ".dot": 14.0}  # label size at natural size: Mermaid's 16 px, Graphviz's 14 pt
 VIEWBOX = re.compile(r'viewBox="[-\d.]+\s+[-\d.]+\s+([\d.]+)\s+([\d.]+)"')
 IMAGE = re.compile(r"!\[(?P<cap>[^\]]*)\]\((?P<path>[^)\s]+)\)(?P<attrs>\{[^}]*\})?")
+FIGURE = re.compile(r"^!\[(?P<cap>[^\]]+)\]\([^)\s]+\)(?:\{[^}]*\})?\s*$", re.MULTILINE)  # alone: a numbered figure
+LABEL = re.compile(r"#(fig:[\w-]+)")
+FIG_REF = re.compile(r"`?@(fig:[\w-]+)(?:`\{=\w+\})?")
 
 
 def png_size(path: Path) -> tuple[int, int] | None:
@@ -75,6 +82,36 @@ def prepare(text: str, root: Path) -> str:
     return IMAGE.sub(fix, text)
 
 
+def figure_numbers(text: str) -> dict[str, int]:
+    """Each figure label and its number: the captioned images standing alone, in order."""
+    numbers: dict[str, int] = {}
+    for n, m in enumerate(FIGURE.finditer(text), start=1):
+        label = LABEL.search(m.group(0))
+        if label:
+            numbers[label.group(1)] = n
+    return numbers
+
+
+def number_figures(text: str, target: str) -> str:
+    numbers = figure_numbers(text)
+
+    def ref(m: re.Match[str]) -> str:
+        n = numbers.get(m.group(1))
+        return f"[Figure\u00a0{n}](#{m.group(1)})" if n else m.group(0)  # verify.py reports an unknown label
+
+    text = FIG_REF.sub(ref, text)
+    if target == "html":
+        count = 0
+
+        def caption(m: re.Match[str]) -> str:
+            nonlocal count
+            count += 1
+            return m.group(0).replace(f"![{m.group('cap')}]", f"![Figure\u00a0{count}: {m.group('cap')}]", 1)
+
+        text = FIGURE.sub(caption, text)
+    return text
+
+
 def parts(root: Path) -> list[Path]:
     """book.md, then the chapters in order."""
     return [root / "book.md", *sorted((root / "chapters").glob("*.md"))]
@@ -86,8 +123,9 @@ def source_text(root: Path) -> str:
 
 def main() -> None:
     root, out = Path(sys.argv[1]).resolve(), Path(sys.argv[2])
+    target = sys.argv[3] if len(sys.argv) > 3 else "pdf"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(prepare(source_text(root), root))
+    out.write_text(number_figures(prepare(source_text(root), root), target))
 
 
 if __name__ == "__main__":

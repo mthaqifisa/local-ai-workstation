@@ -34,7 +34,8 @@ for src in diagrams/*.dot; do
   fi
 done
 
-PYTHONDONTWRITEBYTECODE=1 python3 tools/prepare.py . build/book.render.md
+PYTHONDONTWRITEBYTECODE=1 python3 tools/prepare.py . build/book.render.md pdf
+PYTHONDONTWRITEBYTECODE=1 python3 tools/prepare.py . build/book.html.md html
 
 echo "==> book.pdf (A4)"
 pandoc build/book.render.md -f markdown-citations -o book.pdf --pdf-engine=typst \
@@ -42,7 +43,7 @@ pandoc build/book.render.md -f markdown-citations -o book.pdf --pdf-engine=typst
 grep -i "warning" build/pdf.log >&2 || true
 
 echo "==> book.html"
-pandoc build/book.render.md -f markdown-citations -s --toc --toc-depth=2 --number-sections \
+pandoc build/book.html.md -f markdown-citations -s --toc --toc-depth=2 --number-sections \
   --embed-resources --css=tools/book.css --resource-path=. -o book.html
 
 echo "==> built book.pdf ($(pdfinfo book.pdf | awk '/^Pages:/ {print $2}') pages) and book.html"

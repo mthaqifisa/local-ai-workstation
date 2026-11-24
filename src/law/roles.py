@@ -8,6 +8,13 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, ConfigDict
 
+# OpenCode has no web search, only webfetch: without this the agents guessed addresses (seen 2026-11-24: a research
+# ticket tried pidm.com.my for an hour; `law search` finds the official pidm.gov.my page with the figure at once).
+SEARCH_NOTE = ("Web search: `law search \"<query>\"` (LAW's own SearXNG) prints JSON results, each with a title, url "
+               "and snippet. Search before you fetch: do not guess a site's address. Prefer the official source (the "
+               "regulator's, the agency's or the company's own site), then reputable news, and open the page the "
+               "search found to confirm the fact.")
+
 
 class Role(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -28,7 +35,9 @@ class Roles(BaseModel):
     roles: dict[str, Role]
 
     def system_prompt(self, name: str) -> str:
-        return f"{self.roles[name].prompt.strip()}\n\n{self.house_standard.strip()}"
+        role = self.roles[name]
+        search = f"\n\n{SEARCH_NOTE}" if "search" in role.tools else ""
+        return f"{role.prompt.strip()}{search}\n\n{self.house_standard.strip()}"
 
     def get(self, name: str) -> Role:
         if name not in self.roles:
