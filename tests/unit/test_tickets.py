@@ -593,6 +593,46 @@ async def test_a_second_probe_file_gets_a_time_box_without_a_strike(
     assert prompts[1] == tasks.PROBE_NUDGE  # sent into the same session
 
 
+async def test_a_writer_getting_around_websites_is_sent_back_to_its_sources_without_a_strike(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Seen 2026-11-24: DBCT-4 decrypted a site's API and crawled web archives for 70 min; sources/ had the Act."""
+    from law.handlers import project as _registers_project_specs  # noqa: F401
+    from law.handlers import tasks
+    from law.handlers.base import Steered
+
+    project = tmp_path / "pantry"
+    (project / ".law").mkdir(parents=True)
+    plan = project / ".law" / "PLAN.md"
+    plan.write_text(PLAN.replace("- [ ] P-3 batches\n", ""))
+    (project / ".law" / "check.sh").write_text("exit 0\n")
+    monkeypatch.setattr(tasks, "uncommitted", lambda folder: [])
+    seen: list[str | None] = []
+    prompts: list[str] = []
+    digging = ['▶ running node -e \' ; const crypto = require("crypto");',
+               '▶ running curl -sS "https://example.org/plain-page"',
+               '▶ running curl -sS "https://web.archive.org/cdx/search/cdx?url=pidm.com.my*"',
+               '▶ running grep -o "<loc>[^<]*</loc>" bnm-sitemap.xml']
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        if cmd[0] != "opencode":
+            return ""
+        prompts.append(cmd[-1])
+        if len(prompts) == 1:
+            for line in digging:
+                message = kw["steer"](line)
+                seen.append(message)
+                if message:
+                    raise Steered('{"type": "text", "sessionID": "ses_w", "part": {"type": "text", "text": "x"}}',
+                                  message)
+        _tick(plan, "P-2")
+        return json.dumps({"type": "text", "part": {"type": "text", "text": "done"}})
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx({**_payload(project), "role": "writer"}))
+    assert seen == [None, None, None, tasks.WEB_DIG_NUDGE]  # a plain fetch does not count
+    assert prompts[1] == tasks.WEB_DIG_NUDGE  # sent into the same session
+
+
 def test_shell_file_writes_are_recognised() -> None:
     """Seen 2026-10-29: two sessions appended to .law notes with `cat >> file <<'EOF'`."""
     from law.handlers.tasks import SHELL_WRITE

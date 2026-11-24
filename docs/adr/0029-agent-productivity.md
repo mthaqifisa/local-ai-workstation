@@ -33,3 +33,15 @@ building a pandoc/Typst template and 0 min on research before it was stopped.
 | First research | ~2 h in | 9 min in |
 Quality gates are unchanged or stricter (the kit's checks are new and deterministic). Remaining measurements
 (per-ticket time, editor findings) are added when the trial finishes.
+
+## Addendum 2026-11-24: research that tries to get around websites
+
+DBCT-4 (PIDM deposit insurance) ran 76 minutes without saving anything: from minute 20 it tried to decrypt the AGC law
+database's search API, then searched web archives and BNM sitemaps, even though the Act and the 2016 order were already
+in `sources/`. The two stall nudges did not stop it; the lead's note, approved by the owner, did. LAW now spots these
+commands (`WEB_DIG`: crypto in a fetch script, web.archive.org and its cdx API, sitemap crawls, faked referers) for
+writers. Every third one, it resumes the session with `WEB_DIG_NUDGE`: work from `sources/` and pages that open
+normally, and write anything missing as "owner to confirm". This is guidance, not a strike. A plain fetch, even with a
+browser user agent, does not count. Replayed on today's log, it would have stepped in at 12:07 instead of the owner's
+approval at 12:48. DBCT-1 to 3 had no such commands. `DOC_PROBE_NUDGE` now gets its own handling and progress line;
+before, it was reported as "reading library internals".

@@ -541,6 +541,16 @@ DOC_PROBE_LIMIT = 3
 DOC_PROBE_NUDGE = ("You are trying variations in test files. Stop: keep the version that already works, put it in "
                    "the deliverable, delete the test files and finish the remaining steps of your plan. A cosmetic "
                    "detail is not worth more tries.")
+# Getting around a site that will not serve a page (seen 2026-11-24: DBCT-4 spent 70 min decrypting the AGC law
+# database's search API, then crawling web archives and BNM sitemaps, while the Act it needed was already in sources/).
+# A plain fetch with a browser user agent is normal research and does not count.
+WEB_DIG = re.compile(r"""web\.archive\.org|archive\.org/wayback|\bcdx\b|sitemap|require\(\s*["']crypto["']|"""
+                     r"""[Dd]ecipher|[Dd]ecrypt|responseCrypto|\s(?:-e|--referer)\s+["']?https?://""")
+WEB_DIG_LIMIT = 3
+WEB_DIG_NUDGE = ("Stop trying to get around websites (decrypting a site's API, web archives, sitemap crawls, faked "
+                 "referers). Work from what you already have: the files in sources/ and the pages that open normally. "
+                 "Write your findings now. A fact you could not get from an official page that opens goes in as "
+                 "\"owner to confirm: <the fact and where it should be>\", not as more fetching.")
 WRAP_MINUTES = 45  # a one-off document task (not a project ticket) past this is polishing
 WRAP_NUDGE = ("You have worked {minutes} minutes on this task. Finish now with what works: complete the deliverable, "
               "check it once, deliver it and stop. Note anything left as \"could improve: ...\" in your answer.")
@@ -873,6 +883,10 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 if not told_wrap and not ctx.job.payload.get("project") and time.time() - started > WRAP_MINUTES * 60:
                     told_wrap = True
                     return WRAP_NUDGE.format(minutes=int((time.time() - started) // 60))
+                if summary.startswith("▶") and WEB_DIG.search(summary):
+                    digs += 1
+                    if digs % WEB_DIG_LIMIT == 0:
+                        return WEB_DIG_NUDGE
                 if DOC_PROBE.search(summary):
                     probes += 1
                     if probes % DOC_PROBE_LIMIT == 0:  # again every few: one reminder was not enough on 2026-11-23
@@ -965,6 +979,14 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                     continue
                 if exc.message == SHELL_WRITE_NUDGE and sid is not None:  # a reminder of the house standard
                     await ctx.progress("⚠️ edited a file with a shell command: reminding the agent to use the edit tool")
+                    cmd = [*base, "--session", sid, exc.message]
+                    continue
+                if exc.message == WEB_DIG_NUDGE and sid is not None:  # guidance, not a strike
+                    await ctx.progress("⚠️ trying to get around a website: telling the agent to write from its sources")
+                    cmd = [*base, "--session", sid, exc.message]
+                    continue
+                if exc.message == DOC_PROBE_NUDGE and sid is not None:  # guidance, not a strike
+                    await ctx.progress("⚠️ trying variations in test files: telling the agent to keep what works")
                     cmd = [*base, "--session", sid, exc.message]
                     continue
                 if exc.message == PROBE_NUDGE and sid is not None:  # it is working, just in a loop: not a strike
