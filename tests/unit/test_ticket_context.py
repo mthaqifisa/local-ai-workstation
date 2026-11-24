@@ -64,3 +64,12 @@ def test_long_files_are_cut(tmp_path: Path) -> None:
 
 def test_no_memory_no_context(tmp_path: Path) -> None:
     assert ticket_context(tmp_path, 1, "M1") == ""
+
+
+def test_ticket_sessions_get_lean_memory_rules(tmp_path: Path) -> None:
+    from law.project_memory import ProjectMemory
+
+    memory = ProjectMemory(tmp_path)
+    lean, full = memory.instructions(ticket=True), memory.instructions()
+    assert "do not add one to" in lean and "do not edit .law/PROGRESS.md" in lean
+    assert "First read" not in lean and "First read" in full

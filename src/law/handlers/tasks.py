@@ -1043,7 +1043,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             parts.append(f"LAW tracks this document's sections and records progress. Do not edit {FOLDER}/PLAN.md "
                          f"or {FOLDER}/PROGRESS.md; just write the section.")
         elif memory is not None:
-            parts.append(memory.instructions())
+            parts.append(memory.instructions(ticket=bool(p.get("milestone"))))  # a build stage runs ticket sessions
             if p.get("project"):  # project sessions learn from earlier projects and teach later ones
                 parts.append(LESSON_RULE)
                 if learned := Lessons(rt.paths).prompt(str(p["role"])):

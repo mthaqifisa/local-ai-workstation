@@ -35,6 +35,17 @@ INSTRUCTIONS = """This project keeps its working memory in {folder}/ (like .clau
 - Write large files in sections: create the file with the first section, then add one section per edit, at most
   about 1,500 words per write. A single huge write can be cut off and lost; a section costs little to redo.
 - Never write secrets, keys or passwords into {folder}/."""
+# A ticket session's rules (2026-11-24): its ticket is the to-do list and LAW records progress, so the general
+# rules above (read the memory files first, write a to-do list into PLAN.md, update PROGRESS.md after every step)
+# only cost model turns there: the trial's research ticket spent its first 7 minutes on them.
+TICKET_INSTRUCTIONS = """This project keeps its working memory in {folder}/. LAW gives you what you need from it at
+the end of this prompt (the brief, your ticket's milestone, the latest progress, the style guide): work from that
+and open other {folder}/ files only when the ticket needs them. Your ticket is your to-do list: do not add one to
+{folder}/PLAN.md, and do not edit {folder}/PROGRESS.md (LAW records your reply there).
+- Write findings and results to files as you go (research goes to {folder}/RESEARCH.md): your context can be
+  summarised at any time, and what is not on disk is lost.
+- Write large files in sections, at most about 1,500 words per write.
+- Never write secrets, keys or passwords into {folder}/."""
 RESUME = ("Your previous session in this project was interrupted. Read {folder}/PROGRESS.md and {folder}/PLAN.md "
           "and continue from the next unchecked step. Keep {folder}/PROGRESS.md current, tick steps as you finish "
           "them, and write large files one section at a time (at most about 1,500 words per write).")
@@ -117,8 +128,8 @@ class ProjectMemory:
         path = self.dir / "NOTES.md"
         return path.read_text().strip() if path.exists() else ""
 
-    def instructions(self) -> str:
-        return INSTRUCTIONS.format(folder=FOLDER)
+    def instructions(self, ticket: bool = False) -> str:
+        return (TICKET_INSTRUCTIONS if ticket else INSTRUCTIONS).format(folder=FOLDER)
 
     def resume_prompt(self) -> str:
         return RESUME.format(folder=FOLDER)
