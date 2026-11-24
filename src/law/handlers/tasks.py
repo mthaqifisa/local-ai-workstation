@@ -16,6 +16,8 @@ import httpx
 from law import bugs, deliver, lead, specs
 from law.handlers.base import Runtime, Stalled, Steered, run_cmd
 from law.handlers.core import PASS_SCORE, answer, parse_verdict
+from law.lessons import INSTRUCTION as LESSON_RULE
+from law.lessons import Lessons
 from law.project_memory import FOLDER, ProjectMemory, project_listing
 from law.projects import Projects
 from law.queue.worker import JOB_TIMEOUT_S, Context, Done, Fatal, Outcome, Stages
@@ -960,6 +962,10 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                          f"or {FOLDER}/PROGRESS.md; just write the section.")
         elif memory is not None:
             parts.append(memory.instructions())
+            if p.get("project"):  # project sessions learn from earlier projects and teach later ones
+                parts.append(LESSON_RULE)
+                if learned := Lessons(rt.paths).prompt(str(p["role"])):
+                    parts.append(learned)
         elif writes:
             parts.append(NEW_PROJECT_MEMORY)
         parts.append(str(carry.get("brief") or p["prompt"]))
@@ -1138,6 +1144,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 memory.end_session(ctx.job.id)  # the next ticket starts a fresh session, not this one
             had_problem = bool(problem)
             problem = await _gate_problem(ctx, folder)
+            if not problem:  # proven in this project: other projects of this role get it from now on
+                for title in Lessons(rt.paths).harvest(folder, str(p["role"])):
+                    await ctx.progress(f"📘 lesson kept for later projects: {title}")
             moved = next_ticket(folder, version) != ticket
             idle = 0 if moved or (had_problem and not problem) else idle + 1
             if start is None:
