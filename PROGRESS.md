@@ -337,3 +337,4 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - 2026-11-24 E6 OpenCode 2.4.0 tried isolated: compatible, no gain (17.2 s vs 19.5 s), CLI breaks (--dir gone, bash→shell); deferred (ADR-0028). Contract tests on recorded v1/v2 streams.
 - 2026-11-24 Ch.1 trial via Tony /rnd: 3 LAW fixes before Go (planner now reads files the request names; replan replaces unstarted tickets and continues ticket IDs; doc plans name every diagram). Restarted from scratch, plan approved 06:29, writing.
 - 2026-11-24 Ticket estimates (owner request): planner/agents tag [est …]; LAW calibrates by the project's real pace, live countdown on the running ticket (re-estimated on overrun), expected finish next to the project picker (law/estimate.py).
+- 2026-11-24 Agent productivity (owner mandate): book kit, research-first, ticket context, lessons, estimates (ADR-0029). Ch.1 trial restarted on it: env 12→7 min, tooling 139→0 min, research starts 9 min in.
