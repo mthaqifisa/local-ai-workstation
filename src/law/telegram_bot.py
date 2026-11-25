@@ -733,11 +733,16 @@ class LawBot:
             buttons = [InlineKeyboardButton(text=BUTTONS[a], callback_data=f"p|{a}|{gate['project']}")
                        for a in gate.get("actions", []) if a in BUTTONS]
         markup = InlineKeyboardMarkup(inline_keyboard=[buttons]) if buttons else None
+        # A long plan is over Telegram's limit (2026-11-25: a 28-step plan was never delivered and the project
+        # waited 4 hours): earlier parts go as plain messages, the last one carries the buttons.
+        *head, last = split_message(markdown, limit=3500)
+        for part in head:
+            await self._send(chat, part)
         try:
-            await self.bot.send_message(chat, to_telegram_html(markdown), parse_mode="HTML",
+            await self.bot.send_message(chat, to_telegram_html(last), parse_mode="HTML",
                                         disable_web_page_preview=True, reply_markup=markup)
         except Exception:  # bad markup: plain text, keep the buttons
-            await self.bot.send_message(chat, markdown, reply_markup=markup)
+            await self.bot.send_message(chat, last, reply_markup=markup)
 
     async def _send(self, chat: int, markdown: str) -> None:
         """Send Markdown as HTML, split under Telegram's 4,096-character limit (/help is longer)."""

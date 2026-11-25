@@ -1,20 +1,12 @@
 {
   "stage": "E-enhance-v6.1",
-  "task": "Tech-chapter trial (/rnd via Tony, ~/RnD/digital-bank-tech-trial)",
-  "status": "planning (started 11:56)",
-  "next_step": "Review the planner's outline in Telegram against the request (7.1-7.3 core ledger, both layers, Go+Java code, diagrams, citations), send /go via Tony if sound; monitor research -> write -> editor (Inkling) -> fix -> round 2; compile every Go/Java sample by hand; fix LAW on any defect; then show the owner the result",
-  "timestamp": "2026-11-25T12:04:17+08:00",
+  "task": "Tech-chapter trial: build running (Go pressed 16:02)",
+  "status": "in_progress",
+  "next_step": "Monitor the tech trial build (project_step b74385a0d83d): research -> write -> editor (Inkling) -> fix -> round 2; compile every Go/Java sample by hand; fix LAW on any defect; then show the owner the result",
+  "timestamp": "2026-11-25T16:03:21",
   "files_touched": [
-    "src/law/handlers/tasks.py",
-    "src/law/bugs.py",
-    "src/law/book_kit.py",
-    "src/law/install/steps.py",
-    "settings/registry.yaml",
-    "settings/roles.yaml",
-    "scripts/editor_calibration.py",
-    "scripts/qa_calibration.py",
-    "docs/adr/0029-agent-productivity.md",
-    "docs/adr/0030-document-editor-model.md"
+    "src/law/telegram_bot.py",
+    "tests/unit/test_telegram_bot.py"
   ],
   "commands": [
     "brew upgrade jundot/omlx/omlx --with-custom-kernel (0.8.0 -> 0.8.3)",

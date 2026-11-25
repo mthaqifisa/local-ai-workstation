@@ -366,3 +366,18 @@ async def test_long_messages_such_as_help_are_split_under_telegrams_limit():
     await telegram_bot.LawBot._send(bot, 7, telegram_bot.HELP_TEXT)  # type: ignore[arg-type]
     assert len(sent) >= 2 and all(len(x) <= 4096 for x in sent)
     assert "Projects cheat sheet" in "".join(sent) and "/amend" in "".join(sent)
+
+
+async def test_a_long_gate_message_is_split_and_keeps_its_buttons_on_the_last_part():
+    sent: list[tuple[str, object]] = []
+
+    async def send(chat, text, reply_markup=None, **_k):
+        sent.append((text, reply_markup))
+
+    plan = "\n".join(f"- [ ] STEP-{i} " + "acceptance detail " * 20 for i in range(40))
+    b = bot({1})
+    b.bot = SimpleNamespace(send_message=send)  # type: ignore[assignment]
+    await b._ask(7, "**Plan ready**\n\n" + plan, {"project": "p", "actions": ["go", "change"]})
+    assert len(sent) >= 2 and all(len(t) <= 4096 for t, _ in sent)
+    assert [m is not None for _, m in sent] == [False] * (len(sent) - 1) + [True]
+    assert "STEP-0 " in sent[0][0] and "STEP-39 " in sent[-1][0]
