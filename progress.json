@@ -1,19 +1,25 @@
 {
   "stage": "E-enhance-v6.1",
-  "task": "Ch.1 trial (/rnd via Tony)",
-  "status": "writing (approved 06:29)",
-  "next_step": "Monitor ch.1 trial; verify writer, editor, page check; fix LAW and restart on any issue",
-  "timestamp": "2026-11-24T06:30:10+08:00",
+  "task": "Tech-chapter trial (/rnd via Tony, ~/RnD/digital-bank-tech-trial)",
+  "status": "planning (started 11:56)",
+  "next_step": "Review the planner's outline in Telegram against the request (7.1-7.3 core ledger, both layers, Go+Java code, diagrams, citations), send /go via Tony if sound; monitor research -> write -> editor (Inkling) -> fix -> round 2; compile every Go/Java sample by hand; fix LAW on any defect; then show the owner the result",
+  "timestamp": "2026-11-25T12:04:17+08:00",
   "files_touched": [
     "src/law/handlers/tasks.py",
-    "tests/unit/test_opencode_contract.py",
-    "tests/fixtures/opencode/",
-    "docs/adr/0028-opencode-2-deferred.md"
+    "src/law/bugs.py",
+    "src/law/book_kit.py",
+    "src/law/install/steps.py",
+    "settings/registry.yaml",
+    "settings/roles.yaml",
+    "scripts/editor_calibration.py",
+    "scripts/qa_calibration.py",
+    "docs/adr/0029-agent-productivity.md",
+    "docs/adr/0030-document-editor-model.md"
   ],
   "commands": [
-    "brew upgrade jundot/omlx/omlx",
-    "law install",
-    "law doctor",
-    "law eval"
+    "brew upgrade jundot/omlx/omlx --with-custom-kernel (0.8.0 -> 0.8.3)",
+    "law install --only opencode-config",
+    "scripts/editor_calibration.py run",
+    "scripts/judge_calibration.py run --judge inkling-2-mini"
   ]
 }
