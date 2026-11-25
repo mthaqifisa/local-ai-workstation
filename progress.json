@@ -1,17 +1,22 @@
 {
   "stage": "E-enhance-v6.1",
-  "task": "Tech-chapter trial: build running (Go pressed 16:02)",
+  "task": "Tech-chapter trial: build running, 12/28 tickets done; owner chose to let it finish",
   "status": "in_progress",
-  "next_step": "Monitor the tech trial build (project_step b74385a0d83d): research -> write -> editor (Inkling) -> fix -> round 2; compile every Go/Java sample by hand; fix LAW on any defect; then show the owner the result",
-  "timestamp": "2026-11-25T16:03:21",
+  "next_step": "Watch DBTC-13..28, compile both Java samples (DBTC-16 client, DBTC-22 batch) and rerun Go tests, then the Inkling editor round, fixes and round 2; show the owner the result",
+  "timestamp": "2026-11-26T06:24:55",
   "files_touched": [
+    "settings/roles.yaml",
+    "src/law/handlers/tasks.py",
+    "src/law/lead.py",
     "src/law/telegram_bot.py",
-    "tests/unit/test_telegram_bot.py"
+    "docs/adr/0026-lead-note-approval.md",
+    "tests/unit/test_gate_broken_steps.py",
+    "tests/unit/test_lead.py",
+    "tests/unit/test_tickets.py"
   ],
   "commands": [
-    "brew upgrade jundot/omlx/omlx --with-custom-kernel (0.8.0 -> 0.8.3)",
-    "law install --only opencode-config",
-    "scripts/editor_calibration.py run",
-    "scripts/judge_calibration.py run --judge inkling-2-mini"
+    "law install",
+    "pytest tests/unit (743 passed)",
+    "go test on postgres:19 (24 passed)"
   ]
 }
