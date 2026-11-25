@@ -16,6 +16,7 @@ import pytest
 from law.book_kit import KIT_MARK, install
 
 KIT = Path(__file__).parents[2] / "templates" / "rnd"
+sys.dont_write_bytecode = True  # importing the kit's tools must not leave tools/__pycache__ in the template
 
 
 def _load(name: str) -> ModuleType:
@@ -138,3 +139,17 @@ def test_end_to_end_build_and_gate(tmp_path: Path) -> None:
     (tmp_path / "chapters" / "02-two.md").write_text("# Two\n\nUnlinked.[^ch2-y]\n\n[^ch2-y]: A report.\n")
     bad = subprocess.run(["bash", ".law/check.sh"], cwd=tmp_path, capture_output=True, text=True, timeout=300)
     assert bad.returncode != 0 and "[^ch2-y] has no link" in bad.stderr
+
+
+def test_install_skips_caches_and_system_files(tmp_path: Path) -> None:
+    """Seen 2026-11-25: the kit's tests left tools/__pycache__ in the template; copied into a new project, git refused
+    to add the ignored folder and the project failed to start."""
+    kit = tmp_path / "kit"
+    shutil.copytree(KIT, kit, ignore=shutil.ignore_patterns("__pycache__"))
+    (kit / "tools" / "__pycache__").mkdir()
+    (kit / "tools" / "__pycache__" / "prepare.cpython-312.pyc").write_bytes(b"x")
+    (kit / ".DS_Store").write_bytes(b"x")
+    added = install(kit, tmp_path / "book", "Title")
+    assert "tools/verify.py" in added
+    assert not any("__pycache__" in a or a.endswith((".pyc", ".DS_Store")) for a in added)
+    assert not (tmp_path / "book" / "tools" / "__pycache__").exists()

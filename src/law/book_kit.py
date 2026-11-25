@@ -14,6 +14,15 @@ import time
 from pathlib import Path
 
 KIT_MARK = "tools/verify.py"  # a folder that has it already has the kit (never overwrite an agent's changes)
+# Not part of the kit: Python's cache from running the kit's tests, and macOS folder files. Copied, git refused to
+# add them (`tools/__pycache__` is ignored) and the project failed to start (seen 2026-11-25).
+SKIP_DIRS = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
+SKIP_FILES = {".DS_Store"}
+
+
+def kit_files(kit: Path) -> list[Path]:
+    return sorted(p for p in kit.rglob("*") if p.is_file() and p.name not in SKIP_FILES
+                  and p.suffix != ".pyc" and not SKIP_DIRS & set(p.relative_to(kit).parts))
 
 
 def install(kit: Path, folder: Path, title: str, subtitle: str = "") -> list[str]:
@@ -21,7 +30,7 @@ def install(kit: Path, folder: Path, title: str, subtitle: str = "") -> list[str
     if (folder / KIT_MARK).exists():
         return []
     added = []
-    for src in sorted(p for p in kit.rglob("*") if p.is_file()):
+    for src in kit_files(kit):
         rel = src.relative_to(kit)
         dest = folder / rel
         if dest.exists():
