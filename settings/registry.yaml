@@ -175,7 +175,7 @@ comfyui:
 # Exact runtime versions (ADR-0001, ADR-0008). The installer repairs a mismatch; `law doctor` fails on one.
 pins:
   opencode: "1.18.7"  # stay on 1.x until the OpenCode 2 gates pass (ADR-0024)
-  omlx: "0.8.0"
+  omlx: "0.8.3"  # 0.8.3: Inkling 2 Mini support and memory-pressure fixes (2026-11-25, reviewer calibration)
 
 tools:
   - name: huggingface_hub
