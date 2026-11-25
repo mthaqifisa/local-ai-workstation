@@ -211,6 +211,23 @@ def tick(project: Path, tid: str) -> bool:
     return bool(n)
 
 
+def ticket_open(project: Path, tid: str) -> bool:
+    """LAW still has to finish `tid`: it is open in .law/PLAN.md, or the agent ticked it there itself but the last
+    commit has it open (seen 2026-11-26: DBTC-12's writer ticked its own line, so LAW skipped the commit and progress
+    record and only reported "uncommitted changes")."""
+    plan = project / FOLDER / "PLAN.md"
+    if not plan.is_file():
+        return False
+    line = rf"(?m)^\s*- \[ \]\s*{re.escape(tid)}\b"
+    if re.search(line, plan.read_text()):
+        return True
+    try:
+        committed = _git(project, "show", f"HEAD:{FOLDER}/PLAN.md")
+    except RuntimeError:
+        return False
+    return re.search(line, committed) is not None
+
+
 def record_progress(project: Path, title: str, reply: str) -> None:
     """Add the ticket's entry at the top of .law/PROGRESS.md (newest first)."""
     progress = project / FOLDER / "PROGRESS.md"
@@ -1434,8 +1451,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 ". Fix that line of the gate so the check really runs (and fails when it should), run it again "
                 "and make it pass.")
         tid = TICKET_ID.match(commit_as or "")
-        plan = folder / FOLDER / "PLAN.md"
-        if tid and plan.is_file() and re.search(rf"(?m)^\s*- \[ \]\s*{re.escape(tid.group(0))}\b", plan.read_text()):
+        if tid and ticket_open(folder, tid.group(0)):
             try:
                 unfinished = finish_ticket(folder, str(commit_as), reply, before)
             except RuntimeError as exc:

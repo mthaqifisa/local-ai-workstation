@@ -956,3 +956,19 @@ async def test_an_agent_running_the_same_command_again_and_again_is_told_to_move
     await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx({**_payload(project), "role": "writer"}))
     assert seen[:8] == [None] * 8 and seen[8] and seen[8].startswith(tasks.REPEAT_HEAD)  # a save in between resets
     assert "principal plus" in prompts[1]  # the nudge goes into the same session
+
+
+def test_law_still_finishes_a_ticket_the_agent_ticked_itself(tmp_path: Path) -> None:
+    from law.handlers import tasks
+
+    project = tmp_path / "book"
+    (project / ".law").mkdir(parents=True)
+    (project / ".law" / "PLAN.md").write_text("## Build version 1\n### M1\n- [ ] B-12 7.2 prose\n- [ ] B-13 next\n")
+    _git_repo(project)
+    assert tasks.ticket_open(project, "B-12")
+    plan = project / ".law" / "PLAN.md"
+    plan.write_text(plan.read_text().replace("- [ ] B-12", "- [x] B-12"))  # the agent ticks its own line
+    assert tasks.ticket_open(project, "B-12")  # the last commit still has it open: LAW commits and records it
+    subprocess.run(["git", "commit", "-qam", "B-12"], cwd=project, check=True)
+    assert not tasks.ticket_open(project, "B-12") and tasks.ticket_open(project, "B-13")
+    assert not tasks.ticket_open(project, "B-1")  # B-1 is not B-12
