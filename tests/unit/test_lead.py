@@ -54,22 +54,43 @@ def test_drop_sends_nothing(setup: tuple[lead.Leads, Path]) -> None:
     d = _draft(leads, project)
     leads.decide(d.id, "dropped")
     assert ProjectMemory(project).take_notes() is None
-    assert leads.pending_for("j1") is None
+    assert leads.pending_for("j1", d.ticket) is None
 
 
-def test_timeout_counts_as_drop(setup: tuple[lead.Leads, Path]) -> None:
+def test_a_draft_waits_for_the_owner_with_no_time_limit(setup: tuple[lead.Leads, Path]) -> None:
     leads, project = setup
     d = _draft(leads, project, now=1000.0)
-    assert leads.expire(now=1000.0 + lead.DECIDE_TIMEOUT_S - 1) == []
-    gone = leads.expire(now=1000.0 + lead.DECIDE_TIMEOUT_S)
-    assert [g.id for g in gone] == [d.id] and gone[0].status == "expired"
+    done = leads.decide(d.id, "approved", now=1000.0 + 7 * 24 * 3600)  # a week later, the ticket still open
+    assert done is not None and done.status == "approved"
+    assert d.note in (ProjectMemory(project).take_notes() or "")
+
+
+def test_an_answer_after_the_ticket_is_done_is_outdated_and_not_sent(setup: tuple[lead.Leads, Path]) -> None:
+    leads, project = setup
+    (project / ".law" / "PLAN.md").write_text("# Plan\n- [x] P-22.6 contrast tokens\n- [ ] P-22.7 next\n")
+    d = _draft(leads, project)
+    done = leads.decide(d.id, "edited", "Write the tokens test first.")
+    assert done is not None and done.status == "outdated" and done.final_note == ""
     assert ProjectMemory(project).take_notes() is None
+    assert leads.outcomes()[-1]["decision"] == "outdated"
+    d2 = _draft(leads, project, job="j2")
+    assert leads.decide(d2.id, "dropped") is not None and leads.get(d2.id).status == "dropped"  # type: ignore[union-attr]
 
 
-def test_one_pending_draft_per_job_and_sent_once(setup: tuple[lead.Leads, Path]) -> None:
+def test_ticket_done_reads_the_ticked_plan_line(tmp_path: Path) -> None:
+    (tmp_path / ".law").mkdir()
+    (tmp_path / ".law" / "PLAN.md").write_text("- [x] DBTC-11 7.2 research\n- [ ] DBTC-12 7.2 prose\n")
+    assert lead.ticket_done(tmp_path, "DBTC-11 7.2 research (acceptance: ...)")
+    assert not lead.ticket_done(tmp_path, "DBTC-12 7.2 prose")
+    assert not lead.ticket_done(tmp_path, "DBTC-1 metadata")  # DBTC-1 is not DBTC-11
+    assert not lead.ticket_done(tmp_path / "missing", "DBTC-11 x")
+
+
+def test_one_pending_draft_per_ticket_and_sent_once(setup: tuple[lead.Leads, Path]) -> None:
     leads, project = setup
     d = _draft(leads, project)
-    assert leads.pending_for("j1") == d and leads.pending_for("j2") is None
+    assert leads.pending_for("j1", d.ticket) == d and leads.pending_for("j2", d.ticket) is None
+    assert leads.pending_for("j1", "P-22.7 next ticket") is None  # an unanswered draft never blocks the next ticket
     leads.mark_sent(d)
     assert leads.unsent() == []
 
@@ -80,7 +101,7 @@ def test_approval_rate_lands_in_progress_every_ten(setup: tuple[lead.Leads, Path
         d = _draft(leads, project, job=f"j{i}")
         leads.decide(d.id, "approved" if i < 6 else "dropped")
     text = (leads.paths.repo / "PROGRESS.md").read_text()
-    assert "Lead notes: 10 decided, 60% used (6 approved, 0 edited, 4 dropped, 0 unanswered)" in text
+    assert "Lead notes: 10 decided, 60% used (6 approved, 0 edited, 4 dropped, 0 answered after the ticket, 0 unanswered)" in text
 
 
 def test_bad_ids_and_decisions(setup: tuple[lead.Leads, Path]) -> None:

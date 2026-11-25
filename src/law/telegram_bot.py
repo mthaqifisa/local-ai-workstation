@@ -414,20 +414,16 @@ class LawBot:
         """Record the owner's decision on a lead draft; approved or edited notes reach the agent at its next step."""
         done = self.leads.decide(draft_id, decision, text if decision == "edited" else "")
         if done is None:
-            return "That lead note was already decided (or timed out)."
+            return "That lead note was already decided."
         return {"approved": "✅ Sent to the agent.", "edited": "✏️ Your wording was sent to the agent.",
-                "dropped": "🗑 Dropped; the agent carries on with LAW's usual nudges."}[decision]
+                "dropped": "🗑 Dropped; the agent carries on with LAW's usual nudges.",
+                "outdated": "📌 That ticket is already done, so the note was not sent (it was about that ticket)."
+                }[done.status]
 
     async def watch_leads(self, poll_s: float = 15.0) -> None:
-        """Send each new lead draft to the owner with Approve / Edit / Drop; report drafts that timed out."""
+        """Send each new lead draft to the owner with Approve / Edit / Drop. Drafts wait for the owner's answer."""
         while True:
             try:
-                for gone in self.leads.expire():
-                    await self._broadcast(f"⌛ Lead note for **{gone.project}** dropped: no answer in "
-                                          f"{lead.DECIDE_TIMEOUT_S // 60} min.")
-                    for chat, waiting in list(self.lead_edit.items()):
-                        if waiting == gone.id:
-                            self.lead_edit.pop(chat)
                 for draft in self.leads.unsent():
                     markup = InlineKeyboardMarkup(inline_keyboard=[[
                         InlineKeyboardButton(text="✅ Approve", callback_data=f"l|approve|{draft.id}"),

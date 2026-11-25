@@ -1263,9 +1263,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
 
     def _draft_lead_note(ctx: Context, role: str, workdir: Path, ticket: str, activity: list[str]) -> None:
         """Ask the lead (the role's model) for a note in the background; a note becomes a draft the owner approves
-        on Telegram before the agent sees it (ADR-0026). One undecided draft per job at a time."""
+        on Telegram before the agent sees it (ADR-0026). One undecided draft per ticket at a time."""
         leads = lead.Leads(rt.paths)
-        if leads.pending_for(ctx.job.id) is not None:
+        if leads.pending_for(ctx.job.id, ticket) is not None:
             return
 
         async def draft() -> None:

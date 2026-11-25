@@ -4,7 +4,9 @@ When a ticket session stalls twice in a row, LAW asks the coder model, acting as
 stuck and what specific step it is missing (the prompt replayed on 12 real moments on 2026-10-28: detection 8/9, notes
 4/9 as good as a human lead's, so it never reaches the agent unreviewed). A note becomes a draft here; Tony sends it to
 the owner with Approve / Edit / Drop. Only an approved or edited note goes to the agent, through the owner-note path
-(`ProjectMemory.add_note`). No answer within DECIDE_TIMEOUT_S counts as Drop. Every outcome is logged; every
+(`ProjectMemory.add_note`). A draft waits for the owner however long it takes (owner, 2026-11-26: the 60-minute
+drop left a note unanswerable); an answer that comes after its ticket is done is recorded as "outdated" and nothing
+reaches the agent, since the note was about that ticket. Every outcome is logged; every
 REPORT_EVERY outcomes the approval rate is appended to the repo's PROGRESS.md so the owner can decide later whether
 the step may run unattended.
 """
@@ -23,9 +25,9 @@ from typing import Any
 from law.paths import LawPaths
 from law.project_memory import ProjectMemory
 
-DECIDE_TIMEOUT_S = 3600
 REPORT_EVERY = 10
-DECISIONS = ("approved", "edited", "dropped", "expired")
+DECISIONS = ("approved", "edited", "dropped", "outdated", "expired")  # expired: the old 60-minute drop (history only)
+TICKET_ID = re.compile(r"[A-Za-z][A-Za-z0-9]*-\d+(?:\.\d+)?")
 
 PROMPT = """You are the lead developer watching a coding agent work on one ticket of a project. LAW's guards already
 sent it the generic warnings shown in the activity (lines starting with a warning sign). Decide whether the agent is
@@ -109,9 +111,10 @@ class Leads:
         found = (self.get(f.stem) for f in sorted(self.dir.glob("*.json")))
         return [d for d in found if d is not None]
 
-    def pending_for(self, job: str) -> Draft | None:
-        """The job's undecided draft, if any: one stuck moment gets one note at a time."""
-        return next((d for d in self.all() if d.job == job and d.status == "pending"), None)
+    def pending_for(self, job: str, ticket: str) -> Draft | None:
+        """The ticket's undecided draft in this job, if any: one stuck ticket gets one note at a time. Keyed by ticket
+        too, so an unanswered draft never blocks the job's later tickets."""
+        return next((d for d in self.all() if d.job == job and d.ticket == ticket and d.status == "pending"), None)
 
     def unsent(self) -> list[Draft]:
         return [d for d in self.all() if d.status == "pending" and not d.sent]
@@ -130,6 +133,8 @@ class Leads:
             return None
         if decision == "edited" and not text.strip():
             raise ValueError("an edited note needs its text")
+        if decision in ("approved", "edited") and ticket_done(Path(draft.folder), draft.ticket):
+            decision = "outdated"  # the ticket it was about is finished: a note now would mislead the next one
         draft.status, draft.decided = decision, now or time.time()
         draft.final_note = draft.note if decision == "approved" else text.strip() if decision == "edited" else ""
         if draft.final_note:
@@ -138,12 +143,6 @@ class Leads:
         self._save(draft)
         self._log(draft)
         return draft
-
-    def expire(self, now: float | None = None) -> list[Draft]:
-        """Drafts left undecided for DECIDE_TIMEOUT_S are dropped (a stale note would mislead the agent)."""
-        now = now or time.time()
-        late = [d for d in self.all() if d.status == "pending" and now - d.created >= DECIDE_TIMEOUT_S]
-        return [d for d in (self.decide(x.id, "expired", now=now) for x in late) if d is not None]
 
     def outcomes(self) -> list[dict[str, Any]]:
         try:
@@ -179,7 +178,8 @@ def approval_summary(outcomes: list[dict[str, Any]]) -> str:
     counts = {d: sum(1 for o in outcomes if o["decision"] == d) for d in DECISIONS}
     rate = round(100 * (counts["approved"] + counts["edited"]) / n) if n else 0
     return (f"Lead notes: {n} decided, {rate}% used ({counts['approved']} approved, {counts['edited']} edited, "
-            f"{counts['dropped']} dropped, {counts['expired']} unanswered)")
+            f"{counts['dropped']} dropped, {counts['outdated']} answered after the ticket, "
+            f"{counts['expired']} unanswered)")
 
 
 def message(draft: Draft) -> str:
@@ -187,7 +187,19 @@ def message(draft: Draft) -> str:
     return (f"🧭 **Lead note for {draft.project}**, ticket {draft.ticket[:120]}\n\n"
             f"Diagnosis: {draft.diagnosis}\n\nDraft note to the agent:\n> {draft.note}\n\n"
             f"**Approve** sends it as is, **Edit** lets you reply with your own text, **Drop** discards it. "
-            f"No answer in {DECIDE_TIMEOUT_S // 60} min drops it.")
+            f"It waits for your answer; once the ticket is done it no longer reaches the agent.")
+
+
+def ticket_done(folder: Path, ticket: str) -> bool:
+    """The ticket is ticked in the project's .law/PLAN.md (LAW ticks it when its gate passes)."""
+    found = TICKET_ID.match(ticket.strip())
+    if found is None:
+        return False
+    try:
+        plan = (folder / ".law" / "PLAN.md").read_text()
+    except OSError:
+        return False
+    return re.search(rf"(?m)^\s*- \[[xX]\]\s*{re.escape(found.group(0))}\b", plan) is not None
 
 
 def _git(folder: Path, *args: str) -> str:

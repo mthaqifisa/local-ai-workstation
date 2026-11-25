@@ -30,3 +30,10 @@ developer, for a note: it detected 8 of 9 stuck moments, and 4 of its 9 notes we
 - The owner gets at most one Telegram card per stuck ticket session, with the agent unchanged if they ignore it.
 - The lead call shares the coder's model on oMLX (4-18 min per note in the replay); it runs only on the second stall.
 - Rolling back is removing the `_draft_lead_note` call in `handlers/tasks.py`; the drafts folder can stay.
+
+## Addendum 2026-11-26: no time limit
+
+The owner could not answer a DBTC-12 draft in time and its buttons stopped working ("can we remove the default
+60 minutes no response"). Drafts now wait for the owner's answer with no limit. An Approve or Edit that arrives after
+the ticket is ticked in `.law/PLAN.md` is recorded as `outdated` and nothing reaches the agent, because the note was
+about that ticket. One undecided draft per ticket (was per job), so an unanswered draft never blocks later tickets.
