@@ -1207,7 +1207,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 continue
             except Steered as exc:
                 sid = session_id(exc.output)
-                if exc.message == TICKET_DONE:  # its ticket is ticked and committed: LAW checks it next
+                if exc.message == TICKET_DONE:  # its ticket is ticked: LAW checks and commits it next
                     await ctx.progress("✅ ticket done: ending the session so LAW checks it")
                     return parse_opencode_events(exc.output)
                 if exc.message == QA_CODE_NUDGE and sid is not None and qa_reminders < 3:
@@ -1503,7 +1503,10 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 if now is not None and is_split_of(now[1], current[1]):
                     session_ticket[0] = now  # split: the session goes on with the first part it just planned
                     return False
-                return not uncommitted(folder)
+                # Ticked (by the agent itself): end the session so LAW's gate checks and commits it. Waiting for a
+                # clean tree dates from agents committing their own work; since LAW commits (2026-11-24) it let
+                # DBTC-12's session tick its line and carry on into DBTC-13 (2026-11-26).
+                return True
 
             before = head(folder)
             try:

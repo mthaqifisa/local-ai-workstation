@@ -253,9 +253,11 @@ async def test_a_stage_keeps_within_one_job_run(tmp_path: Path, monkeypatch: pyt
     assert timeouts == []
 
 
-async def test_law_ends_a_session_once_its_ticket_is_ticked_and_committed(
+async def test_law_ends_a_session_once_its_ticket_is_ticked(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Seen 2026-10-27: OpenCode continued P-22.4's session into P-22.5, so LAW never checked P-22.4."""
+    """Seen 2026-10-27: OpenCode continued P-22.4's session into P-22.5, so LAW never checked P-22.4. Seen again
+    2026-11-26: DBTC-12's writer ticked its own line and, its work not yet committed, carried on into DBTC-13; LAW
+    commits a ticket, so the tick alone ends the session."""
     from law.handlers import project as _registers_project_specs  # noqa: F401
     from law.handlers import tasks
     from law.handlers.base import Steered
@@ -273,16 +275,15 @@ async def test_law_ends_a_session_once_its_ticket_is_ticked_and_committed(
         if cmd[0] != "opencode":
             return ""
         steer = kw["steer"]
+        actions.append(steer("✏️ writing ui/src/a.ts"))  # not ticked yet: keep going
         _tick(plan, "P-2")
-        actions.append(steer("✏️ writing ui/src/a.ts"))  # ticked but not committed yet: keep going
-        dirty.clear()
-        message = steer("▶ running git commit -m 'P-2: products'")  # committed: LAW ends the session
+        message = steer("✏️ editing .law/PLAN.md")  # ticked, work still uncommitted: LAW ends it and commits
         actions.append(message)
         raise Steered('{"type": "text", "part": {"type": "text", "text": "P-2 done"}}', message or "")
 
     monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
     done = await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
-    assert actions == [None, tasks.TICKET_DONE]
+    assert actions == [None, tasks.TICKET_DONE] and dirty == ["ui/src/a.ts"]
     assert done.result["answer"] == "P-2 done"
 
 
