@@ -33,6 +33,7 @@ from law.handlers.base import Runtime  # noqa: E402
 from law.handlers.tasks import (  # noqa: E402
     EDITOR_DENY_READ,
     EDITOR_SECTION,
+    REPORT_DUE,
     agent_env,
     doc_sections,
     read_limits,
@@ -125,23 +126,40 @@ async def check_section(rt: Runtime, work: Path, model: str, context: int, sec: 
            "OPENCODE_CONFIG_CONTENT": json.dumps(model_override(model, context))}
     before = {b.id for b in bugs.load(work)}
     started = time.monotonic()
-    proc = await asyncio.create_subprocess_exec(
-        "opencode", "run", "--agent", "editor", "-m", f"law/{model}", "--format", "json", "--dir", str(work), prompt,
-        cwd=work, env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+    base = ["opencode", "run", "--agent", "editor", "-m", f"law/{model}", "--format", "json", "--dir", str(work)]
+    events, timed_out, continued = await opencode([*base, prompt], work, env, SECTION_TIMEOUT_S)
+    reported = has_report(events)
+    sid = next((e["sessionID"] for e in events if e.get("sessionID")), None)
+    if not reported and sid and not timed_out:  # LAW's path: the same session finishes its report (tasks.REPORT_DUE)
+        left = max(60.0, SECTION_TIMEOUT_S - (time.monotonic() - started))
+        more, timed_out, _ = await opencode([*base, "--session", sid, REPORT_DUE], work, env, left)
+        events += more
+        reported, continued = has_report(more), True
+    seconds = time.monotonic() - started
+    tools = sum(1 for e in events if e.get("type") == "tool_use")
+    found = [b for b in bugs.load(work) if b.id not in before]
+    last = [e["part"]["text"] for e in events if e.get("type") == "text" and e.get("part", {}).get("text")]
+    return {"section": sec["heading"], "seconds": round(seconds), "tool_calls": tools, "report": reported,
+            "continued": continued, "timed_out": timed_out, "last_text": (last[-1] if last else "")[-2000:],
+            "findings": [{"id": b.id, "title": b.title, "body": b.body[:1500]} for b in found]}
+
+
+async def opencode(cmd: list[str], work: Path, env: dict[str, str],
+                   limit_s: float) -> tuple[list[dict[str, Any]], bool, bool]:
+    proc = await asyncio.create_subprocess_exec(*cmd, cwd=work, env=env, stdout=asyncio.subprocess.PIPE,
+                                                stderr=asyncio.subprocess.STDOUT)
     try:
-        out, _ = await asyncio.wait_for(proc.communicate(), SECTION_TIMEOUT_S)
+        out, _ = await asyncio.wait_for(proc.communicate(), limit_s)
         timed_out = False
     except TimeoutError:
         proc.kill()
         out, timed_out = b"", True
-    seconds = time.monotonic() - started
     events = [json.loads(line) for line in out.decode(errors="replace").splitlines() if line.startswith("{")]
-    tools = sum(1 for e in events if e.get("type") == "tool_use")
-    reported = any('"tested"' in json.dumps(e) for e in events if e.get("type") == "text")
-    found = [b for b in bugs.load(work) if b.id not in before]
-    return {"section": sec["heading"], "seconds": round(seconds), "tool_calls": tools, "report": reported,
-            "timed_out": timed_out,
-            "findings": [{"id": b.id, "title": b.title, "body": b.body[:1500]} for b in found]}
+    return events, timed_out, False
+
+
+def has_report(events: list[dict[str, Any]]) -> bool:
+    return any('"tested"' in e.get("part", {}).get("text", "") for e in events if e.get("type") == "text")
 
 
 def score(sections: list[dict[str, Any]]) -> dict[str, Any]:
@@ -184,7 +202,7 @@ async def run(model: str, project: Path, repeats: int, context: int) -> Path:
 
 def report(folder: Path) -> str:
     rows = ["| model | run | caught | other findings | minutes | tool calls | reports |",
-            "|---|---|---|---|---|---|---|"]
+            "|---|---|---|---|---|---|---|"]  # caught = recorded in BUGS.md, the only place a finding counts
     for f in sorted(folder.glob("editor-*.json")):
         d = json.loads(f.read_text())
         for r in d["runs"]:

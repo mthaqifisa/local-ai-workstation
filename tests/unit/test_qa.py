@@ -506,3 +506,42 @@ async def test_a_later_round_checks_only_the_sections_that_changed(tmp_path: Pat
     chapter.write_text(CHAPTER.replace("RM100 million", "RM300 million"))  # the fix stage edits one section
     await tasks.make_handlers(rt)["task_review"](_ctx({**payload, "version": 2}))
     assert len(prompts) == 2 and "Other sessions" in prompts[0] and "RM300 million" in prompts[1]
+
+
+async def test_an_editor_that_stops_before_its_report_finishes_it_in_the_same_session(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Seen 2026-11-25: the editor confirmed three wrong figures, called it "initial evidence gathering" and stopped;
+    a fresh session started the section over and lost them."""
+    from law.handlers import project as _registers_project_specs  # noqa: F401
+    from law.handlers import tasks
+
+    monkeypatch.setattr(tasks, "SECTION_WORDS_MIN", 5)
+    book = tmp_path / "RnD" / "bank"
+    (book / ".law").mkdir(parents=True)
+    (book / "chapters").mkdir()
+    (book / "chapters" / "01-one.md").write_text(CHAPTER)
+    cmds: list[list[str]] = []
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        agent = cmd[cmd.index("--agent") + 1] if "--agent" in cmd else ""
+        if agent == "editor":
+            cmds.append(cmd)
+            early = "section 1 of 2" in cmd[-1]  # stops after gathering evidence
+            reply = "Initial evidence gathering done." if early else '{"tested": ["unit: pass"], "summary": "ok"}'
+            return ('{"type": "text", "sessionID": "ses_e1", "part": {"type": "text", "text": '
+                    + json.dumps(reply) + '}}')
+        reply = ('{"screens": ["page 1: pass"], "summary": "fine"}' if agent == "designer"
+                 else '{"score": 5, "issues": [], "summary": "fine"}')
+        return '{"type": "text", "part": {"type": "text", "text": ' + json.dumps(reply) + '}}'
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    payload = {"prompt": "write a book", "dir": str(book), "role": "writer", "project": "bank",
+               "rubric_ref": "project.review", "version": 1,
+               "spec_args": {"name": "Bank", "out": "docs/proposal", "version": 1, "kind": "document",
+                             "spec_file": ".law/PROMPT.md (the agreed plan)"},
+               "_carry": {"answer": "done"}}
+    done = await tasks.make_handlers(_review_rt(tmp_path))["task_review"](_ctx(payload))
+    follow = cmds[2]  # whole, section 1, then section 1 continued
+    assert follow[follow.index("--session") + 1] == "ses_e1" and follow[-1] == tasks.REPORT_DUE
+    assert len(cmds) == 4  # no fresh restart of section 1
+    assert not any("section not fact-checked" in i for i in done.result["review"]["issues"])

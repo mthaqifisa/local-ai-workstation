@@ -774,6 +774,11 @@ PAGES_TASK = """Check how {name} version {version}, the document in {folder}, lo
    Where: <page number and figure or table>  Evidence: <the page image path under $TMPDIR>
 4. Reply with JSON only: {{"screens": ["page <n>: pass|fail"], "summary": "<one sentence>"}}"""
 
+# A session that stopped before its report (seen 2026-11-25: the editor listed three wrong figures it had confirmed,
+# called it "initial evidence gathering" and stopped; a fresh session started the section over and lost them).
+REPORT_DUE = ("You stopped before finishing. Do not search further unless one fact is still open. Append every "
+              "problem you confirmed to .law/BUGS.md now, in the format the task gave, then reply with the JSON "
+              "report the task asked for.")
 QA_NO_REPORT = ("\n\nAn earlier QA session ended without its report, so nothing was verified. Work through the steps "
                 "above in order, and end with the JSON report.")
 NO_EVIDENCE = ("QA evidence missing: {what}. Nothing here proves the product works; run QA again and read why the "
@@ -990,11 +995,13 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
     async def _agent(ctx: Context, role: str, prompt: str, workdir: Path, *, writes: bool = True,
                      memory: ProjectMemory | None = None, timeout_s: float | None = None,
                      finished: Callable[[], bool] | None = None, ticket: str | None = None,
-                     deny_read: tuple[str, ...] = ()) -> str:
+                     deny_read: tuple[str, ...] = (), session: str | None = None,
+                     sessions: list[str] | None = None) -> str:
         """Run one OpenCode agent. A writing agent that stalls (no file change for STALL_MINUTES) is stopped and
         its session resumed with a nudge to build and fix. With project memory, the session is recorded in
         `.law/session.json`, and a job that restarts (e.g. after a worker restart) resumes that session.
-        `deny_read` are file patterns OpenCode's read tool refuses in this session (search still finds them)."""
+        `deny_read` are file patterns OpenCode's read tool refuses in this session (search still finds them).
+        `session` continues that OpenCode session with `prompt`; `sessions` collects the id of the session run."""
         rt.roles.get(role)  # validate
         model = f"law/{rt.model_id(role)}"
         stall_min = float(ctx.job.payload.get("stall_min", STALL_MINUTES))
@@ -1008,6 +1015,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                      f"LAW tracks the sections: do not edit {FOLDER}/PLAN.md or {FOLDER}/PROGRESS.md.") if section \
                 else (memory.resume_prompt() if memory else "")
             cmd = [*base, "--session", resumed, again]
+        elif session:
+            cmd = [*base, "--session", session, prompt]
         else:
             await ctx.progress(f"{role} agent working in {workdir}")
             cmd = [*base, prompt]
@@ -1147,6 +1156,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                                     changed_since=lambda since: changed_since(workdir, since, code_only=code_only),
                                     steer=steer)
                 answer_text = parse_opencode_events(out)
+                if sessions is not None and (sid := session_id(out)):
+                    sessions.append(sid)
                 if memory is not None and writes and memory.ensure_progress(started, role, answer_text, edits):
                     await ctx.progress("📝 recorded this step in .law/PROGRESS.md (the agent had not)")
                 return answer_text
@@ -1530,12 +1541,13 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 "minor": bugs.as_issues([b for b in open_bugs if b not in blocking]),
                 "tested": [str(t) for t in report.get("tested", [])][:40], "summary": summary}
 
-    async def _reviewer(ctx: Context, role: str, prompt: str, folder: Path, *,
-                        deny_read: tuple[str, ...] = ()) -> str:
+    async def _reviewer(ctx: Context, role: str, prompt: str, folder: Path, *, deny_read: tuple[str, ...] = (),
+                        session: str | None = None, sessions: list[str] | None = None) -> str:
         """A QA, editor or design session, which only adds findings and sets statuses in .law/BUGS.md: a finding its
         rewrite removed is put back, and `verified` on a finding the fix stage did not mark fixed is undone."""
         before = bugs.path(folder).read_text() if bugs.path(folder).exists() else ""
-        reply = await _agent(ctx, role, prompt, folder, writes=False, deny_read=deny_read)
+        reply = await _agent(ctx, role, prompt, folder, writes=False, deny_read=deny_read, session=session,
+                             sessions=sessions)
         restored = bugs.restore_lost(folder, before)
         if restored:
             await ctx.progress(f"⚠️ the {role} rewrote .law/BUGS.md: LAW put back {', '.join(restored)}")
@@ -1597,12 +1609,17 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         async def unit(key: str, template: str, **extra: Any) -> dict[str, Any]:
             if key in done:
                 return done[key]
-            report: dict[str, Any] = {}
-            for retry in ("", QA_NO_REPORT):  # one retry for a unit that ends without its report
-                prompt = template.format(**{**fill, "now": time.strftime("%Y-%m-%d %H:%M")}, **extra) + retry
-                report = json_report(await _reviewer(ctx, "editor", prompt, folder, deny_read=EDITOR_DENY_READ))
-                if report.get("tested"):
-                    break
+            prompt = template.format(**{**fill, "now": time.strftime("%Y-%m-%d %H:%M")}, **extra)
+            ran: list[str] = []
+            report = json_report(await _reviewer(ctx, "editor", prompt, folder, deny_read=EDITOR_DENY_READ,
+                                                 sessions=ran))
+            if not report.get("tested") and ran:  # the same session writes up what it found (REPORT_DUE)
+                await ctx.progress("🧐 the editor stopped before its report: asking the same session to finish it")
+                report = json_report(await _reviewer(ctx, "editor", REPORT_DUE, folder, deny_read=EDITOR_DENY_READ,
+                                                     session=ran[-1]))
+            if not report.get("tested"):  # no session to continue, or it still did not: a fresh one, as before
+                report = json_report(await _reviewer(ctx, "editor", prompt + QA_NO_REPORT, folder,
+                                                     deny_read=EDITOR_DENY_READ))
             done[key] = report
             save_review_progress(done_file, done)
             return report
