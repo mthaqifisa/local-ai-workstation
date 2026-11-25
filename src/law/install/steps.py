@@ -739,20 +739,15 @@ class OpenCodeConfig:
 
 
 JUDGE_OUTPUT = 6144
-WRITER_OUTPUT = 24576
 JUDGE_ROLES = {"judge", "doc_judge"}  # model roles that only read and give verdicts
 
 
 def output_limit(context: int | None, *, writes: bool = True) -> int:
-    """Tokens one agent reply may produce: half the context, at most 24K. A coder writes whole files in one reply;
-    replies of 10K+ tokens came close to the old 16K cap (2026-10-21), and a cut-off reply is lost. Under a 32K cap
-    the largest of 6,393 replies was 16,782 tokens (p99.9 14,277), so 24K keeps ~7.8K headroom. OpenCode compacts
-    at context minus this reserve: 32K of 98K compacted the writer at 65.5K, twice in one research ticket
-    (2026-11-25); 24K moves that to 73.7K.
+    """Tokens one agent reply may produce: half the context, at most oMLX's 32K. A coder writes whole files in
+    one reply; replies of 10K+ tokens came close to the old 16K cap (2026-10-21), and a cut-off reply is lost.
     A judge-only model writes a verdict, so its context goes to reading: with half of 32K reserved, a review of a
     28 KB proposal was compacted mid-way and lost its findings (2026-10-25)."""
-    half = (context or 32768) // 2
-    return min(WRITER_OUTPUT, half) if writes else min(JUDGE_OUTPUT, half)
+    return min(32768, (context or 32768) // 2) if writes else min(JUDGE_OUTPUT, (context or 32768) // 2)
 
 
 def lan_hostname(sysapi: SysAPI) -> str:
