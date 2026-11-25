@@ -132,6 +132,22 @@ llm_models:
     roles: [judge]
     sampling:  # huggingface.co/google/gemma-4-31b-it (2026-10-26): one set for every use
       thinking: {temperature: 1.0, top_p: 0.95, top_k: 64}
+  - id: inkling-2-mini
+    repo: thinkingmachines/Inkling-2-Mini
+    revision: c9d028302cd0f035fdf8e7e91f089a4ce94d2195
+    license: apache-2.0
+    disk_gb: 20.2
+    mem_gb: 26  # 19.8 GB loaded (oMLX, 2026-11-25) plus prefill and KV at 64K
+    lane: heavy
+    vision: true
+    # The document editor (ADR-0030, 2026-11-25): on seven errors planted in two chapter sections it recorded all
+    # seven with the source line, where Gemma 4 31B recorded none; 31-62 tok/s (Gemma 6-7); time to first token
+    # 1-2 s from 8K to 56K tokens (Gemma re-read the whole prompt above ~23K). Vendor's own MXFP8/NVFP4 checkpoint,
+    # needs oMLX >= 0.8.1. Its card warns of occasional reasoning loops: LAW's repeat guard and output cap apply.
+    context: 65536
+    roles: [doc_judge]
+    sampling:  # generation_config.json of the release: temperature 1.0, sampling on, no top-p or top-k cut
+      thinking: {temperature: 1.0, top_p: 1.0, top_k: 0}
   - id: qwen3-embedding-4b
     repo: mlx-community/Qwen3-Embedding-4B-4bit-DWQ
     revision: b5d88f1fe49b50d2ac01b4692ca2d387f14f9c72

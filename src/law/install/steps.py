@@ -650,7 +650,7 @@ class OpenCodeConfig:
         # `temperature: true` makes OpenCode send the agent's temperature at all (checked on the wire, OpenCode
         # 1.18.7: without it no temperature goes out and oMLX falls back to its own default)
         models = {m.id: {"name": m.id, "limit": {"context": m.context or 32768,
-                                                 "output": output_limit(m.context, writes=set(m.roles) != {"judge"})},
+                                                 "output": output_limit(m.context, writes=not set(m.roles) <= JUDGE_ROLES)},
                          **({"temperature": True} if m.sampling else {}),
                          # a vision model sees images (a design reference, a screenshot): without these OpenCode
                          # sends text only (checked on the wire; seen 2026-10-28, an agent probing an image's pixels
@@ -738,6 +738,7 @@ class OpenCodeConfig:
 
 
 JUDGE_OUTPUT = 6144
+JUDGE_ROLES = {"judge", "doc_judge"}  # model roles that only read and give verdicts
 
 
 def output_limit(context: int | None, *, writes: bool = True) -> int:

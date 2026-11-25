@@ -36,13 +36,16 @@ from law.handlers.tasks import (  # noqa: E402
     REPORT_DUE,
     agent_env,
     doc_sections,
+    json_report,
     read_limits,
 )
 from law.paths import LawPaths  # noqa: E402
 
 CHAPTER = "chapters/01-what-a-digital-bank-is.md"
 SECTIONS = ("How it differs from an e-money wallet", "Capital and headcount")
-COPY = ("chapters", "sources", ".law/RESEARCH.md", ".law/STYLE.md", ".law/PROMPT.md", ".law/REQUESTS.md")
+# everything a review round has, so no finding is about the copy itself (a first run reported the missing build)
+COPY = ("chapters", "sources", "diagrams", "tools", "book.md", ".law/RESEARCH.md", ".law/STYLE.md", ".law/PROMPT.md",
+        ".law/REQUESTS.md", ".law/check.sh", ".law/env.sh")
 SECTION_TIMEOUT_S = 45 * 60
 
 
@@ -159,7 +162,10 @@ async def opencode(cmd: list[str], work: Path, env: dict[str, str],
 
 
 def has_report(events: list[dict[str, Any]]) -> bool:
-    return any('"tested"' in e.get("part", {}).get("text", "") for e in events if e.get("type") == "text")
+    """LAW's own test: the session's final answer parses as a report with results (an earlier message that only
+    quotes the format does not count)."""
+    texts = [e["part"]["text"] for e in events if e.get("type") == "text" and e.get("part", {}).get("text")]
+    return bool(texts) and bool(json_report(texts[-1]).get("tested"))
 
 
 def score(sections: list[dict[str, Any]]) -> dict[str, Any]:

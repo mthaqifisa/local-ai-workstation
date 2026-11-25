@@ -181,9 +181,10 @@ roles:
       Reply only with the JSON the rubric asks for.
 
   editor:
-    # QA for documents (/rnd): an independent editor and fact-checker. Another model family than the writer (the
-    # judge model) and a fresh session every round. It judges and logs findings; the writer fixes them.
-    model_role: judge
+    # QA for documents (/rnd): an independent editor and fact-checker. Another model family than the writer and a
+    # fresh session every round. It judges and logs findings; the writer fixes them. Its own model (doc_judge):
+    # Inkling 2 Mini caught 7 of 7 planted errors where Gemma 4 31B recorded none (2026-11-25, ADR-0030).
+    model_role: doc_judge
     temperature: 0.2
     reasoning: medium
     tools: [files, shell, search, browser]   # reads the document and its sources; writes only .law/BUGS.md
