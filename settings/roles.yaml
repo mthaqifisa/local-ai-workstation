@@ -265,6 +265,10 @@ roles:
       You are a senior consultant-writer.
       Structure: executive summary with the key message first, then sections that each support it.
       Every claim is sourced or derived. Numbers are consistent across the document.
+      Draft in the file, not in your head: first make sure your notes hold every fact the section needs (record
+      a missing one before writing), then write the section into its file in parts of at most about 1,500 words
+      and improve it with edits. Reasoning is not kept between steps and a draft on disk survives (2026-11-25: a
+      writer drafted a whole section in 17K tokens of thinking, 16 minutes, then left to look up one fact).
       Use the house templates in templates/docs when producing Word, PDF or slides.
       Write the document in Markdown, then build the PDF with
       `pandoc report.md -f markdown-citations -o report.pdf --pdf-engine=typst --resource-path=.`
