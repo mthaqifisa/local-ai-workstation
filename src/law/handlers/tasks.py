@@ -313,6 +313,17 @@ MIN_SESSION_S = 30 * 60
 CHECK_SCRIPT = f"{FOLDER}/check.sh"
 CHECK_TIMEOUT_S = 30 * 60
 CHECK_TAIL = 3000
+# A gate step that never ran but did not fail the script (seen 2026-11-25: DBTC-8's check.sh ran
+# `go -C code/ledger gofmt -l .`, Go answered "go gofmt: unknown command" on stderr, the captured list was empty and
+# the formatting check passed every time). Only messages that mean the command itself does not exist or was misused.
+GATE_STEP_BROKEN = re.compile(r"(?im)^(?:.*: command not found|\S+(?: \S+)?: unknown command\b.*|"
+                              r"unknown (?:shorthand )?flag: .*|Unknown command: .*)$")
+GATE_BROKEN_HEAD = f"{CHECK_SCRIPT} passed, but a step in it never ran: "
+
+
+def broken_gate_steps(output: str) -> list[str]:
+    """Lines of a passing gate run that show one of its own commands did not exist or was called wrongly."""
+    return list(dict.fromkeys(m.group(0).strip() for m in GATE_STEP_BROKEN.finditer(output)))[:5]
 # LAW does a ticket's bookkeeping (2026-11-24): agents spent over half of their model turns editing PLAN.md and
 # PROGRESS.md and running git, at 15-45 s a turn on the local model. LAW already runs the gate after every ticket;
 # when it passes, LAW commits the work with the ticket's ID, ticks it and records the agent's reply as its progress.
@@ -1409,14 +1420,19 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         await ctx.progress(f"🔍 LAW runs {CHECK_SCRIPT} (the project's whole gate)")
         env = {**agent_env(rt, "coder"), **project_env(folder)}
         try:
-            await run_cmd(ctx, ["bash", CHECK_SCRIPT], cwd=folder, env=env, timeout_s=CHECK_TIMEOUT_S,
-                          progress_every=10**9)  # the build log is not progress
+            output = await run_cmd(ctx, ["bash", CHECK_SCRIPT], cwd=folder, env=env, timeout_s=CHECK_TIMEOUT_S,
+                                   progress_every=10**9)  # the build log is not progress
         except Fatal as exc:
             await ctx.progress(f"❌ {CHECK_SCRIPT} failed: " + ("the next session fixes it first" if after_ticket
                                                               else "the agent is still working on it"))
             return f"{CHECK_SCRIPT} failed:\n{str(exc)[-CHECK_TAIL:]}"
         except TimeoutError:
             return f"{CHECK_SCRIPT} did not finish within {CHECK_TIMEOUT_S // 60} minutes."
+        if broken := broken_gate_steps(output):
+            await ctx.progress(f"❌ {CHECK_SCRIPT} has a step that never ran: {broken[0][:120]}")
+            return GATE_BROKEN_HEAD + " | ".join(broken) + (
+                ". Fix that line of the gate so the check really runs (and fails when it should), run it again "
+                "and make it pass.")
         tid = TICKET_ID.match(commit_as or "")
         plan = folder / FOLDER / "PLAN.md"
         if tid and plan.is_file() and re.search(rf"(?m)^\s*- \[ \]\s*{re.escape(tid.group(0))}\b", plan.read_text()):
