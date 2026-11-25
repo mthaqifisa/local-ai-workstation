@@ -73,3 +73,12 @@ The first Gemma rerun was stopped once its result could no longer change the dec
 - Inkling's model card warns of occasional reasoning loops. LAW's repeat-command guard, output cap and
   same-session report completion apply.
 - A second heavy model family on disk (20 GB). Gemma stays until the other roles are decided.
+
+## Addendum: the reviewer role stays on Gemma (2026-11-25 11:55)
+
+`scripts/judge_calibration.py` on Inkling 2 Mini was stopped at 25 of its 90 verdicts. On those same 25 items:
+Inkling caught 14 of 16 seeded flaws (88%) against Gemma's 10 of 16 (62%). But it failed 6 of 9 good answers
+(67%) against Gemma's 2 of 9 (22%), including scores of 0 for working code. A reviewer that fails good work blocks
+gates and sends writers after problems that do not exist, so the reviewer keeps Gemma. QA also keeps Gemma until
+`scripts/qa_calibration.py` has run; the book pipeline does not use QA. The partial log is in
+~/LAW/outputs/judge/judge-partial-20261125-inkling-2-mini.log.
