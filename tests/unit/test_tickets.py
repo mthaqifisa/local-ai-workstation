@@ -973,3 +973,47 @@ def test_law_still_finishes_a_ticket_the_agent_ticked_itself(tmp_path: Path) -> 
     subprocess.run(["git", "commit", "-qam", "B-12"], cwd=project, check=True)
     assert not tasks.ticket_open(project, "B-12") and tasks.ticket_open(project, "B-13")
     assert not tasks.ticket_open(project, "B-1")  # B-1 is not B-12
+
+
+async def test_a_momentarily_full_model_server_is_waited_out(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Seen 2026-11-26: a Telegram request and the writer hit the 27B together, oMLX aborted both ("process memory
+    limit exceeded") and the build stopped until the owner pressed Retry. LAW waits and goes on instead."""
+    from law.handlers import project as _registers_project_specs  # noqa: F401
+    from law.handlers import tasks
+
+    project = tmp_path / "pantry"
+    (project / ".law").mkdir(parents=True)
+    plan = project / ".law" / "PLAN.md"
+    plan.write_text(PLAN.replace("- [ ] P-3 batches\n", ""))
+    (project / ".law" / "check.sh").write_text("exit 0\n")
+    monkeypatch.setattr(tasks, "uncommitted", lambda folder: [])
+    waits: list[float] = []
+
+    async def no_sleep(seconds: float) -> None:
+        waits.append(seconds)
+
+    monkeypatch.setattr(tasks.asyncio, "sleep", no_sleep)
+    cmds: list[list[str]] = []
+    busy = 1
+    busy_error = ('opencode exited 1: {"error":{"message":"Request aborted: process memory limit exceeded '
+                  '(usage 46.7 GB, abort threshold (hard watermark) 46.6 GB)"}}')
+
+    async def fake_run_cmd(ctx: Any, cmd: list[str], **kw: Any) -> str:
+        if cmd[0] != "opencode":
+            return ""
+        cmds.append(cmd)
+        if len(cmds) <= busy:
+            raise Fatal(busy_error)
+        _tick(plan, "P-2")
+        return json.dumps({"type": "text", "part": {"type": "text", "text": "done"}})
+
+    monkeypatch.setattr(tasks, "run_cmd", fake_run_cmd)
+    await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
+    assert len(cmds) == 2 and waits[:1] == [tasks.MEMORY_BUSY_WAITS_S[0]]
+
+    plan.write_text(PLAN.replace("- [ ] P-3 batches\n", ""))
+    cmds.clear()
+    busy = 9  # still full after every wait: the stage fails as before, for the owner's Retry
+    with pytest.raises(Fatal, match="process memory limit exceeded"):
+        await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
+    assert len(cmds) == len(tasks.MEMORY_BUSY_WAITS_S) + 1
