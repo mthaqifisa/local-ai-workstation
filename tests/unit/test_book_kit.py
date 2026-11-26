@@ -153,3 +153,70 @@ def test_install_skips_caches_and_system_files(tmp_path: Path) -> None:
     assert "tools/verify.py" in added
     assert not any("__pycache__" in a or a.endswith((".pyc", ".DS_Store")) for a in added)
     assert not (tmp_path / "book" / "tools" / "__pycache__").exists()
+
+
+def test_self_numbered_headings_turn_automatic_numbering_off() -> None:
+    """Seen 2026-11-26: headings read "1.1 7.1 Double-entry design" because the writer and the kit both numbered."""
+    text = "# 7. The core ledger\n\n## 7.1 Double-entry\n\n### Why twice\n\n```\n# 1 a comment\n```\n"
+    out = prepare.unnumber_headings(text)
+    assert "## 7.1 Double-entry {.unnumbered}" in out and "### Why twice {.unnumbered}" in out
+    assert "# 1 a comment\n" in out  # code is not a heading
+    assert prepare.unnumber_headings("# Intro\n\n## Background\n") == "# Intro\n\n## Background\n"
+
+
+def test_readability_rules_for_every_reader(tmp_path: Path) -> None:
+    """Seen 2026-11-26: the tech trial's prose averaged 40 words a sentence with 21 dashes per 1,000 words."""
+    install(KIT, tmp_path, "Kit Test")
+    long = " ".join(["word"] * 45) + "."
+    quote = '"' + " ".join(["said"] * 35) + '"'
+    (tmp_path / "chapters" / "01-one.md").write_text(
+        f"# One\n\n## 1.1 Part\n\nShort and clear. {long}\n\nIt said {quote} once.\n\n"
+        '1. See "The hold\'s twin" and 2. "The hold\'s code" again.\n\n```\n' + long + "\n```\n")
+    problems = verify.check_style(tmp_path, tmp_path / "chapters" / "01-one.md", whole=True)
+    assert any("sentences over 40 words" in p for p in problems)
+    assert sum("quotation" in p for p in problems) == 1  # the short quoted titles never pair up
+    dashes = "\n\n".join("A — b — c — d — e — f — g — h — i — j." for _ in range(40))
+    (tmp_path / "chapters" / "01-one.md").write_text(f"# One\n\n{dashes}\n")
+    assert any("dashes" in p for p in verify.check_style(tmp_path, tmp_path / "chapters" / "01-one.md", whole=True))
+
+
+def test_the_gate_checks_only_the_writing_this_change_adds(tmp_path: Path) -> None:
+    install(KIT, tmp_path, "Kit Test")
+    chapter = tmp_path / "chapters" / "01-one.md"
+    old = " ".join(["old"] * 45) + "."
+    chapter.write_text(f"# One\n\n{old}\n")
+    for args in (["init", "-q"], ["config", "user.email", "law@example.com"], ["config", "user.name", "LAW"],
+                 ["add", "-A"], ["commit", "-q", "-m", "start"]):
+        subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
+    assert verify.check_style(tmp_path, chapter, whole=False) == []  # old text: the editor's job, not this ticket's
+    chapter.write_text(f"# One\n\n{old}\n\n" + " ".join(["new"] * 45) + ".\n")
+    found = verify.check_style(tmp_path, chapter, whole=False)
+    assert len(found) == 1 and "45-word sentence" in found[0] and "new new" in found[0]
+
+
+def test_sequence_self_messages_and_long_labels(tmp_path: Path) -> None:
+    install(KIT, tmp_path, "Kit Test")
+    (tmp_path / "diagrams" / "seq.mmd").write_text(
+        "sequenceDiagram\n    J->>J: checks itself\n    J->>P: " + "x" * 70 + "\n")
+    (tmp_path / "diagrams" / "states.mmd").write_text("stateDiagram-v2\n    held --> held: retried\n")
+    problems = verify.check_diagrams(tmp_path, whole=True)
+    assert len(problems) == 2 and "self-message" in problems[0] and "70-character label" in problems[1]
+
+
+def test_upgrade_replaces_only_what_is_still_laws(tmp_path: Path) -> None:
+    """Seen 2026-11-26: the tech trial kept the kit it started with while the kit improved."""
+    from law import book_kit
+
+    old_kit = tmp_path / "old"
+    shutil.copytree(KIT, old_kit, ignore=shutil.ignore_patterns("__pycache__"))
+    (old_kit / "tools" / "build.sh").write_text("# old build\n")
+    (old_kit / "tools" / "book.css").write_text("/* old css */\n")
+    (old_kit / "tools" / "mermaid.json").unlink()  # a file the kit added later
+    book = tmp_path / "book"
+    install(old_kit, book, "Title")
+    (book / "tools" / "book.css").write_text("/* the agent fixed a check */\n")  # an agent's change is kept
+    changed = book_kit.upgrade(KIT, book)
+    assert "tools/build.sh" in changed and (book / "tools" / "build.sh").read_text() == (KIT / "tools" / "build.sh").read_text()
+    assert "tools/book.css" not in changed and "agent fixed" in (book / "tools" / "book.css").read_text()
+    assert "tools/mermaid.json" in changed
+    assert book_kit.upgrade(KIT, book) == []  # nothing left to do

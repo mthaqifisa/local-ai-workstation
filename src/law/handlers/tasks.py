@@ -15,7 +15,7 @@ from typing import Any
 
 import httpx
 
-from law import bugs, deliver, lead, specs, web
+from law import book_kit, bugs, deliver, lead, specs, web
 from law.board import ID_END
 from law.handlers.base import Runtime, Stalled, Steered, run_cmd
 from law.handlers.core import PASS_SCORE, answer, parse_verdict
@@ -656,7 +656,8 @@ and every change the owner asked for in {folder}/.law/REQUESTS.md. The findings 
    Read it as someone meeting the document for the first time: each term, product, acronym or idea a newcomer would
    need is explained where it first appears (search the whole document in reading order with `rg -n -i -w`), or
    points to where it is. An unexplained first use, an explanation that comes only later, or a topic with no link to
-   what came before is a finding (Severity: major).
+   what came before is a finding (Severity: major). Run `python3 tools/verify.py --all` when the document has the
+   book kit, and read it as its five readers (.law/STYLE.md, "Readers and voice"); a reader it fails is a finding.
    For each new finding append:
    ## BUG-<next number> · open · editor · {now}
    <one-line title of what is wrong>
@@ -684,6 +685,9 @@ search them with `rg -n -C 3 "<words>" <path>`, and end a broad search with `| h
 2. Run {folder}/.law/check.sh (it builds the PDF and HTML). A failure is a finding.
 3. Coverage: compare the headings above with the outline and the owner's requests. Every part of the outline and every
    request must be covered; a missing one is a finding.
+   Readability: run `python3 {folder}/tools/verify.py --all` from {folder} (the whole book's style and diagram
+   checks). Log its problems as findings, grouped one finding per section or per diagram (Severity: major; Where:
+   the section; Evidence: the lines it reports; Correct: shorter sentences, fewer dashes, a paraphrase, a Note).
    For each new finding append:
    ## BUG-<next number> · open · editor · {now}
    <one-line title of what is wrong>
@@ -710,6 +714,11 @@ relies on (the ten or so a newcomer would need; not everyday words), search the 
 when it first appears: what it is and why it comes up here? A first use with no explanation, an explanation that
 comes only later, or a topic that appears with no link to what came before is a finding (Severity: major); Correct
 says what to explain at the first use, or where to point back to.
+Last, read the section as each of its five readers (.law/STYLE.md, "Readers and voice"): a bank's chief executive
+(does an "In short" say what is decided and why?), a senior banker (are banking, risk and regulation exact?), a
+professor (is each claim sourced, each term defined?), a seasoned consultant (are the trade-offs and the recipe
+usable?), a fresh graduate (can every step be followed?). Each reader the section fails is a finding (Severity: major)
+that names the reader, the passage and what would serve them.
 For each finding append to {folder}/.law/BUGS.md (read its last lines first for the next number):
    ## BUG-<next number> · open · editor · {now}
    <one-line title of what is wrong>
@@ -1495,11 +1504,23 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         await ctx.progress(f"✅ {CHECK_SCRIPT} passed and the work is committed")
         return ""
 
+    async def _kit_up_to_date(ctx: Context, folder: Path) -> None:
+        """A document project's copy of LAW's book kit takes the kit's improvements between stages (book_kit.upgrade
+        keeps any file an agent changed)."""
+        changed = book_kit.upgrade(rt.paths.repo / "templates" / "rnd", folder)
+        if not changed or not (folder / ".git").exists():
+            return
+        await ctx.progress(f"📚 LAW book kit updated: {', '.join(changed)}")
+        await run_cmd(ctx, ["git", "add", "--", *changed], cwd=folder, timeout_s=60)
+        await run_cmd(ctx, ["git", "commit", "-q", "-m", "LAW book kit update: " + ", ".join(changed)], cwd=folder,
+                      timeout_s=60)
+
     async def _build_tickets(ctx: Context, p: dict[str, Any], memory: ProjectMemory | None) -> Outcome:
         """One milestone, one fresh agent session per ticket (ADR-0019). LAW names each session's ticket, then
         checks it itself; what fails goes to the next session to fix first. The stage ends when the milestone's
         tickets are ticked and the gate passes, or after IDLE_SESSIONS sessions without progress."""
         folder, version = _workdir(p), int(p.get("version", 1))
+        await _kit_up_to_date(ctx, folder)
         start = next_ticket(folder, version)
         problem, idle, text = "", 0, ""
         began = time.monotonic()
@@ -1630,6 +1651,7 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                             before: set[str]) -> dict[str, Any]:
         """QA for a document: the editor (judge model, another family than the writer) fact-checks and checks the
         build; the designer (a vision model) checks every rendered page for cut or unreadable figures."""
+        await _kit_up_to_date(ctx, folder)
         fill = {"name": a.get("name", folder.name), "version": p.get("version", 1), "folder": folder,
                 "spec_file": spec_file, "now": time.strftime("%Y-%m-%d %H:%M")}
         sections = doc_sections(folder)

@@ -9,10 +9,14 @@ for the page.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import shutil
+import subprocess
 import time
 from pathlib import Path
 
+MANIFEST = ".law/kit.json"  # hashes of the kit files as LAW last wrote them: a file that still matches is LAW's
 KIT_MARK = "tools/verify.py"  # a folder that has it already has the kit (never overwrite an agent's changes)
 # Not part of the kit: Python's cache from running the kit's tests, and macOS folder files. Copied, git refused to
 # add them (`tools/__pycache__` is ignored) and the project failed to start (seen 2026-11-25).
@@ -44,7 +48,69 @@ def install(kit: Path, folder: Path, title: str, subtitle: str = "") -> list[str
         added.append(rel.as_posix())
     for name in ("chapters", "diagrams", "assets"):
         (folder / name).mkdir(exist_ok=True)
+    manifest = {rel: _digest(folder / rel) for rel in added if rel.startswith("tools/")}
+    (folder / MANIFEST).parent.mkdir(parents=True, exist_ok=True)
+    (folder / MANIFEST).write_text(json.dumps(manifest, indent=1, sort_keys=True) + "\n")
     return added
+
+
+def upgrade(kit: Path, folder: Path) -> list[str]:
+    """Bring a project's copy of the kit up to date (seen 2026-11-26: the kit learned readability checks, diagram
+    wrapping and self-numbered headings while the tech trial ran on the copy it started with). A tools/ file is
+    replaced only while it is still LAW's: it matches the hash LAW recorded, or, before LAW recorded hashes, git has
+    exactly one commit of it (the kit's own). An agent's change is kept. .law/STYLE.md gains the kit's sections it
+    lacks; .gitignore gains the kit's lines it lacks. Returns the files changed."""
+    if not (folder / KIT_MARK).exists():
+        return []
+    try:
+        recorded: dict[str, str] = json.loads((folder / MANIFEST).read_text())
+    except (OSError, ValueError):
+        recorded = {}
+    changed, manifest = [], dict(recorded)
+    for src in kit_files(kit):
+        rel = src.relative_to(kit).as_posix()
+        dest = folder / rel
+        if rel.startswith("tools/"):
+            if dest.exists() and _digest(dest) != _digest(src) and not _still_laws(folder, rel, recorded):
+                continue
+            if not dest.exists() or _digest(dest) != _digest(src):
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy(src, dest)  # a fresh time, so build.sh sees a newer config and re-renders
+                changed.append(rel)
+            manifest[rel] = _digest(src)
+        elif rel == ".law/STYLE.md" and dest.exists():
+            mine = dest.read_text()
+            missing = [sec for sec in _sections(src.read_text()) if sec.splitlines()[0] not in mine]
+            if missing:
+                dest.write_text(mine.rstrip() + "\n\n" + "\n\n".join(missing) + "\n")
+                changed.append(rel)
+        elif rel == ".gitignore" and dest.exists():
+            have = set(dest.read_text().splitlines())
+            extra = [ln for ln in src.read_text().splitlines() if ln and ln not in have]
+            if extra:
+                dest.write_text(dest.read_text().rstrip() + "\n" + "\n".join(extra) + "\n")
+                changed.append(rel)
+    (folder / MANIFEST).parent.mkdir(parents=True, exist_ok=True)
+    (folder / MANIFEST).write_text(json.dumps(manifest, indent=1, sort_keys=True) + "\n")
+    return changed
+
+
+def _digest(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _still_laws(folder: Path, rel: str, recorded: dict[str, str]) -> bool:
+    if rel in recorded:
+        return _digest(folder / rel) == recorded[rel]
+    log = subprocess.run(["git", "log", "--format=%H", "--", rel], cwd=folder, capture_output=True, text=True)
+    dirty = subprocess.run(["git", "status", "--porcelain", "--", rel], cwd=folder, capture_output=True, text=True)
+    return log.returncode == 0 and len(log.stdout.split()) == 1 and not dirty.stdout.strip()
+
+
+def _sections(text: str) -> list[str]:
+    """The `## ` sections of a Markdown file, each with its heading."""
+    parts = text.split("\n## ")
+    return ["## " + part.strip() for part in parts[1:]]
 
 
 def _yaml(text: str) -> str:

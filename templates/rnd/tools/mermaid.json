@@ -1,0 +1,14 @@
+{
+  "sequence": {
+    "wrap": true,
+    "width": 190,
+    "actorMargin": 70,
+    "messageMargin": 42,
+    "noteMargin": 12,
+    "boxTextMargin": 8,
+    "mirrorActors": false,
+    "showSequenceNumbers": false
+  },
+  "flowchart": { "wrappingWidth": 220, "padding": 12 },
+  "themeVariables": { "fontFamily": "Helvetica, Arial, sans-serif" }
+}

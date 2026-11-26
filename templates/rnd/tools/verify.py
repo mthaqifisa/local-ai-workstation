@@ -8,7 +8,13 @@
 5. No code line is long enough to run off the page.
 6. Every figure reference (@fig:<name>) names a figure, and no text is raw Typst or HTML, which shows in one format
    only (seen 2026-11-24: `@fig:x`{=typst} read "drawn in : the ..." in the HTML).
-Usage: python3 tools/verify.py
+7. Readable by every reader the book is for (a bank's chief executive, a senior banker, a professor, a consultant
+   and a fresh graduate): no sentence over SENTENCE_MAX words, a section's sentences average at most SENTENCE_AVG,
+   dashes stay rare, a quotation over QUOTE_MAX words is paraphrased and cited instead, and a sequence diagram has
+   no self-message (its label sits on the lifeline; use a Note) and no label over LABEL_MAX characters.
+   The gate checks the text and diagrams this change adds or edits (`git diff HEAD`), so a ticket answers for its
+   own writing; `--all` checks the whole book (the editor's view).
+Usage: python3 tools/verify.py [--all]
 """
 
 from __future__ import annotations
@@ -28,6 +34,17 @@ FOOTNOTE_DEF = re.compile(r"^\[\^([^\]]+)\]:\s*(.*)$", re.MULTILINE)
 FOOTNOTE_REF = re.compile(r"\[\^([^\]]+)\](?!:)")
 URL = re.compile(r"https?://\S+")
 FENCE = re.compile(r"^(```|~~~)")
+SENTENCE_MAX = 40  # words; measured 2026-11-26: the tech trial's prose averaged 40 and lost its non-expert readers
+SENTENCE_AVG = 22
+DASHES_PER_1000 = 8
+QUOTE_MAX = 30
+LABEL_MAX = 60
+NOT_PROSE = re.compile(r"^\s*(\||#|!\[|\[\^|>|<|---|:::|\{)")
+ABBREV = re.compile(r"\b(e\.g|i\.e|etc|vs|cf|Dr|Mr|Ms|No|Fig|Sec|Art|para)\.", re.IGNORECASE)
+SENT_SPLIT = re.compile(r"(?<=[.!?])[\"”’)]*\s+(?=[A-Z0-9“\"(])")
+QUOTED = re.compile(r"“([^”]*)”|\"([^\"]*)\"")  # left to right, so one quote's end never pairs with the next
+SELF_MSG = re.compile(r"^\s*(\w+)\s*-[-)x>]*>>?[+-]?\s*\1\s*:", re.MULTILINE)
+SEQ_LABEL = re.compile(r"^\s*\w+\s*-[-)x>]+[+-]?\s*\w+\s*:\s*(.+)$", re.MULTILINE)
 
 
 def check_outputs(root: Path) -> list[str]:
@@ -118,6 +135,107 @@ def check_code(text: str) -> list[str]:
     return problems
 
 
+def changed_lines(root: Path, path: Path) -> set[int] | None:
+    """Line numbers this change adds or edits in `path` (None: all of it, e.g. a new file or no git)."""
+    rel = str(path.relative_to(root))
+    tracked = subprocess.run(["git", "ls-files", "--error-unmatch", rel], cwd=root, capture_output=True)
+    if tracked.returncode != 0:
+        return None
+    diff = subprocess.run(["git", "diff", "-U0", "HEAD", "--", rel], cwd=root, capture_output=True, text=True)
+    lines: set[int] = set()
+    for m in re.finditer(r"^@@ -\S+ \+(\d+)(?:,(\d+))? @@", diff.stdout, re.MULTILINE):
+        start, count = int(m.group(1)), int(m.group(2) or 1)
+        lines.update(range(start, start + count))
+    return lines
+
+
+def paragraphs(text: str) -> list[tuple[int, int, str]]:
+    """Prose paragraphs as (first line, last line, text): no code, tables, headings, figures, quotes or notes."""
+    out, inside, block, first = [], False, [], 0
+    for n, line in enumerate(text.splitlines() + [""], start=1):
+        if FENCE.match(line.strip()):
+            inside = not inside
+            line = ""
+        if inside or not line.strip() or NOT_PROSE.match(line):
+            if block:
+                out.append((first, n - 1, " ".join(block)))
+            block = []
+            continue
+        if block and re.match(r"^\s*(?:[-*+]|\d+\.)\s+", line):  # a list item is a paragraph of its own
+            out.append((first, n - 1, " ".join(block)))
+            block = []
+        if not block:
+            first = n
+        block.append(re.sub(r"^\s*(?:[-*+]|\d+\.)\s+", "", line.strip()))
+    return out
+
+
+def sentences(prose: str) -> list[str]:
+    clean = re.sub(r"\[\^[^\]]+\]", "", prose)
+    clean = re.sub(r"`[^`]*`", "X", clean)
+    clean = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", clean)
+    clean = ABBREV.sub(lambda m: m.group(0).replace(".", ""), clean)
+    return [x for x in SENT_SPLIT.split(clean) if len(x.split()) >= 3]
+
+
+def check_style(root: Path, part: Path, whole: bool) -> list[str]:
+    """Rule 7 for one chapter file: the paragraphs this change touched, or all of them with --all."""
+    text = part.read_text()
+    changed = None if whole else changed_lines(root, part)
+    if changed is not None and not changed:
+        return []
+    paras = [p for p in paragraphs(text) if changed is None or any(p[0] <= n <= p[1] for n in changed)]
+    problems, lengths, words, dashes = [], [], 0, 0
+    heads = [(n, line.lstrip("#").strip()) for n, line in enumerate(text.splitlines(), start=1)
+             if re.match(r"^#{1,2} ", line)]
+    long_by_section: dict[str, list[int]] = {}
+    for first, _, prose in paras:
+        for sent in sentences(prose):
+            size = len(sent.split())
+            lengths.append(size)
+            if size > SENTENCE_MAX and whole:  # the editor's view: one line per section
+                section = next((h for n, h in reversed(heads) if n <= first), "(before the first heading)")
+                long_by_section.setdefault(section, []).append(first)
+            elif size > SENTENCE_MAX:
+                problems.append(f"line {first}: a {size}-word sentence (at most {SENTENCE_MAX}; split it): "
+                                f"\"{' '.join(sent.split()[:12])} ...\"")
+        words += len(prose.split())
+        dashes += prose.count("—") + prose.count(" – ")
+        for q in QUOTED.finditer(prose):
+            quote = q.group(1) or q.group(2) or ""
+            if len(quote.split()) > QUOTE_MAX:
+                problems.append(f"line {first}: a {len(quote.split())}-word quotation (at most {QUOTE_MAX}): "
+                                "quote the key phrase and paraphrase the rest, with its footnote")
+    for section, lines in long_by_section.items():
+        shown = ", ".join(str(n) for n in sorted(set(lines))[:12]) + (" ..." if len(set(lines)) > 12 else "")
+        problems.append(f'"{section}": {len(lines)} sentences over {SENTENCE_MAX} words (paragraphs at lines {shown})')
+    if len(lengths) >= 10 and sum(lengths) / len(lengths) > SENTENCE_AVG:
+        problems.append(f"sentences average {sum(lengths) / len(lengths):.0f} words (at most {SENTENCE_AVG}): "
+                        "one idea per sentence")
+    if words >= 300 and dashes * 1000 / words > DASHES_PER_1000:
+        problems.append(f"{dashes} dashes in {words} words ({dashes * 1000 / words:.0f} per 1,000; at most "
+                        f"{DASHES_PER_1000}): use full stops, commas or brackets")
+    return problems
+
+
+def check_diagrams(root: Path, whole: bool) -> list[str]:
+    problems = []
+    for src in sorted((root / "diagrams").glob("*.mmd")):
+        if not whole and changed_lines(root, src) == set():
+            continue
+        text = src.read_text()
+        name = src.relative_to(root)
+        if not re.match(r"\s*(%%.*\n\s*)*sequenceDiagram\b", text):  # a state's self-transition is fine
+            continue
+        for m in SELF_MSG.finditer(text):
+            problems.append(f"{name}: '{m.group(0).strip()[:50]}' is a self-message, whose label is drawn over the "
+                            "lifeline: write it as `Note right of <who>: ...`")
+        for m in SEQ_LABEL.finditer(text):
+            if len(m.group(1)) > LABEL_MAX:
+                problems.append(f"{name}: a {len(m.group(1))}-character label (at most {LABEL_MAX}): shorten it")
+    return problems
+
+
 def main() -> int:
     root = Path.cwd()
     if not (root / "book.md").is_file():
@@ -125,9 +243,12 @@ def main() -> int:
         return 1
     text = source_text(root)
     problems = check_outputs(root) + check_images(text, root) + check_citations(text) + check_references(text)
+    whole = "--all" in sys.argv[1:]
     for part in parts(root):
         if part.is_file():
             problems += [f"{part.relative_to(root)}: {p}" for p in check_code(part.read_text())]
+            problems += [f"{part.relative_to(root)}: {p}" for p in check_style(root, part, whole)]
+    problems += check_diagrams(root, whole)
     if problems:
         print("verify: FAIL\n" + "\n".join(f"- {p}" for p in problems), file=sys.stderr)
         return 1

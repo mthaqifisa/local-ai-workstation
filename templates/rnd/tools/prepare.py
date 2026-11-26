@@ -82,6 +82,32 @@ def prepare(text: str, root: Path) -> str:
     return IMAGE.sub(fix, text)
 
 
+# A heading the writer numbered (`## 7.1 Double-entry`, `# 7. The core ledger`). When the book numbers its own
+# headings, automatic numbering is switched off for all of them, or the reader sees "1.1 7.1" (seen 2026-11-26).
+HEADING = re.compile(r"^(#{1,6})[ \t]+(.+?)[ \t]*$", re.MULTILINE)
+SELF_NUMBERED = re.compile(r"^(?:Chapter\s+)?\d+(?:\.\d+)*\.?\s+\S")
+FENCED = re.compile(r"^(```|~~~).*?^\1", re.MULTILINE | re.DOTALL)
+
+
+def unnumber_headings(text: str) -> str:
+    """Mark every heading {.unnumbered} when the writer numbers headings themselves (outside code blocks)."""
+    code = [(m.start(), m.end()) for m in FENCED.finditer(text)]
+
+    def outside(pos: int) -> bool:
+        return not any(a <= pos < b for a, b in code)
+
+    heads = [m for m in HEADING.finditer(text) if outside(m.start())]
+    if not any(SELF_NUMBERED.match(m.group(2)) for m in heads):
+        return text
+
+    def mark(m: re.Match[str]) -> str:
+        if not outside(m.start()) or m.group(2).rstrip().endswith("}"):
+            return m.group(0)
+        return f"{m.group(1)} {m.group(2)} {{.unnumbered}}"
+
+    return HEADING.sub(mark, text)
+
+
 def figure_numbers(text: str) -> dict[str, int]:
     """Each figure label and its number: the captioned images standing alone, in order."""
     numbers: dict[str, int] = {}
@@ -125,7 +151,7 @@ def main() -> None:
     root, out = Path(sys.argv[1]).resolve(), Path(sys.argv[2])
     target = sys.argv[3] if len(sys.argv) > 3 else "pdf"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(number_figures(prepare(source_text(root), root), target))
+    out.write_text(number_figures(unnumber_headings(prepare(source_text(root), root)), target))
 
 
 if __name__ == "__main__":

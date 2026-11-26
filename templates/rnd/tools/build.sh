@@ -14,15 +14,18 @@ PUPPETEER="${LAW_PUPPETEER_CONFIG:-$HOME/LAW/config/puppeteer.json}"
 mkdir -p build
 
 shopt -s nullglob
+# tools/mermaid.json wraps long labels to the box width and drops the repeated bottom boxes; a sequence diagram's
+# labels ran across lifelines without it (seen 2026-11-26). A newer config re-renders every diagram.
+MERMAID_CFG=tools/mermaid.json
 for src in diagrams/*.mmd; do
   out="${src%.mmd}.png"
-  if [ ! -f "$out" ] || [ "$src" -nt "$out" ]; then
+  if [ ! -f "$out" ] || [ "$src" -nt "$out" ] || [ "$MERMAID_CFG" -nt "$out" ]; then
     echo "==> diagram $src"
     # the SVG records the diagram's natural size (mmdc quietly shrinks a PNG wider than 800 px to fit, which
     # hides unreadable text); the PNG is what the book shows
     mkdir -p build/diagrams
-    mmdc -p "$PUPPETEER" -i "$src" -o "build/${src%.mmd}.svg" -b white -q \
-      && mmdc -p "$PUPPETEER" -i "$src" -o "$out" -s 3 -b white -q \
+    mmdc -p "$PUPPETEER" -c "$MERMAID_CFG" -i "$src" -o "build/${src%.mmd}.svg" -b white -q \
+      && mmdc -p "$PUPPETEER" -c "$MERMAID_CFG" -i "$src" -o "$out" -s 3 -b white -q \
       || { echo "build: Mermaid could not render $src (fix its syntax)" >&2; exit 1; }
   fi
 done

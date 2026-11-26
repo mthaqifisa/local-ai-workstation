@@ -293,6 +293,11 @@ features:
 - State each fact once, in the section it belongs to. Before writing a section, list the headings of the chapter
   so far (`rg -n "^#" chapters/<file>`) and search it for the facts you will use: refer back to a fact already
   stated ("see <section>") instead of restating it.
+- Five readers judge every chapter: a bank's chief executive, a senior banker, a professor, a seasoned consultant
+  and a fresh graduate; .law/STYLE.md ("Readers and voice") says what each needs and how to write for all five at
+  once. Open each `##` section with an "In short" paragraph, keep sentences short (verify.py fails one over 40
+  words, an average over 22, heavy use of dashes, a quotation over 30 words and a self-message in a sequence
+  diagram, for the text your ticket writes), and run `python3 tools/verify.py --all` before you finish.
 - Write for a reader meeting each idea for the first time. Before you use a term, product, acronym or idea (a
   database, double-entry, an idempotency key), search the whole book in reading order for it
   (`rg -n -i -w --sort path "<term>" book.md chapters/ | head -5`). If this is its first appearance, explain it here
@@ -319,9 +324,12 @@ passes, record the versions of pandoc, typst, mmdc and dot in .law/ENVIRONMENT.m
 fix only the tool it names (install it with Homebrew), run it again, then record and commit as above."""
 
 DOC_RUBRIC = """You are reviewing a chapter of a book for a demanding professional reader. Score it 1-5:
-5 = accurate, complete for its scope, every claim cited, clear for both a beginner and an expert, diagrams correct
-and readable within the page; 4 = solid, cosmetic issues only; 3 = one material gap, error, uncited claim or
-unreadable diagram; 2 = several; 1 = wrong or missing.
+5 = accurate, complete for its scope, every claim cited, and impressive to all five readers it is written for (a
+bank's chief executive: the decision and why, from the "In short"; a senior banker: banking, risk and regulation
+exact; a professor: every claim sourced, every term defined; a seasoned consultant: trade-offs and a usable recipe;
+a fresh graduate: every step followable), short clear sentences (`python3 tools/verify.py --all` reports none over 40
+words), diagrams correct and readable within the page; 4 = solid, cosmetic issues only; 3 = one material gap, error,
+uncited claim or unreadable diagram; 2 = several; 1 = wrong or missing.
 Check facts and numbers against the cited sources, consistency with .law/STYLE.md and the outline, that each term,
 tool or idea is explained where the reader first meets it in the whole book (search the book in reading order:
 `rg -n -i -w --sort path "<term>" book.md chapters/ | head -5`; an unexplained first use, or one explained only later,
@@ -460,8 +468,15 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
     async def _install_kit(ctx: Context, project: Project) -> None:
         """A document project starts with LAW's tested book kit, committed, so no session builds its own tooling."""
         folder = Path(project.dir)
-        added = book_kit.install(rt.paths.repo / "templates" / "rnd", folder, project.name)
+        kit = rt.paths.repo / "templates" / "rnd"
+        added = book_kit.install(kit, folder, project.name)
         if not added:
+            upgraded = book_kit.upgrade(kit, folder)
+            if upgraded:
+                await ctx.progress(f"📚 LAW book kit updated: {', '.join(upgraded)}")
+                await run_cmd(ctx, ["git", "add", "--", *upgraded], cwd=folder, timeout_s=60)
+                await run_cmd(ctx, ["git", "commit", "-q", "-m", "LAW book kit update: " + ", ".join(upgraded)],
+                              cwd=folder, timeout_s=60)
             return
         await ctx.progress(f"📚 LAW book kit installed ({len(added)} files: build, checks, style guide)")
         await run_cmd(ctx, ["git", "add", "--", *added], cwd=folder, timeout_s=60)
