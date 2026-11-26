@@ -4,3 +4,9 @@ book.pdf
 book.html
 __pycache__/
 .DS_Store
+# Build output of a book's code samples (2026-11-26: Maven's target/ jar stopped LAW committing a Java ticket)
+target/
+.gradle/
+*.class
+node_modules/
+.venv/
