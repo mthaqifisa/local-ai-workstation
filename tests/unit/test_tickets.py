@@ -1017,3 +1017,20 @@ async def test_a_momentarily_full_model_server_is_waited_out(tmp_path: Path, mon
     with pytest.raises(Fatal, match="process memory limit exceeded"):
         await tasks.make_handlers(_rt(tmp_path))["task_work"](_ctx(_payload(project)))
     assert len(cmds) == len(tasks.MEMORY_BUSY_WAITS_S) + 1
+
+
+def test_a_ticket_id_never_matches_its_split_parts(tmp_path: Path) -> None:
+    """Seen 2026-11-26: DBTC-22 was split into DBTC-22.1 (code) and DBTC-22.2 (text); `\\b` let "DBTC-22" match
+    DBTC-22.1, so LAW ticked the code part done with no code written."""
+    from law import lead
+    from law.handlers import tasks
+
+    project = tmp_path / "book"
+    (project / ".law").mkdir(parents=True)
+    plan = project / ".law" / "PLAN.md"
+    plan.write_text("- [ ] B-22.1 batch code\n- [ ] B-22.2 chapter text\n- [ ] B-220 other\n")
+    _git_repo(project)
+    assert not tasks.ticket_open(project, "B-22") and not tasks.tick(project, "B-22")
+    assert plan.read_text().count("- [ ]") == 3
+    assert tasks.tick(project, "B-22.1") and "- [x] B-22.1" in plan.read_text()
+    assert not lead.ticket_done(project, "B-22 batch job") and lead.ticket_done(project, "B-22.1 batch code")

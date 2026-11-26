@@ -22,6 +22,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from law.board import ID_END
 from law.paths import LawPaths
 from law.project_memory import ProjectMemory
 
@@ -213,7 +214,7 @@ def ticket_done(folder: Path, ticket: str) -> bool:
         plan = (folder / ".law" / "PLAN.md").read_text()
     except OSError:
         return False
-    return re.search(rf"(?m)^\s*- \[[xX]\]\s*{re.escape(found.group(0))}\b", plan) is not None
+    return re.search(rf"(?m)^\s*- \[[xX]\]\s*{re.escape(found.group(0))}{ID_END}", plan) is not None
 
 
 def _git(folder: Path, *args: str) -> str:

@@ -16,6 +16,7 @@ from typing import Any
 import httpx
 
 from law import bugs, deliver, lead, specs, web
+from law.board import ID_END
 from law.handlers.base import Runtime, Stalled, Steered, run_cmd
 from law.handlers.core import PASS_SCORE, answer, parse_verdict
 from law.lessons import INSTRUCTION as LESSON_RULE
@@ -205,7 +206,7 @@ def tick(project: Path, tid: str) -> bool:
     if not plan.is_file():
         return False
     text = plan.read_text()
-    new, n = re.subn(rf"(?m)^(\s*- )\[ \](\s*{re.escape(tid)}\b)", r"\1[x]\2", text, count=1)
+    new, n = re.subn(rf"(?m)^(\s*- )\[ \](\s*{re.escape(tid)}{ID_END})", r"\1[x]\2", text, count=1)
     if n:
         plan.write_text(new)
     return bool(n)
@@ -218,7 +219,7 @@ def ticket_open(project: Path, tid: str) -> bool:
     plan = project / FOLDER / "PLAN.md"
     if not plan.is_file():
         return False
-    line = rf"(?m)^\s*- \[ \]\s*{re.escape(tid)}\b"
+    line = rf"(?m)^\s*- \[ \]\s*{re.escape(tid)}{ID_END}"
     if re.search(line, plan.read_text()):
         return True
     try:
@@ -1522,7 +1523,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 if context := ticket_context(folder, version, ticket[0]):
                     task += "\n\n" + context
             prompt = f"{_scoped(p, memory)}\n\n{GATE_FAILED.format(problem=problem) if problem else ''}{task}"
-            def ticket_done(session_ticket: list[tuple[str, str] | None] = [ticket]) -> bool:  # noqa: B006
+            session_ticket: list[tuple[str, str] | None] = [ticket]  # the part it works on after a split
+
+            def ticket_done(session_ticket: list[tuple[str, str] | None] = session_ticket) -> bool:
                 current, now = session_ticket[0], next_ticket(folder, version)
                 if current is None or now == current:
                     return False
@@ -1547,7 +1550,11 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
             if memory is not None:
                 memory.end_session(ctx.job.id)  # the next ticket starts a fresh session, not this one
             had_problem = bool(problem)
-            problem = await _gate_problem(ctx, folder, commit_as=ticket[1] if ticket else None,
+            # After a split the session worked on its first part: finish that one, never the split parent
+            # (seen 2026-11-26: DBTC-22 was split into 22.1 code and 22.2 text; LAW finished "DBTC-22" and ticked 22.1
+            # with no code written).
+            worked = session_ticket[0]
+            problem = await _gate_problem(ctx, folder, commit_as=worked[1] if worked else None,
                                           reply=text, before=before)
             if not problem:  # proven in this project: other projects of this role get it from now on
                 for title in Lessons(rt.paths).harvest(folder, str(p["role"])):

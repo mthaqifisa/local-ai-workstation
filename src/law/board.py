@@ -34,6 +34,10 @@ from law.projects import Project, Projects
 from law.queue.jobs import Job, Status, new_id
 from law.queue.store import JobStore
 
+# Where a ticket ID ends in text: DBTC-22 must not match DBTC-22.1 (a split part) or DBTC-220 (seen 2026-11-26:
+# `\b` matched DBTC-22.1, so LAW ticked the split code ticket done when the split itself was committed).
+ID_END = r"(?![\w.]*\d)"
+
 Column = Literal["todo", "progress", "approval", "done", "failed"]
 COLUMNS: list[tuple[Column, str]] = [("todo", "To do"), ("progress", "In progress"),
                                      ("approval", "Waiting for approval"), ("done", "Completed"),
@@ -422,12 +426,12 @@ async def _plan_tickets(store: JobStore, project: Project, tickets: dict[str, Ti
             t = tickets[tid] = Ticket(tid, item["title"], "dev", item["milestone"] or f"Build v{version}",
                                       dev_order.get(version, after) + n / 1000)
             t.details, t.est = item["details"], item["est"]
-            mine = [c for c in commits if re.match(rf"{re.escape(tid)}\b", c[2])] or \
-                   [c for c in commits if re.search(rf"\b{re.escape(tid)}\b", c[2])]
+            mine = [c for c in commits if re.match(rf"{re.escape(tid)}{ID_END}", c[2])] or \
+                   [c for c in commits if re.search(rf"\b{re.escape(tid)}{ID_END}", c[2])]
             for ct, sha, subject in mine:
                 t.log(ct, "commit", f"{sha} {subject}")
             for pt, entry in progress:
-                if re.search(rf"\b{re.escape(tid)}\b", entry):
+                if re.search(rf"\b{re.escape(tid)}{ID_END}", entry):
                     t.log(pt, "progress", entry[:4000])
             t.started = clock
             if item["done"]:
