@@ -45,10 +45,20 @@ nav#TOC a:hover { color: var(--accent); background: var(--accent-soft); }
 /* Hero */
 .hero {
   max-width: none; margin: 0 -48px 8px; padding: 72px 48px 64px; color: var(--hero-text);
-  background: radial-gradient(1200px 400px at 80% -10%, rgba(255, 255, 255, .10), transparent 60%),
-              linear-gradient(135deg, var(--hero-a), var(--hero-b));
+  position: relative; overflow: hidden; isolation: isolate; background: var(--hero-a);
 }
-.hero > * { max-width: 860px; }
+/* The repo's social image behind the title, blurred, under a dark green veil so the text stays readable. */
+.hero::before {
+  content: ""; position: absolute; inset: -24px; z-index: -2;
+  background: url("https://repository-images.githubusercontent.com/1271122443/bd3e971d-e4f9-4686-9edd-433557b61d02") center / cover no-repeat;
+  filter: blur(7px) saturate(1.05); transform: scale(1.06);
+}
+.hero::after {
+  content: ""; position: absolute; inset: 0; z-index: -1;
+  background: linear-gradient(100deg, rgba(8, 40, 33, .92) 0%, rgba(10, 52, 43, .80) 48%, rgba(12, 62, 51, .55) 100%);
+}
+.hero > * { max-width: 860px; position: relative; }
+.hero-title, .hero-lede { text-shadow: 0 1px 12px rgba(0, 0, 0, .35); }
 .eyebrow { text-transform: uppercase; letter-spacing: .14em; font-size: .78rem; font-weight: 700; color: var(--hero-muted); margin: 0 0 14px; }
 .hero-title { font-size: clamp(2.1rem, 4.4vw, 3.4rem); line-height: 1.08; margin: 0 0 20px; border: 0; padding: 0; color: var(--hero-text); }
 .hero-lede { font-size: 1.15rem; line-height: 1.6; color: var(--hero-muted); max-width: 64ch; margin: 0 0 30px; }

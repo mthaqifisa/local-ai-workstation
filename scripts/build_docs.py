@@ -145,7 +145,8 @@ def social_meta() -> str:
         attr = "property" if key.startswith("og:") else "name"
         value = value.replace("&", "&amp;").replace('"', "&quot;")
         lines.append(f'<meta {attr}="{key}" content="{value}">')
-    return "\n".join(lines) + f'\n<link rel="canonical" href="{SITE_URL}">\n'
+    # no <link rel="canonical">: --embed-resources would fetch and inline the whole live page (seen: +8.5 MB)
+    return "\n".join(lines) + "\n"
 
 
 def build(repo: Path = REPO) -> Path:

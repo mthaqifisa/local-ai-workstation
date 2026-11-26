@@ -54,3 +54,10 @@ def test_shared_links_show_a_preview() -> None:
     for tag in ('property="og:image"', 'property="og:title"', 'property="og:description"',
                 'name="twitter:card" content="summary_large_image"', 'property="og:url"'):
         assert tag in page
+
+
+def test_the_page_stays_light_and_embeds_no_other_page() -> None:
+    """Seen 2026-11-26: a <link rel="canonical"> made pandoc fetch and inline the whole live page (+8.5 MB)."""
+    page = REPO / "docs" / "index.html"
+    assert page.stat().st_size < 6_000_000
+    assert "data:text/html" not in page.read_text()
