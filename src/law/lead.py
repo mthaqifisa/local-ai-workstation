@@ -44,7 +44,8 @@ answer NO NOTE. Kinds of stuck worth a note:
 - a fact it cannot know from the code: state it only if you actually know it; never guess
 
 A note is 2 to 5 sentences, addressed to the agent: the ticket, what to stop, one concrete path (prefer reusing what
-already works), a fallback, the checks to run, and "commit". No new scope.
+already works), a fallback, the checks to run, and "then stop with your summary" (LAW commits and ticks the ticket;
+the agent must not). No new scope.
 
 Answer with JSON only: {"stuck": true|false, "diagnosis": "<one sentence>", "note": "<the note, or empty>"}"""
 
