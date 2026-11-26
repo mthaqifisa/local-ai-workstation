@@ -11,7 +11,10 @@ from pathlib import Path
 from law.paths import LawPaths
 from law.sysapi import SysAPI
 
-JDK = "/opt/homebrew/opt/openjdk@25"
+# Homebrew's unversioned openjdk is always the newest release, so `brew upgrade` keeps Java current (owner,
+# 2026-11-26: latest Java and Maven; was openjdk@25, which left Maven unable to build a Java 27 project).
+JDK = "/opt/homebrew/opt/openjdk"
+JAVA_HOME = f"{JDK}/libexec/openjdk.jdk/Contents/Home"
 BASE_PATH = f"{JDK}/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 
@@ -29,7 +32,7 @@ class Agent:
 
     def render(self, paths: LawPaths, stamp: str) -> bytes:
         env = {"PATH": f"{paths.runtime / 'bin'}:{BASE_PATH}", "HOME": str(paths.user_home),
-               "JAVA_HOME": f"{JDK}/libexec/openjdk.jdk/Contents/Home",
+               "JAVA_HOME": JAVA_HOME,
                "LAW_HOME": str(paths.home), "LAW_REPO": str(paths.repo), **self.env}
         if self.reads_registry:
             env["LAW_STAMP"] = stamp

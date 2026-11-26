@@ -111,8 +111,8 @@ class EnvProfile:
             f'export TORCH_HOME="{h}/cache/torch"',
             f'export OPENCODE_CONFIG="{h}/config/opencode.json"',
             f'export LAW_SERVER="http://127.0.0.1:{self.c.reg.ports.law_api}"',
-            'export JAVA_HOME="/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home"',
-            f'export PATH="{h}/runtime/bin:/opt/homebrew/opt/openjdk@25/bin:$PATH"',
+            f'export JAVA_HOME="{launchd.JAVA_HOME}"',
+            f'export PATH="{h}/runtime/bin:{launchd.JDK}/bin:$PATH"',
         ]
         return "\n".join(lines) + "\n"
 
