@@ -15,7 +15,7 @@ from typing import Any
 
 import httpx
 
-from law import book_kit, bugs, deliver, lead, specs, web
+from law import book_kit, bugs, deliver, lead, leftovers, specs, web
 from law.board import ID_END
 from law.handlers.base import Runtime, Stalled, Steered, run_cmd
 from law.handlers.core import PASS_SCORE, answer, parse_verdict
@@ -1047,11 +1047,21 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         except (httpx.HTTPError, ValueError):
             return False
 
-    async def _agent(ctx: Context, role: str, prompt: str, workdir: Path, *, writes: bool = True,
-                     memory: ProjectMemory | None = None, timeout_s: float | None = None,
-                     finished: Callable[[], bool] | None = None, ticket: str | None = None,
-                     deny_read: tuple[str, ...] = (), session: str | None = None,
-                     sessions: list[str] | None = None) -> str:
+    async def _agent(ctx: Context, role: str, prompt: str, workdir: Path, **kw: Any) -> str:
+        """Run one OpenCode agent (`_agent_session`), then stop any process it left running in the project
+        (law.leftovers: detached, started during the session, working inside `workdir`)."""
+        began = time.time()
+        try:
+            return await _agent_session(ctx, role, prompt, workdir, **kw)
+        finally:
+            for line in await asyncio.to_thread(leftovers.stop, workdir, began):
+                await ctx.progress(f"🧹 stopped a process the agent left running: {line[:100]}")
+
+    async def _agent_session(ctx: Context, role: str, prompt: str, workdir: Path, *, writes: bool = True,
+                             memory: ProjectMemory | None = None, timeout_s: float | None = None,
+                             finished: Callable[[], bool] | None = None, ticket: str | None = None,
+                             deny_read: tuple[str, ...] = (), session: str | None = None,
+                             sessions: list[str] | None = None) -> str:
         """Run one OpenCode agent. A writing agent that stalls (no file change for STALL_MINUTES) is stopped and
         its session resumed with a nudge to build and fix. With project memory, the session is recorded in
         `.law/session.json`, and a job that restarts (e.g. after a worker restart) resumes that session.
