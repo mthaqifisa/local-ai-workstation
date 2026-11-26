@@ -68,9 +68,22 @@ class Draft:
 
 def context_message(ticket: str, activity: list[str], folder: Path, now: str | None = None) -> str:
     """What the lead sees: the ticket, recent commits, the agent's recent actions and the project's files by size."""
-    return (f"Ticket:\n{ticket}\n\nRecent commits:\n{_git(folder, 'log', '--oneline', '-8')}\n\n"
+    return (f"Ticket:\n{ticket}\n\nOpen tickets in .law/PLAN.md now (the agent may have split this one; follow "
+            f"its split):\n{open_tickets(folder)}\n\nRecent commits:\n{_git(folder, 'log', '--oneline', '-8')}\n\n"
             f"Agent activity, most recent last (LAW's summaries):\n" + "\n".join(activity[-80:]) +
             f"\n\nProject files (bytes, path):\n{_files(folder)}\n\nNow is {now or time.strftime('%H:%M')}.")
+
+
+def open_tickets(folder: Path, limit: int = 8) -> str:
+    """The plan's next unticked tickets as they stand now (seen 2026-11-26: the writer split DBTC-22 into a Spring
+    Batch module plus its chapter text, and a lead note that saw only the original ticket proposed a class inside the
+    existing client instead)."""
+    try:
+        lines = (folder / ".law" / "PLAN.md").read_text().splitlines()
+    except OSError:
+        return "(no plan)"
+    found = [ln.strip()[:300] for ln in lines if re.match(r"\s*- \[ \]", ln)]
+    return "\n".join(found[:limit]) or "(none)"
 
 
 def parse(answer: str) -> tuple[bool, str, str]:

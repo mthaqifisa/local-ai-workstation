@@ -132,3 +132,12 @@ def test_context_lists_files_by_size_without_law_folder(setup: tuple[lead.Leads,
     files = text.split("Project files (bytes, path):\n", 1)[1]
     assert files.index("big.ts") < files.index("small.ts") and ".law/" not in files
     assert "10:00 📖 read big.ts" in text and "Now is 10:30." in text
+
+
+def test_the_lead_sees_the_plan_as_it_stands_now(tmp_path: Path) -> None:
+    (tmp_path / ".law").mkdir()
+    (tmp_path / ".law" / "PLAN.md").write_text("- [x] B-21 diagram\n- [ ] B-22.1 batch job in code/eod-batch\n"
+                                               "- [ ] B-22.2 chapter text\n")
+    text = lead.context_message("B-22 Java batch job", ["12:00 reading"], tmp_path, now="12:30")
+    assert "B-22.1 batch job in code/eod-batch" in text and "B-21 diagram" not in text
+    assert lead.open_tickets(tmp_path / "missing") == "(no plan)"
