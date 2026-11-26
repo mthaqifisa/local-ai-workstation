@@ -232,7 +232,7 @@ To change a port, edit `settings/registry.yaml` and run `law install`.
 On a new or freshly formatted Mac with Homebrew and Python installed:
 
 ```bash
-git clone <this repo> ~/SourceCode/OpenSourceLocalAI
+git clone -b v6-simplified-mlx https://github.com/mthaqifisa/local-ai-workstation.git ~/SourceCode/OpenSourceLocalAI/v6
 cd ~/SourceCode/OpenSourceLocalAI/v6
 ./install.sh            # safe to run again any time
 law doctor              # health check + the addresses to use from your other devices

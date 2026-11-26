@@ -60,6 +60,9 @@ nav#TOC a:hover { color: var(--accent); background: var(--accent-soft); }
 .button:hover { background: rgba(255, 255, 255, .08); }
 .button.primary { background: #ffffff; color: #0b3d32; border-color: #ffffff; }
 .button.primary:hover { background: #e6f4ef; }
+.button.github { display: inline-flex; align-items: center; gap: 8px; }
+.repo { margin: 18px 0 0; font-size: .92rem; color: var(--hero-muted); }
+.repo a { color: var(--hero-text); }
 
 /* Headings */
 h1 { font-size: 1.85rem; line-height: 1.2; margin: 3.2rem 0 .9rem; padding-top: 1.4rem; border-top: 1px solid var(--border); }
@@ -109,7 +112,13 @@ blockquote { margin: 1rem 0; padding: .2rem 1rem; border-left: 3px solid var(--a
 
 @media (max-width: 900px) {
   body { padding: 0 16px 60px; }
-  nav#TOC { position: static; width: auto; margin: 0 -16px; border-right: 0; border-bottom: 1px solid var(--border); max-height: 50vh; }
+  /* phones: one scrollable row of the main sections, so the first screen is the product, not the menu */
+  nav#TOC { position: sticky; top: 0; width: auto; margin: 0 -16px; padding: 10px 12px; border-right: 0;
+            border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; overflow-x: auto; }
+  nav#TOC::before { font-size: 1.05rem; margin: 0 4px 0 0; }
+  nav#TOC h2, nav#TOC ul ul { display: none; }
+  nav#TOC > ul { display: flex; gap: 2px; white-space: nowrap; }
+  nav#TOC > ul > li > a { font-weight: 600; padding: 6px 10px; }
   .hero { margin: 0 -16px 8px; padding: 44px 16px 40px; }
   .gallery { grid-template-columns: 1fr; }
 }

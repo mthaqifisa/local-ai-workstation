@@ -150,6 +150,9 @@ color: var(--hero-text); border: 1px solid rgba(255, 255, 255, .35);
 .button:hover { background: rgba(255, 255, 255, .08); }
 .button.primary { background: #ffffff; color: #0b3d32; border-color: #ffffff; }
 .button.primary:hover { background: #e6f4ef; }
+.button.github { display: inline-flex; align-items: center; gap: 8px; }
+.repo { margin: 18px 0 0; font-size: .92rem; color: var(--hero-muted); }
+.repo a { color: var(--hero-text); }
 
 h1 { font-size: 1.85rem; line-height: 1.2; margin: 3.2rem 0 .9rem; padding-top: 1.4rem; border-top: 1px solid var(--border); }
 h1#why-law { border-top: 0; }
@@ -195,12 +198,18 @@ img { max-width: 100%; height: auto; border-radius: 10px; border: 1px solid var(
 blockquote { margin: 1rem 0; padding: .2rem 1rem; border-left: 3px solid var(--accent); color: var(--muted); }
 @media (max-width: 900px) {
 body { padding: 0 16px 60px; }
-nav#TOC { position: static; width: auto; margin: 0 -16px; border-right: 0; border-bottom: 1px solid var(--border); max-height: 50vh; }
+
+nav#TOC { position: sticky; top: 0; width: auto; margin: 0 -16px; padding: 10px 12px; border-right: 0;
+border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; overflow-x: auto; }
+nav#TOC::before { font-size: 1.05rem; margin: 0 4px 0 0; }
+nav#TOC h2, nav#TOC ul ul { display: none; }
+nav#TOC > ul { display: flex; gap: 2px; white-space: nowrap; }
+nav#TOC > ul > li > a { font-weight: 600; padding: 6px 10px; }
 .hero { margin: 0 -16px 8px; padding: 44px 16px 40px; }
 .gallery { grid-template-columns: 1fr; }
 }
 </style>
-  <meta name="law-docs-source" content="85345057c9fb025d6edb3e4fe46f71b3e1688a9f41f3bdb006f469f074252a7e">
+  <meta name="law-docs-source" content="75adc0442f85b44dbe33d7f2033fbbb11677c7890317c0259c868b7b2b9ea7c1">
 </head>
 <body>
 <header id="title-block-header">
@@ -301,7 +310,9 @@ posture</a></li>
     <a class="button primary" href="#get-started">Get started</a>
     <a class="button" href="#screenshots">See it working</a>
     <a class="button" href="#overview">Read the documentation</a>
+    <a class="button github" href="https://github.com/mthaqifisa/local-ai-workstation"><svg aria-hidden="true" viewBox="0 0 16 16" width="18" height="18"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" /></svg>View on GitHub</a>
   </div>
+  <p class="repo">Source: <a href="https://github.com/mthaqifisa/local-ai-workstation">github.com/mthaqifisa/local-ai-workstation</a> · free and open source</p>
 </section>
 <h1 id="why-law">Why LAW</h1>
 <p>Cloud AI is fast to start and hard to trust with your work: your data
@@ -406,7 +417,8 @@ and port, is in <a href="#architecture">Architecture</a>.</p>
     page fit.</figcaption></figure>
 </div>
 <h1 id="get-started">Get started</h1>
-<pre class="start"><code>git clone &lt;this repository&gt; &amp;&amp; cd OpenSourceLocalAI/v6
+<pre class="start"><code>git clone -b v6-simplified-mlx https://github.com/mthaqifisa/local-ai-workstation.git ~/SourceCode/OpenSourceLocalAI/v6
+cd ~/SourceCode/OpenSourceLocalAI/v6
 ./install.sh        # safe to run again: it only changes what is out of date
 law doctor          # checks every service and prints the addresses on your network</code></pre>
 <p>You need an Apple Silicon Mac with 64 GB of memory, Homebrew and
@@ -876,7 +888,7 @@ edit <code>settings/registry.yaml</code> and run
 <h2 id="install">Install</h2>
 <p>On a new or freshly formatted Mac with Homebrew and Python
 installed:</p>
-<div class="sourceCode" id="cb1"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone <span class="op">&lt;</span>this repo<span class="op">&gt;</span> ~/SourceCode/OpenSourceLocalAI</span>
+<div class="sourceCode" id="cb1"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone <span class="at">-b</span> v6-simplified-mlx https://github.com/mthaqifisa/local-ai-workstation.git ~/SourceCode/OpenSourceLocalAI/v6</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> ~/SourceCode/OpenSourceLocalAI/v6</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="ex">./install.sh</span>            <span class="co"># safe to run again any time</span></span>
 <span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="ex">law</span> doctor              <span class="co"># health check + the addresses to use from your other devices</span></span></code></pre></div>
