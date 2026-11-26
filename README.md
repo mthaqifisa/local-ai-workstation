@@ -13,8 +13,8 @@ is a different model family from the writer, so the system never grades its own 
 |---|---|
 | **Telegram** (main channel) | Message your bot: text, voice notes, photos; `/help` lists every command (`/image`, `/video`, `/music`, `/code`, `/project`, `/rnd`, `/bugfix`, `/qa`, `/note`, …). Replies show live thinking |
 | **Terminal** | `law ask "…"`, `law code "…"`, `law image "…"`, `law tts "…"`, `law stt file.wav`, `law music "…"`, `law jobs`, `law api <Class>`, `law qa <project>`, `law bugfix <project> [bug]`, `law board show <project>`, `law send <file>` |
-| **Browser** (any device) | Open WebUI chat `http://<mac>.local:3000` · LAW Console `http://<mac>.local:8100` (live stats, agents, project boards, services, jobs, personas, settings) · dashboard `http://<mac>.local:3010` · Docker (Portainer, user `admin`, password `PORTAINER_ADMIN_PASSWORD` in `~/LAW/state/.env`) `http://<mac>.local:9000` |
-| **Any OpenAI/Anthropic client** | `http://<mac>.local:8000/v1` |
+| **Browser** (on the Mac; from other devices use the Mac's address, printed by `law doctor`) | Open WebUI chat `http://127.0.0.1:3000` · LAW Console `http://127.0.0.1:8100` (live stats, agents, project boards, services, jobs, personas, settings) · dashboard `http://127.0.0.1:3010` · Docker (Portainer, user `admin`, password `PORTAINER_ADMIN_PASSWORD` in `~/LAW/state/.env`) `http://127.0.0.1:9000` |
+| **Any OpenAI/Anthropic client** | `http://127.0.0.1:8000/v1` |
 
 **Projects** are built by agents ticket by ticket from a plan you approve on Telegram: software (`/project`,
 `/code`) or documents (`/rnd`: books, reports and research papers, written chapter by chapter with verified sources,

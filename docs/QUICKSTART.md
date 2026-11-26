@@ -6,18 +6,19 @@
 law doctor
 ```
 
-All rows should say **up**. The bottom of the output lists the addresses for your other devices, for example:
+All rows should say **up**. On the Mac itself, the services are at:
 
 ```
-Chat / Open WebUI : http://192.168.1.20:3000
-LLM API           : http://192.168.1.20:8000/v1
-Dashboard         : http://192.168.1.20:3010
-law CLI elsewhere : export LAW_SERVER=http://192.168.1.20:8100
+Chat / Open WebUI : http://127.0.0.1:3000
+LLM API           : http://127.0.0.1:8000/v1
+Dashboard         : http://127.0.0.1:3010
+LAW Console       : http://127.0.0.1:8100
 ```
 
-You can also use the Mac's network name instead of the IP: `http://<mac-name>.local:3000`.
+From your other devices, use the Mac's address instead of `127.0.0.1`: the bottom of `law doctor`'s output prints
+it, or use the Mac's network name, `http://<mac-name>.local:3000`.
 
-Open the **LAW Console** at `http://<mac-name>.local:8100` from any device: live CPU/memory/GPU/storage of the Mac,
+Open the **LAW Console** at `http://127.0.0.1:8100` (or the Mac's address from another device): live CPU/memory/GPU/storage of the Mac,
 running jobs with a Cancel button, persona editing, and Telegram settings.
 
 ## 2. Ask something
@@ -100,4 +101,5 @@ export LAW_SERVER=http://<mac-name>.local:8100
 law ask "…"        # runs on the AI Mac
 ```
 
-Any OpenAI-compatible app can use `http://<mac-name>.local:8000/v1` with any API key.
+Any OpenAI-compatible app can use `http://127.0.0.1:8000/v1` on the Mac (from another computer, the Mac's
+address in place of `127.0.0.1`) with any API key.

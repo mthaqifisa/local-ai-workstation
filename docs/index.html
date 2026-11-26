@@ -200,7 +200,7 @@ nav#TOC { position: static; width: auto; margin: 0 -16px; border-right: 0; borde
 .gallery { grid-template-columns: 1fr; }
 }
 </style>
-  <meta name="law-docs-source" content="4e058f448d464b5af7663971091c6b0505a4dfbdc85f75e1b57b3d6399bfd44c">
+  <meta name="law-docs-source" content="85345057c9fb025d6edb3e4fe46f71b3e1688a9f41f3bdb006f469f074252a7e">
 </head>
 <body>
 <header id="title-block-header">
@@ -455,18 +455,18 @@ lists every command (<code>/image</code>, <code>/video</code>,
 <code>law send &lt;file&gt;</code></td>
 </tr>
 <tr>
-<td><strong>Browser</strong> (any device)</td>
-<td>Open WebUI chat <code>http://&lt;mac&gt;.local:3000</code> · LAW
-Console <code>http://&lt;mac&gt;.local:8100</code> (live stats, agents,
-project boards, services, jobs, personas, settings) · dashboard
-<code>http://&lt;mac&gt;.local:3010</code> · Docker (Portainer, user
+<td><strong>Browser</strong> (on the Mac; from other devices use the
+Mac’s address, printed by <code>law doctor</code>)</td>
+<td>Open WebUI chat <code>http://127.0.0.1:3000</code> · LAW Console
+<code>http://127.0.0.1:8100</code> (live stats, agents, project boards,
+services, jobs, personas, settings) · dashboard
+<code>http://127.0.0.1:3010</code> · Docker (Portainer, user
 <code>admin</code>, password <code>PORTAINER_ADMIN_PASSWORD</code> in
-<code>~/LAW/state/.env</code>)
-<code>http://&lt;mac&gt;.local:9000</code></td>
+<code>~/LAW/state/.env</code>) <code>http://127.0.0.1:9000</code></td>
 </tr>
 <tr>
 <td><strong>Any OpenAI/Anthropic client</strong></td>
-<td><code>http://&lt;mac&gt;.local:8000/v1</code></td>
+<td><code>http://127.0.0.1:8000/v1</code></td>
 </tr>
 </tbody>
 </table>
@@ -1271,18 +1271,20 @@ page (open it in a browser)</li>
 <h1 id="quick-start">Quick start</h1>
 <h2 id="check-its-healthy">1. Check it’s healthy</h2>
 <div class="sourceCode" id="cb9"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="ex">law</span> doctor</span></code></pre></div>
-<p>All rows should say <strong>up</strong>. The bottom of the output
-lists the addresses for your other devices, for example:</p>
-<pre><code>Chat / Open WebUI : http://192.168.1.20:3000
-LLM API           : http://192.168.1.20:8000/v1
-Dashboard         : http://192.168.1.20:3010
-law CLI elsewhere : export LAW_SERVER=http://192.168.1.20:8100</code></pre>
-<p>You can also use the Mac’s network name instead of the IP:
+<p>All rows should say <strong>up</strong>. On the Mac itself, the
+services are at:</p>
+<pre><code>Chat / Open WebUI : http://127.0.0.1:3000
+LLM API           : http://127.0.0.1:8000/v1
+Dashboard         : http://127.0.0.1:3010
+LAW Console       : http://127.0.0.1:8100</code></pre>
+<p>From your other devices, use the Mac’s address instead of
+<code>127.0.0.1</code>: the bottom of <code>law doctor</code>’s output
+prints it, or use the Mac’s network name,
 <code>http://&lt;mac-name&gt;.local:3000</code>.</p>
 <p>Open the <strong>LAW Console</strong> at
-<code>http://&lt;mac-name&gt;.local:8100</code> from any device: live
-CPU/memory/GPU/storage of the Mac, running jobs with a Cancel button,
-persona editing, and Telegram settings.</p>
+<code>http://127.0.0.1:8100</code> (or the Mac’s address from another
+device): live CPU/memory/GPU/storage of the Mac, running jobs with a
+Cancel button, persona editing, and Telegram settings.</p>
 <h2 id="ask-something">2. Ask something</h2>
 <div class="sourceCode" id="cb11"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="ex">law</span> ask <span class="st">&quot;Compare leasing vs buying a company car for a 10-person firm&quot;</span></span>
 <span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="ex">law</span> ask <span class="at">--role</span> architect <span class="st">&quot;Design a document-approval workflow for a small bank&quot;</span></span>
@@ -1360,7 +1362,9 @@ computer</h2>
 <div class="sourceCode" id="cb16"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">LAW_SERVER</span><span class="op">=</span>http://<span class="op">&lt;</span>mac-name<span class="op">&gt;</span>.local:8100</span>
 <span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="ex">law</span> ask <span class="st">&quot;…&quot;</span>        <span class="co"># runs on the AI Mac</span></span></code></pre></div>
 <p>Any OpenAI-compatible app can use
-<code>http://&lt;mac-name&gt;.local:8000/v1</code> with any API key.</p>
+<code>http://127.0.0.1:8000/v1</code> on the Mac (from another computer,
+the Mac’s address in place of <code>127.0.0.1</code>) with any API
+key.</p>
 <h1 id="runbook">Runbook</h1>
 <h2 id="daily-use">Daily use</h2>
 <table>
@@ -1381,7 +1385,7 @@ computer</h2>
 </tr>
 <tr>
 <td>Live stats, jobs (cancel), personas, settings</td>
-<td>LAW Console: <code>http://&lt;mac-name&gt;.local:8100</code></td>
+<td>LAW Console: <code>http://127.0.0.1:8100</code></td>
 </tr>
 <tr>
 <td>Approve a plan or build</td>
