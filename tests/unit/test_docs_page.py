@@ -47,3 +47,10 @@ def test_every_diagram_is_an_image_not_mermaid_source() -> None:
     text = build_docs.combined()
     assert "```mermaid" not in text, "a Mermaid block has no rendered image: run python3 scripts/build_docs.py"
     assert build_docs.diagram_path("flowchart LR\n a --> b\n").startswith("docs/images/diagrams/")
+
+
+def test_shared_links_show_a_preview() -> None:
+    page = (REPO / "docs" / "index.html").read_text()
+    for tag in ('property="og:image"', 'property="og:title"', 'property="og:description"',
+                'name="twitter:card" content="summary_large_image"', 'property="og:url"'):
+        assert tag in page

@@ -27,6 +27,13 @@ SOURCES = [  # (file, the section's anchor on the page); each one becomes a top-
 TITLES = {"README.md": "Overview"}  # the menu name where a document's own title reads oddly on the page
 CSS = "docs/docs.css"
 OUT = "docs/index.html"
+# Link previews (WhatsApp, Telegram, LinkedIn, X, Slack, iMessage): the published page and the repo's social image.
+SITE_URL = "https://mthaqifisa.github.io/local-ai-workstation/"
+SOCIAL_IMAGE = "https://repository-images.githubusercontent.com/1271122443/bd3e971d-e4f9-4686-9edd-433557b61d02"
+SITE_TITLE = "LAW: a private AI team on a single Mac"
+SITE_DESCRIPTION = ("Open-source AI workstation for Apple Silicon: agents that plan, build and test software, "
+                    "research, write and operate your Mac, plus images, video, speech and music, on open models "
+                    "running locally.")
 HASH_META = re.compile(r'<meta name="law-docs-source" content="([0-9a-f]{64})"')
 
 
@@ -124,6 +131,23 @@ def render_diagrams(repo: Path = REPO) -> list[str]:
     return written
 
 
+def social_meta() -> str:
+    """Open Graph and Twitter card tags, so a shared link shows the title, a summary and the image."""
+    tags = {
+        "description": SITE_DESCRIPTION,
+        "og:type": "website", "og:url": SITE_URL, "og:site_name": "LAW", "og:title": SITE_TITLE,
+        "og:description": SITE_DESCRIPTION, "og:image": SOCIAL_IMAGE, "og:image:alt": SITE_TITLE,
+        "twitter:card": "summary_large_image", "twitter:title": SITE_TITLE,
+        "twitter:description": SITE_DESCRIPTION, "twitter:image": SOCIAL_IMAGE,
+    }
+    lines = []
+    for key, value in tags.items():
+        attr = "property" if key.startswith("og:") else "name"
+        value = value.replace("&", "&amp;").replace('"', "&quot;")
+        lines.append(f'<meta {attr}="{key}" content="{value}">')
+    return "\n".join(lines) + f'\n<link rel="canonical" href="{SITE_URL}">\n'
+
+
 def build(repo: Path = REPO) -> Path:
     render_diagrams(repo)  # first: the page's hash covers the images it embeds
     out = repo / OUT
@@ -132,7 +156,7 @@ def build(repo: Path = REPO) -> Path:
         md = Path(tmp) / "docs.md"
         md.write_text(combined(repo))
         header = Path(tmp) / "head.html"
-        header.write_text(f'<meta name="law-docs-source" content="{source_hash(repo)}">\n')
+        header.write_text(f'<meta name="law-docs-source" content="{source_hash(repo)}">\n' + social_meta())
         subprocess.run(["pandoc", str(md), "-f", "markdown", "-t", "html5", "-s", "--toc", "--toc-depth=2",
                         "--embed-resources", "--resource-path", str(repo), "--css", str(repo / CSS),
                         "--include-in-header", str(header), "--metadata", "title=LAW",
