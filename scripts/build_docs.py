@@ -14,6 +14,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -79,8 +80,25 @@ MERMAID_WITH_STATIC = re.compile(r"```mermaid\n.*?```\s*\n\s*\*\(Static image: \
                                  re.DOTALL)
 
 
-def combined(repo: Path = REPO) -> str:
-    parts = [(repo / LANDING).read_text()]
+def figures(repo: Path = REPO) -> dict[str, str]:
+    """The page's live figures, counted when it is built, so they are never stale: unit tests collected by pytest,
+    decision records in docs/adr, and the build date."""
+    law_python = Path.home() / "LAW" / "runtime" / "law-venv" / "bin" / "python"  # has pytest; a bare python3 may not
+    python = str(law_python) if law_python.is_file() else sys.executable
+    collected = subprocess.run([python, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider",
+                                "tests/unit"], cwd=repo, capture_output=True, text=True)
+    found = re.search(r"(\d+) tests? collected", collected.stdout)
+    if not found:  # never publish a guess
+        raise SystemExit(f"could not count the tests with {python}: {collected.stderr.strip()[-300:]}")
+    adrs = len(list((repo / "docs" / "adr").glob("[0-9][0-9][0-9][0-9]-*.md")))
+    return {"TESTS": found.group(1), "ADRS": str(adrs), "BUILT": time.strftime("%Y-%m-%d")}
+
+
+def combined(repo: Path = REPO, values: dict[str, str] | None = None) -> str:
+    landing = (repo / LANDING).read_text()
+    for key, value in (values or {}).items():
+        landing = landing.replace("{{" + key + "}}", value)
+    parts = [landing]
     for name, anchor in SOURCES:
         raw = MERMAID_WITH_STATIC.sub(lambda m: f"![]({m.group(1)})", (repo / name).read_text())
         text = MERMAID.sub(lambda m: _rendered(repo, m.group(1)), relink(raw, name))  # paths from the repo root
@@ -155,7 +173,7 @@ def build(repo: Path = REPO) -> Path:
     scratch = Path.home() / "LAW" / "cache" / "tmp"  # LAW's temp folder when this Mac runs LAW, else the system's
     with tempfile.TemporaryDirectory(dir=scratch if scratch.is_dir() else None) as tmp:
         md = Path(tmp) / "docs.md"
-        md.write_text(combined(repo))
+        md.write_text(combined(repo, figures(repo)))
         header = Path(tmp) / "head.html"
         header.write_text(f'<meta name="law-docs-source" content="{source_hash(repo)}">\n' + social_meta())
         subprocess.run(["pandoc", str(md), "-f", "markdown", "-t", "html5", "-s", "--toc", "--toc-depth=2",

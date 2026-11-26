@@ -185,6 +185,12 @@ Exact repos and pinned revisions: `settings/registry.yaml`. Decisions and trade-
   only what you approve reaches the agent, and a draft waits for your answer however long it takes.
 - **LAW does the bookkeeping**: after each ticket LAW runs the project's gate itself, then commits, ticks the ticket
   and records progress; the agent's word is never taken for it. A gate step that never ran (an unknown command) fails.
+- **The right specialist for each ticket**: in a document project, a ticket that is code (a service, a client, a
+  batch job, build tooling) runs as the coder, with the document's rules still in its brief; the writer keeps the
+  prose, research and diagrams.
+- **Agents clean up after themselves**: after every agent session LAW stops any process it left running in the
+  project (detached, started during the session, working inside the project folder), so no test server stays up on
+  the network. A model server that is briefly out of memory is waited out instead of stopping the job.
 - **Documents are written for their readers** (reports, papers and books from `/rnd`): facts come from saved,
   quoted sources, code samples compile and pass their tests, every term is explained where the reader first meets
   it, and a checker fails long sentences and unreadable diagrams. An editor of another model family checks every

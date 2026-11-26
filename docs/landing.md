@@ -51,9 +51,9 @@ Each figure below was measured on the Mac LAW runs on, and each links to the rec
   <div class="fact"><span class="num">7 of 7</span><span class="label">planted errors caught by the independent
     reviewer of documents, each with the source line that disproves it</span><span class="src">2026-11-25 ·
     <a href="adr/0030-document-editor-model.md">ADR-0030</a></span></div>
-  <div class="fact"><span class="num">754</span><span class="label">automated tests, with lint and strict type
-    checks on every change</span><span class="src">2026-11-26 · pytest, ruff, mypy --strict</span></div>
-  <div class="fact"><span class="num">32</span><span class="label">architecture decision records: every choice,
+  <div class="fact"><span class="num">{{TESTS}}</span><span class="label">automated tests, with lint and strict type
+    checks on every change</span><span class="src">{{BUILT}} · pytest, ruff, mypy --strict</span></div>
+  <div class="fact"><span class="num">{{ADRS}}</span><span class="label">architecture decision records: every choice,
     the options compared and the evidence</span><span class="src"><a href="adr">docs/adr</a></span></div>
   <div class="fact"><span class="num">0</span><span class="label">changes when the installer runs a second time: it
     only fixes what drifted</span><span class="src"><code>law install</code> · re-run guarantee</span></div>

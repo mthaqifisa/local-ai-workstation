@@ -1,9 +1,9 @@
 {
   "stage": "E-enhance-v6.1",
-  "task": "Tech-chapter trial: DBTC-22.1 (Java EOD batch) running on the upgraded kit; editor round next after DBTC-28",
+  "task": "Tech-chapter trial: DBTC-22.1 (Java EOD batch) now as the coder; docs page live; ADR-0032 queued",
   "status": "in_progress",
-  "next_step": "Compile DBTC-22.1 batch job (JDK 27, PostgreSQL 19); watch 22.2-28 meet the readability gate; editor round (Inkling) with reader panel and verify --all; fix rounds; show the owner the result",
-  "timestamp": "2026-11-26T19:36:41",
+  "next_step": "Compile DBTC-22.1 (JDK 27, PostgreSQL 19); watch 22.2-29 and the editor round (reader panel, verify --all); fix rounds; then build ADR-0032 and migrate the trial's code; Apple fm comparison; refresh TEST-REPORT",
+  "timestamp": "2026-11-26T21:45:54",
   "files_touched": [
     "templates/rnd/tools/verify.py",
     "templates/rnd/tools/prepare.py",

@@ -220,7 +220,7 @@ nav#TOC > ul > li > a { font-weight: 600; padding: 6px 10px; }
 .gallery { grid-template-columns: 1fr; }
 }
 </style>
-  <meta name="law-docs-source" content="fdeb1a5aae5db91b0afabefed64382fbdc5c5bb43275219de2b9cd9f180c1dcb">
+  <meta name="law-docs-source" content="1addcef8d897d57592057916cd8443477a787e4bdffcda0a886d582f6aa3ac67">
   <meta name="description" content="Open-source AI workstation for Apple Silicon: agents that plan, build and test software, research, write and operate your Mac, plus images, video, speech and music, on open models running locally.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://mthaqifisa.github.io/local-ai-workstation/">
@@ -365,9 +365,9 @@ to the record that shows how.</p>
   <div class="fact"><span class="num">7 of 7</span><span class="label">planted errors caught by the independent
     reviewer of documents, each with the source line that disproves it</span><span class="src">2026-11-25 ·
     <a href="adr/0030-document-editor-model.md">ADR-0030</a></span></div>
-  <div class="fact"><span class="num">754</span><span class="label">automated tests, with lint and strict type
+  <div class="fact"><span class="num">768</span><span class="label">automated tests, with lint and strict type
     checks on every change</span><span class="src">2026-11-26 · pytest, ruff, mypy --strict</span></div>
-  <div class="fact"><span class="num">32</span><span class="label">architecture decision records: every choice,
+  <div class="fact"><span class="num">33</span><span class="label">architecture decision records: every choice,
     the options compared and the evidence</span><span class="src"><a href="adr">docs/adr</a></span></div>
   <div class="fact"><span class="num">0</span><span class="label">changes when the installer runs a second time: it
     only fixes what drifted</span><span class="src"><code>law install</code> · re-run guarantee</span></div>
@@ -807,6 +807,15 @@ your answer however long it takes.</li>
 runs the project’s gate itself, then commits, ticks the ticket and
 records progress; the agent’s word is never taken for it. A gate step
 that never ran (an unknown command) fails.</li>
+<li><strong>The right specialist for each ticket</strong>: in a document
+project, a ticket that is code (a service, a client, a batch job, build
+tooling) runs as the coder, with the document’s rules still in its
+brief; the writer keeps the prose, research and diagrams.</li>
+<li><strong>Agents clean up after themselves</strong>: after every agent
+session LAW stops any process it left running in the project (detached,
+started during the session, working inside the project folder), so no
+test server stays up on the network. A model server that is briefly out
+of memory is waited out instead of stopping the job.</li>
 <li><strong>Documents are written for their readers</strong> (reports,
 papers and books from <code>/rnd</code>): facts come from saved, quoted
 sources, code samples compile and pass their tests, every term is
