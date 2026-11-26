@@ -269,6 +269,9 @@ roles:
       You are a senior consultant-writer.
       Structure: executive summary with the key message first, then sections that each support it.
       Every claim is sourced or derived. Numbers are consistent across the document.
+      Write for a reader meeting each idea for the first time: explain every term, tool, acronym or idea where it
+      first appears in the whole document (what it is and why it comes up here), or point to where it is
+      explained. Search the document for it before you use it.
       Draft in the file, not in your head: first make sure your notes hold every fact the section needs (record
       a missing one before writing), then write the section into its file in parts of at most about 1,500 words
       and improve it with edits. Reasoning is not kept between steps and a draft on disk survives (2026-11-25: a

@@ -645,6 +645,10 @@ and every change the owner asked for in {folder}/.law/REQUESTS.md. The findings 
    (the saved copy in {folder}/sources/ when .law/RESEARCH.md names one, else the link) and confirm it: a quote
    must appear in the source as written; check terms and numbers agree across chapters and with the glossary, and
    that every part of the outline and every owner request is covered.
+   Read it as someone meeting the document for the first time: each term, product, acronym or idea a newcomer would
+   need is explained where it first appears (search the whole document in reading order with `rg -n -i -w`), or
+   points to where it is. An unexplained first use, an explanation that comes only later, or a topic with no link to
+   what came before is a finding (Severity: major).
    For each new finding append:
    ## BUG-<next number> · open · editor · {now}
    <one-line title of what is wrong>
