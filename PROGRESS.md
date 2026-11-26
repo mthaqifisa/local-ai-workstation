@@ -150,7 +150,7 @@ Happy path and unhappy paths, all from Telegram, monitored every 5 min:
 - [ ] No go + "stop" -> parked; /resume <note> -> revived (v3)
 - [x] Go -> environment stage: JDK 21 installed via brew and pinned in .law/env.sh; ENVIRONMENT.md; committed (04:41)
 - [~] Milestones on a ticket board: Build version 2, M1-M5, LC-1..LC-17 with acceptance; LC-1 committed + independently green (05:18)
-- [ ] Deploy during a step -> worker restarts only between steps
+- [x] Deploy during a step -> worker restarts only between steps (2026-11-26: code-only installs restarted it between steps at 09:53; an environment change waited for idle)
 - [ ] Retry / Skip / Restart / Cancel exercised at least once on real steps
 - [ ] Review/fix rounds -> handover document with real screenshots, emailed + posted
 - [ ] Verify gate -> Needs changes (new requirement) -> enhanced proposal v(n+1) -> Go -> incremental build
@@ -218,7 +218,7 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - [x] Apple Foundation Models evaluated (macOS 27 `fm`, 8K context): not adopted now; option for a router later (ADR-0017)
 - [x] Owner's report (writer job 6692b8a1b98b): PDF + Telegram + email delivered. Reviewed by Claude: numbers real, but the headline (27B at 4.4 tok/s) came from benchmarking while the writer's own requests ran on the same model (oMLX log); real agent decode 8-9.8 tok/s. Fixed in the agents, not the PDF
 - [x] /hardreset (owner request): confirm buttons; stops all jobs, clears job history, agent sessions, chat memory, all LAW caches; keeps models, settings, projects, outputs and unfinished projects' jobs (lan-chat Retry still works)
-- [ ] Apple fm as a LAW service: owner accepted the licence; model reports modelNotReady (Apple Intelligence on / download / language). Then `fm serve` launchd agent + use
+- [ ] Apple fm as a LAW service: owner accepted the licence; model ready since 2026-11-26 (`fm respond` answers); was modelNotReady (Apple Intelligence on / download / language). Then `fm serve` launchd agent + use
 - 2026-10-24 21:20 Tony fixes shipped (376 unit tests, ruff + mypy clean, deployed, install re-run 0 changes, doctor all healthy). Live model probes on the real prompt: 12/12 hand-offs routed right (report and "Continue" -> writer in ../doc; lan-chat fix -> coder; music -> operator); warm small talk 0.7-4.7 s (was 29 s). The first wording (agent role instead of deliverable) sent the report to the coder 2/6 times, once in v6 itself.
 - 2026-10-24 21:30 /hardreset shipped (379 tests, deployed while the writer agent ran; worker restarts between steps). Apple fm: licence accepted, `fm serve` works, model not ready yet (owner checking Apple Intelligence settings).
 - 2026-10-25 04:35 Report review: benchmark contaminated by the writer's own concurrent requests (oMLX log 22:00-22:25); 32 s TTFTs = queued behind its 38K-token prefill. House standard: disprove a headline with a second source; benchmark LAW models only with no overlapping request (0a0e171). Writer checks its PDF as a reader (poppler: pdftotext + page images; Brewfile) (182ebeb). 379 tests, deployed, re-run 0 changes.
@@ -318,10 +318,12 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - [x] E1 Pins + runtime upgrade: registry `pins:` (OpenCode 1.18.7 via npm, oMLX 0.8.0), Open WebUI 0.12.5 by digest, doctor version check (ADR-0024)
 - [x] E2 Speculative decoding: DFlash 2 on the 27B 8-bit, 2.6-2.8x decode on code, golden 10/10, owner yes (ADR-0025)
 - [x] E3 fast-lane 4-bit: rejected (tool calls wrong in 6/6 runs), stays 8-bit; E4 coder-fast unchanged (no drafter) — ADR-0002
-- [ ] Chapter-1 trial of the Digital Bank book (/rnd), verified before anything else
+- [x] Chapter-1 trial of the Digital Bank book (/rnd): scrapped by the owner 2026-11-25, replaced by the tech-chapter trial (ch.7, ~/RnD/digital-bank-tech-trial)
+- [ ] Tech-chapter trial (ch.7 core ledger, Go + Java), verified before the full book
 - [ ] Digital Bank book via Tony (/rnd, ~/RnD/digital-bank) LAST: after all pending items, the HTML page, cache and model cleanup; stop-fix-restart on any issue; monitored every 2 h
 - [x] E8 lead-note approval: drafts on the 2nd stall, Telegram Approve/Edit/Drop, 60 min = drop, rate every 10 (ADR-0026)
-- [ ] E5 judge A/B, E6 OpenCode 2 (gated), E7 finish P7/P8
+- [x] E5 judge A/B (Gemma stays, ADR-0007), E6 OpenCode 2 (deferred, ADR-0028)
+- [ ] E7 finish P7/P8
 - [x] Tony self-healing (missing packages) and self-improvement loop: propose, build on a branch, Apply/Reject on Telegram (ADR-0027)
 - [x] TensorFold: skipped by the owner 2026-11-23 (young, self-reported gains, no proof on our Mac)
 - [x] Pentest role: moved to a separate session by the owner (2026-11-23)
