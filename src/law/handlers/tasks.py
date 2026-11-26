@@ -406,7 +406,7 @@ def chapter_map(project: Path) -> str:
             size = (heads[i + 1][0] if i + 1 < len(heads) else len(lines) + 1) - n
             rows.append(f"{n:>6}: {'  ' * (level - 1)}{title[:90]} ({size})")
     if len(rows) > CHAPTER_MAP_LIMIT:
-        rows = rows[:CHAPTER_MAP_LIMIT] + [f"  ... {len(rows) - CHAPTER_MAP_LIMIT} more (rg -n '^#' chapters/)"]
+        rows = [*rows[:CHAPTER_MAP_LIMIT], f"  ... {len(rows) - CHAPTER_MAP_LIMIT} more (rg -n '^#' chapters/)"]
     return "\n".join(rows)
 
 
