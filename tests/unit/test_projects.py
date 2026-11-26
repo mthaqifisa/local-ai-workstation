@@ -403,3 +403,17 @@ def test_rnd_documents_live_in_the_rnd_folder(tmp_path):
     assert doc.dir == str(tmp_path / "RnD" / "digital-bank") and doc.kind == "document"
     app = Projects(paths).create({**fields, "repo": "bank-app"}, chat=None, mode="code")
     assert app.dir == str(tmp_path / "SourceCode" / "bank-app") and app.kind == "software"
+
+
+def test_the_owner_names_who_a_project_is_for(tmp_path: Path) -> None:
+    """Readers for an /rnd document, users for software: the planner designs for exactly these."""
+    from law.projects import TEMPLATES, parse_template
+
+    rnd = parse_template(TEMPLATES["rnd"].replace("name:", "name: Field Guide").replace(
+        "readers:", "readers: park rangers, hikers new to the area").replace("summary:", "summary: a guide")
+        .replace("details:", "details: trails and safety"))
+    assert rnd["readers"] == "park rangers, hikers new to the area"
+    code = parse_template(TEMPLATES["code"].replace("name:", "name: Pantry").replace("users:", "users: a family")
+                          .replace("summary:", "summary: an app").replace("details:", "details: scan items"))
+    assert code["users"] == "a family"
+    assert "readers:" in TEMPLATES["rnd"] and "users:" in TEMPLATES["project"] and "users:" in TEMPLATES["code"]

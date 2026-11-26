@@ -220,7 +220,7 @@ nav#TOC > ul > li > a { font-weight: 600; padding: 6px 10px; }
 .gallery { grid-template-columns: 1fr; }
 }
 </style>
-  <meta name="law-docs-source" content="1addcef8d897d57592057916cd8443477a787e4bdffcda0a886d582f6aa3ac67">
+  <meta name="law-docs-source" content="ae84ca1427d5708ad3fc0d244b0a2bbc9a9605cbd5db7cffe80473ec691db3e3">
   <meta name="description" content="Open-source AI workstation for Apple Silicon: agents that plan, build and test software, research, write and operate your Mac, plus images, video, speech and music, on open models running locally.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://mthaqifisa.github.io/local-ai-workstation/">
@@ -365,7 +365,7 @@ to the record that shows how.</p>
   <div class="fact"><span class="num">7 of 7</span><span class="label">planted errors caught by the independent
     reviewer of documents, each with the source line that disproves it</span><span class="src">2026-11-25 ·
     <a href="adr/0030-document-editor-model.md">ADR-0030</a></span></div>
-  <div class="fact"><span class="num">768</span><span class="label">automated tests, with lint and strict type
+  <div class="fact"><span class="num">772</span><span class="label">automated tests, with lint and strict type
     checks on every change</span><span class="src">2026-11-26 · pytest, ruff, mypy --strict</span></div>
   <div class="fact"><span class="num">33</span><span class="label">architecture decision records: every choice,
     the options compared and the evidence</span><span class="src"><a href="adr">docs/adr</a></span></div>
@@ -1022,12 +1022,12 @@ handed to the right agent, which reports back in the same chat</td>
 <td><code>/project init</code></td>
 <td>Start a <strong>full project (SDLC)</strong>: Tony sends a template
 (name, repo, repo URL, stack, thinking level, proposal depth
-<code>brief</code>/<code>full</code>, summary, details). Send it back
-filled in, and Tony researches and emails a proposal (PDF, also posted
-in Telegram), asks <strong>Go / No go</strong>, sets up the tools the
-stack needs, builds in milestones (a ticket board in
-<code>.law/PLAN.md</code>; a fresh agent session per ticket, and after
-each one LAW itself runs the project’s whole gate,
+<code>brief</code>/<code>full</code>, users: who it is for, summary,
+details). Send it back filled in, and Tony researches and emails a
+proposal (PDF, also posted in Telegram), asks <strong>Go / No
+go</strong>, sets up the tools the stack needs, builds in milestones (a
+ticket board in <code>.law/PLAN.md</code>; a fresh agent session per
+ticket, and after each one LAW itself runs the project’s whole gate,
 <code>.law/check.sh</code>, and hands any failure to the next session),
 tests and fixes until an independent review passes, writes a
 <strong>system handover document</strong> with real screenshots
@@ -1067,6 +1067,14 @@ architecture, user and system flows, wireframes, delivery plan, cost,
 risks), independently reviewed, rendered to PDF and <strong>emailed to
 you</strong>. Give a project folder to present it as the working
 prototype</td>
+</tr>
+<tr>
+<td><code>/rnd init</code></td>
+<td>Start a <strong>book, report or research paper</strong> in
+<code>~/RnD</code>: Tony sends a template (name, readers: who it is for,
+summary, details). An outline with sources comes back for your Go; then
+one chapter per ticket, each researched from saved sources, checked by
+an independent editor and built into PDF and HTML</td>
 </tr>
 <tr>
 <td><code>/image &lt;prompt&gt;</code></td>
@@ -1406,7 +1414,9 @@ thinking.</p></li>
 <h2 id="build-a-project-end-to-end">7. Build a project end to end</h2>
 <ol type="1">
 <li>Send <code>/project init</code>, fill in the template Tony returns
-(name, stack, what it must do) and send it back.</li>
+(name, stack, who will use it, what it must do) and send it back. For a
+book, report or paper, send <code>/rnd init</code> instead; its template
+asks who the readers are.</li>
 <li>Tony researches and emails a proposal PDF; press <strong>Go</strong>
 to build (or <strong>No go</strong> with what to change).</li>
 <li>The agents set up the tools, build milestone by milestone (one fresh

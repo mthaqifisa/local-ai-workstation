@@ -35,7 +35,8 @@ URL_RE = re.compile(r"^(https://[^\s@/:]+(?::\d+)?/[^\s@]+|git@[^\s:]+:[^\s]+)$"
 Mode = Literal["project", "code"]
 _FIELDS_HELP = ("Required: **name**, **summary**, **details**. Optional: **repo** (folder under ~/SourceCode; from "
                 "the name if empty), **repo_url** (an existing git repo to clone, or the remote for a new one), "
-                "**stack** (empty: LAW recommends one), **thinking** (low, medium or high; default medium: how hard "
+                "**stack** (empty: LAW recommends one), **users** (who will use it, e.g. \"family members on "
+                "phones\" or \"bank operations staff\"), **thinking** (low, medium or high; default medium: how hard "
                 "the coder thinks per step)")
 INTROS: dict[str, str] = {
     "project": ("**Full project** (research, proposal PDF, your go, build, tests, handover document, your "
@@ -46,17 +47,20 @@ INTROS: dict[str, str] = {
     "rnd": ("**R&D document** (a book, report or research paper in ~/RnD: an outline with sources here in the chat, "
             "your go, then one chapter per ticket on the board, each reviewed, built into PDF and HTML). Copy the "
             "next message, fill it in and send it back. Required: **name**, **summary**, **details** (everything "
-            "the document must cover, its readers and format). Optional: **repo** (folder under ~/RnD), "
-            "**thinking** (low, medium or high)."),
+            "the document must cover and its format). Optional: **readers** (who the document is for, e.g. bank "
+            "executives, regulators, engineers and students), **repo** (folder under ~/RnD), **thinking** (low, "
+            "medium or high)."),
 }
 TEMPLATES: dict[str, str] = {
     "project": "/project new\nname:\nrepo:\nrepo_url:\nstack:\nkind: software\nthinking: medium\n"
-               "proposal: brief\nsummary:\ndetails:\n",
-    "code": "/code new\nname:\nrepo:\nrepo_url:\nstack:\nkind: software\nthinking: medium\nsummary:\ndetails:\n",
-    "rnd": "/rnd new\nname:\nrepo:\nthinking: medium\nsummary:\ndetails:\n",
+               "proposal: brief\nusers:\nsummary:\ndetails:\n",
+    "code": "/code new\nname:\nrepo:\nrepo_url:\nstack:\nkind: software\nthinking: medium\nusers:\nsummary:\n"
+            "details:\n",
+    "rnd": "/rnd new\nname:\nrepo:\nthinking: medium\nreaders:\nsummary:\ndetails:\n",
 }
 TEMPLATE_INTRO, TEMPLATE = INTROS["project"], TEMPLATES["project"]  # the full project is the default
-FIELDS = ("name", "repo", "repo_url", "stack", "kind", "thinking", "proposal", "summary", "details")
+FIELDS = ("name", "repo", "repo_url", "stack", "kind", "thinking", "proposal", "readers", "users", "summary",
+          "details")
 KINDS = ("software", "document")  # document: a book, report or guide, built by the writer agent
 DEPTHS = ("brief", "full")
 
@@ -81,6 +85,7 @@ class Project(BaseModel):
     mode: Mode = "project"  # project: proposal, handover and email; code: a short plan in the chat, no documents
     kind: Literal["software", "document"] = "software"  # document: built by the writer agent (books, reports)
     proposal: str = "brief"  # proposal depth: brief or full
+    audience: str = ""  # who it is for: a document's readers (`readers:`) or a product's users (`users:`)
     summary: str
     details: str
     state: State = "proposing"
@@ -99,7 +104,11 @@ class Project(BaseModel):
     def request(self) -> str:
         """The requirements as one text, for the translator and the writers."""
         parts = [f"Project: {self.name}", f"Summary: {self.summary}",
-                 f"Stack: {self.stack or 'recommend the best fit and justify it'}", f"Details:\n{self.details}"]
+                 f"Stack: {self.stack or 'recommend the best fit and justify it'}"]
+        if self.audience:
+            who = "Readers" if self.kind == "document" else "Users"
+            parts.append(f"{who} (the owner's own words; design for exactly these): {self.audience}")
+        parts.append(f"Details:\n{self.details}")
         if self.feedback:
             parts.append(f"Owner feedback for version {self.version}:\n{self.feedback}")
         return "\n".join(parts)
@@ -245,6 +254,7 @@ class Projects:
                           repo_url=fields.get("repo_url", ""), stack=fields.get("stack", ""),
                           kind=fields.get("kind", "software"),  # type: ignore[arg-type]
                           thinking=fields["thinking"], mode=mode, proposal=fields.get("proposal", "brief"),
+                          audience=fields.get("readers") or fields.get("users", ""),
                           summary=fields["summary"], details=fields["details"], chat=chat)
         project.log("created")
         return project
