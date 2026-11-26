@@ -1104,3 +1104,17 @@ def test_law_commands_inside_an_agent_session_are_the_agents_jobs(monkeypatch: p
     CliRunner().invoke(cli.app, ["search", "postgres"])
     empty = CliRunner().invoke(cli.app, ["search", " "])
     assert sent == ["agent", "cli"] and empty.exit_code != 0
+
+
+def test_a_writing_session_gets_a_map_of_its_chapters(tmp_path: Path) -> None:
+    """Seen 2026-11-26/27: writers paged through a 2,600-line chapter for 1-2 hours to find their place."""
+    from law.handlers.tasks import chapter_map
+
+    (tmp_path / "chapters").mkdir()
+    (tmp_path / "chapters" / "07-ledger.md").write_text(
+        "# 7. Ledger\n\nIntro.\n\n## 7.1 Design\n\nText.\n\n```\n# not a heading\n```\n\n### Worked example\n\nMore.\n")
+    found = chapter_map(tmp_path).splitlines()
+    assert found[0] == "chapters/07-ledger.md (15 lines)"
+    assert found[1].strip() == "1: 7. Ledger (4)" and found[2].strip() == "5:   7.1 Design (8)"  # indented by level
+    assert found[3].strip() == "13:     Worked example (3)" and len(found) == 4  # code is not a heading
+    assert chapter_map(tmp_path / "missing") == ""

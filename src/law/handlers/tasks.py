@@ -382,6 +382,34 @@ def project_map(project: Path) -> str:
     return "\n".join(rows) or "(no files yet)"
 
 
+# A writing session paged through its 2,600-line chapter again and again to find its place and match its style
+# (seen 2026-11-26/27: DBTC-12, 22.2 read for 1-2 hours before writing). The map gives every heading's line and size,
+# so a session opens only the lines it needs (the read tool's offset and limit).
+CHAPTER_MAP = ("Chapter map (line: heading, lines in that part). Open only what this ticket needs, by line, with the "
+               "read tool's offset and limit; never page through a whole chapter:\n{map}")
+CHAPTER_MAP_LIMIT = 160
+
+
+def chapter_map(project: Path) -> str:
+    """Each chapter's headings (levels 1-3) with their line and the length of the part under them."""
+    rows: list[str] = []
+    for chapter in sorted((project / "chapters").glob("*.md")):
+        lines = chapter.read_text(errors="replace").splitlines()
+        heads, fence = [], False
+        for n, line in enumerate(lines, start=1):
+            if line.lstrip().startswith(("```", "~~~")):
+                fence = not fence
+            elif not fence and re.match(r"#{1,3} \S", line):
+                heads.append((n, line.count("#", 0, 4), line.lstrip("#").strip()))
+        rows.append(f"{chapter.relative_to(project)} ({len(lines)} lines)")
+        for i, (n, level, title) in enumerate(heads):
+            size = (heads[i + 1][0] if i + 1 < len(heads) else len(lines) + 1) - n
+            rows.append(f"{n:>6}: {'  ' * (level - 1)}{title[:90]} ({size})")
+    if len(rows) > CHAPTER_MAP_LIMIT:
+        rows = rows[:CHAPTER_MAP_LIMIT] + [f"  ... {len(rows) - CHAPTER_MAP_LIMIT} more (rg -n '^#' chapters/)"]
+    return "\n".join(rows)
+
+
 # A ticket session used to open .law/PROMPT.md, PLAN.md and PROGRESS.md (and STYLE.md for a book) before any work:
 # 5-7 minutes a ticket on the local model (2026-11-24 trial; 10 % of all agent time measured across jobs), and
 # PROGRESS.md grows with every ticket. LAW gives their current, relevant part instead.
@@ -1593,6 +1621,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
                 ALL_TICKED if build_section(folder, version) is not None else FIRST_TICKET
             if ticket:
                 task += "\n\n" + TARGETED.format(map=project_map(folder))
+                if cmap := chapter_map(folder):
+                    task += "\n\n" + CHAPTER_MAP.format(map=cmap)
                 if context := ticket_context(folder, version, ticket[0]):
                     task += "\n\n" + context
             prompt = f"{_scoped(p, memory)}\n\n{GATE_FAILED.format(problem=problem) if problem else ''}{task}"
