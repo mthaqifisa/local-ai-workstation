@@ -1040,7 +1040,11 @@ def agent_env(rt: Runtime, role: str, effort: str | None = None) -> dict[str, st
             # instance removes it)
             "DOCKER_HOST": f"unix://{rt.paths.home / 'colima' / 'default' / 'docker.sock'}",
             # Testcontainers mounts the socket into its Ryuk container: the path inside the Colima VM, not the host's
-            "TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE": "/var/run/docker.sock"}
+            "TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE": "/var/run/docker.sock",
+            # a `law` command run inside an agent session files its job as source "agent", not "cli": the owner
+            # is not pinged for an agent's own searches (seen 2026-11-26: dozens of Started/Done messages, Telegram
+            # flood control, and a Retry offered for an agent's empty search)
+            "LAW_AGENT": role}
 
 
 WHOLE_FILE_TOOLS = ("cat", "head", "tail", "less", "more", "nl", "bat")
@@ -1063,7 +1067,15 @@ _lead_tasks: set[asyncio.Task[None]] = set()
 
 def make_handlers(rt: Runtime) -> dict[str, Any]:
     async def search(ctx: Context) -> Outcome:
-        hits = await searx(rt, ctx.job.payload["query"], int(ctx.job.payload.get("limit", 8)))
+        query = str(ctx.job.payload.get("query") or "").strip()
+        if not query:
+            raise Fatal("nothing to search for: give the words to search, e.g. law search postgres isolation levels")
+        try:
+            hits = await searx(rt, query, int(ctx.job.payload.get("limit", 8)))
+        except httpx.HTTPStatusError as exc:
+            if 400 <= exc.response.status_code < 500:  # the search engine refused the query: a retry repeats it
+                raise Fatal(f"the search engine refused this query ({exc.response.status_code})") from exc
+            raise
         return Done({"results": hits})
 
     async def model_generating() -> bool:

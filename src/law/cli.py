@@ -48,7 +48,7 @@ def _submit_and_wait(kind: str, payload: dict[str, Any], *, quiet: bool) -> dict
 
     base = _server()
     try:
-        job = client.submit(base, kind, payload, source="cli")
+        job = client.submit(base, kind, payload, source="agent" if os.environ.get("LAW_AGENT") else "cli")
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
     if not quiet:
@@ -238,7 +238,10 @@ def video(prompt: Annotated[list[str], typer.Argument()],
 @app.command()
 def search(query: Annotated[list[str], typer.Argument()], quiet: bool = False) -> None:
     """Web search via SearXNG."""
-    _run_job("search", {"query": " ".join(query)}, quiet=quiet)
+    words = " ".join(query).strip()
+    if not words:
+        raise typer.BadParameter("give the words to search for, e.g. law search postgres isolation levels")
+    _run_job("search", {"query": words}, quiet=quiet)
 
 
 @app.command()

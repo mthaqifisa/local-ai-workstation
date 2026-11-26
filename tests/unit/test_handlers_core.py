@@ -147,6 +147,7 @@ def test_agent_runs_keep_data_under_law_home(setup):
     assert env["MAVEN_OPTS"] == f"-Dmaven.repo.local={rt.paths.cache / 'm2'}"
     for key in ("XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "npm_config_cache", "GRADLE_USER_HOME"):
         assert env[key].startswith(str(rt.paths.home)), key
+    assert env["LAW_AGENT"] == "coder"  # its `law` commands file jobs as source "agent": no Telegram pings
 
 
 def _opencode_json(text: str) -> str:

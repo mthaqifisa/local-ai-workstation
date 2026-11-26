@@ -1063,3 +1063,44 @@ def test_a_plan_can_name_any_tickets_role() -> None:
     assert ticket_role("writer", "DB-3 Cover and figures [role designer]", known) == "designer"
     assert ticket_role("coder", "LC-2 Login page [role astronaut]", known) == "coder"  # unknown: the stage's role
     assert ticket_role("writer", "DB-8 Go ledger service (acceptance: compilable Go service)", known) == "coder"
+
+
+async def test_an_empty_or_refused_search_fails_once_with_a_reason(tmp_path: Path,
+                                                                   monkeypatch: pytest.MonkeyPatch) -> None:
+    """Seen 2026-11-26: an agent's `law search` with no words failed three times (400) and Tony offered a Retry."""
+    import httpx
+
+    from law.handlers import tasks
+    from law.queue.worker import Fatal
+
+    handler = tasks.make_handlers(_rt(tmp_path))["search"]
+    with pytest.raises(Fatal, match="nothing to search for"):
+        await handler(_ctx({"query": "   "}))
+
+    async def refused(rt: Any, query: str, limit: int) -> list[dict[str, Any]]:
+        request = httpx.Request("GET", "http://127.0.0.1:8888/search")
+        raise httpx.HTTPStatusError("400", request=request, response=httpx.Response(400, request=request))
+
+    monkeypatch.setattr(tasks, "searx", refused)
+    with pytest.raises(Fatal, match="refused this query"):
+        await handler(_ctx({"query": "postgres"}))
+
+
+def test_law_commands_inside_an_agent_session_are_the_agents_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
+    from typer.testing import CliRunner
+
+    from law import cli, client
+
+    sent: list[str] = []
+
+    def fake_submit(base: str, kind: str, payload: dict[str, Any], *, source: str = "cli", **kw: Any) -> dict[str, Any]:
+        sent.append(source)
+        raise ValueError("stop here")
+
+    monkeypatch.setattr(client, "submit", fake_submit)
+    monkeypatch.setenv("LAW_AGENT", "writer")
+    CliRunner().invoke(cli.app, ["search", "postgres"])
+    monkeypatch.delenv("LAW_AGENT")
+    CliRunner().invoke(cli.app, ["search", "postgres"])
+    empty = CliRunner().invoke(cli.app, ["search", " "])
+    assert sent == ["agent", "cli"] and empty.exit_code != 0
