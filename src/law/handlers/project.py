@@ -293,6 +293,12 @@ features:
 - State each fact once, in the section it belongs to. Before writing a section, list the headings of the chapter
   so far (`rg -n "^#" chapters/<file>`) and search it for the facts you will use: refer back to a fact already
   stated ("see <section>") instead of restating it.
+- Write for a reader meeting each idea for the first time. Before you use a term, product, acronym or idea (a
+  database, double-entry, an idempotency key), search the whole book in reading order for it
+  (`rg -n -i -w --sort path "<term>" book.md chapters/ | head -5`). If this is its first appearance, explain it here
+  in plain words: what it is and why it comes up now, connected to what the reader has just read. If it is
+  explained elsewhere, point there ("see 7.1"); if it is explained only later, move the explanation to the first
+  use. Never let a reader meet a tool or concept with no idea what it is or why it is here (owner, 2026-11-26).
 - One ticket = one chapter or sub-chapter in its own file (chapters/07-ledger.md) with its citations and diagrams
   (diagrams/<name>.mmd or .dot). Write it completely in one session.
 - Read only what the ticket needs: its entries in .law/RESEARCH.md (search for them; they are verified quotes, so
@@ -316,8 +322,11 @@ DOC_RUBRIC = """You are reviewing a chapter of a book for a demanding profession
 5 = accurate, complete for its scope, every claim cited, clear for both a beginner and an expert, diagrams correct
 and readable within the page; 4 = solid, cosmetic issues only; 3 = one material gap, error, uncited claim or
 unreadable diagram; 2 = several; 1 = wrong or missing.
-Check facts and numbers against the cited sources, consistency with .law/STYLE.md and the outline, that the
-rendered pages look right (run .law/check.sh and look at the page images), and that nothing is padding.
+Check facts and numbers against the cited sources, consistency with .law/STYLE.md and the outline, that each term,
+tool or idea is explained where the reader first meets it in the whole book (search the book in reading order:
+`rg -n -i -w --sort path "<term>" book.md chapters/ | head -5`; an unexplained first use, or one explained only later,
+is a material gap), that the rendered pages look right (run .law/check.sh and look at the page images), and
+that nothing is padding.
 Reply with JSON only: {"score": <1-5>, "issues": ["<file:section problem and fix>"], "summary": "<one sentence>"}"""
 
 

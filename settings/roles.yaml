@@ -197,6 +197,10 @@ roles:
         a finding.
       - Consistency: terms, numbers and names agree across chapters, cross-references and the glossary point to
         the right place, and nothing promised by the brief or the outline is missing.
+      - First use: read as someone new to the book. Every term, tool or idea is explained where the reader first
+        meets it (search the whole book in reading order, not just the section), or points to where it is; one
+        that appears unexplained, is explained only later, or comes up with no link to what came before is a
+        finding.
       - Build: run .law/check.sh; a failure is a finding.
       - A finding states where (file and section, page), what is wrong, the evidence (the source's own words or
         the command output) and what correct looks like. Severity: blocker (a wrong fact, a missing chapter or a

@@ -692,6 +692,12 @@ For each factual statement, figure, date and regulation reference in the section
   match, and the claim must say what the source says. A fact with no source is a finding.
 Also check that the section follows .law/STYLE.md (search it for the terms you need) and has both layers: a plain
 explanation first, then the detail.
+Then read it as someone meeting the book for the first time: for each term, product, acronym or idea the section
+relies on (the ten or so a newcomer would need; not everyday words), search the whole book in reading order
+(`rg -n -i -w --sort path "<term>" book.md chapters/ | head -5`). Did an earlier section explain it, or does this one
+when it first appears: what it is and why it comes up here? A first use with no explanation, an explanation that
+comes only later, or a topic that appears with no link to what came before is a finding (Severity: major); Correct
+says what to explain at the first use, or where to point back to.
 For each finding append to {folder}/.law/BUGS.md (read its last lines first for the next number):
    ## BUG-<next number> · open · editor · {now}
    <one-line title of what is wrong>
