@@ -1,22 +1,29 @@
 {
   "stage": "E-enhance-v6.1",
-  "task": "Tech-chapter trial: build running, 12/28 tickets done; owner chose to let it finish",
+  "task": "Tech-chapter trial: DBTC-22.1 (Java EOD batch) running on the upgraded kit; editor round next after DBTC-28",
   "status": "in_progress",
-  "next_step": "Watch DBTC-13..28, compile both Java samples (DBTC-16 client, DBTC-22 batch) and rerun Go tests, then the Inkling editor round, fixes and round 2; show the owner the result",
-  "timestamp": "2026-11-26T06:24:55",
+  "next_step": "Compile DBTC-22.1 batch job (JDK 27, PostgreSQL 19); watch 22.2-28 meet the readability gate; editor round (Inkling) with reader panel and verify --all; fix rounds; show the owner the result",
+  "timestamp": "2026-11-26T19:36:41",
   "files_touched": [
-    "settings/roles.yaml",
-    "src/law/handlers/tasks.py",
+    "templates/rnd/tools/verify.py",
+    "templates/rnd/tools/prepare.py",
+    "templates/rnd/tools/build.sh",
+    "templates/rnd/tools/mermaid.json",
+    "templates/rnd/.law/STYLE.md",
+    "src/law/book_kit.py",
     "src/law/lead.py",
-    "src/law/telegram_bot.py",
-    "docs/adr/0026-lead-note-approval.md",
-    "tests/unit/test_gate_broken_steps.py",
-    "tests/unit/test_lead.py",
-    "tests/unit/test_tickets.py"
+    "src/law/board.py",
+    "src/law/handlers/tasks.py",
+    "src/law/handlers/project.py",
+    "src/law/install/launchd.py",
+    "src/law/install/steps.py",
+    "settings/roles.yaml",
+    "docs/adr/0031-book-reader-panel-and-readability-gate.md"
   ],
   "commands": [
+    "brew upgrade openjdk openjdk@25 openjdk@21 maven",
     "law install",
-    "pytest tests/unit (743 passed)",
-    "go test on postgres:19 (24 passed)"
+    "law services restart worker",
+    "pytest tests/unit (751 passed)"
   ]
 }
