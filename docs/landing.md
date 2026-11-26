@@ -5,9 +5,9 @@
   <p class="eyebrow">Open source · Apple Silicon · One Mac, your whole network</p>
   <h1 class="hero-title">LAW: a private AI team<br>on a single Mac</h1>
   <p class="hero-lede">LAW turns a 64 GB Apple Silicon Mac into an AI workstation for everyone on your network.
-    It answers questions, researches, writes books and reports, builds and tests software, and makes images,
-    video, speech and music, all on open models that run on the Mac itself. Before you see any answer, a model
-    of a different family has checked it.</p>
+    A team of agents plans, builds and tests software end to end, answers and researches with sources, writes
+    proposals and reports, operates apps on your Mac, and makes images, video, speech and music, all on open
+    models that run on the Mac itself. Before you see any answer, a model of a different family has checked it.</p>
   <div class="hero-actions">
     <a class="button primary" href="#get-started">Get started</a>
     <a class="button" href="#screenshots">See it working</a>
@@ -48,8 +48,8 @@ Each figure below was measured on the Mac LAW runs on, and each links to the rec
     <a href="adr/0025-speculative-decoding-dflash.md">ADR-0025</a></span></div>
   <div class="fact"><span class="num">10 / 10</span><span class="label">golden evaluation cases passed through the
     real product, scored by an independent judge</span><span class="src">2026-11-23 · <code>law eval</code></span></div>
-  <div class="fact"><span class="num">7 of 7</span><span class="label">planted errors caught by the document editor,
-    each with the source line that disproves it</span><span class="src">2026-11-25 ·
+  <div class="fact"><span class="num">7 of 7</span><span class="label">planted errors caught by the independent
+    reviewer of documents, each with the source line that disproves it</span><span class="src">2026-11-25 ·
     <a href="adr/0030-document-editor-model.md">ADR-0030</a></span></div>
   <div class="fact"><span class="num">754</span><span class="label">automated tests, with lint and strict type
     checks on every change</span><span class="src">2026-11-26 · pytest, ruff, mypy --strict</span></div>
@@ -64,26 +64,34 @@ Each figure below was measured on the Mac LAW runs on, and each links to the rec
 
 ```{=html}
 <div class="grid">
-  <article class="card"><h3>Projects, built ticket by ticket</h3><p>Describe a product on Telegram. Agents write a
-    proposal and a plan you approve, then build it one ticket at a time. After every ticket LAW runs the project's
-    own build and tests, commits and records progress: the agent's word is never taken for it. Black-box QA tests
-    the running product each round.</p></article>
-  <article class="card"><h3>Books and research, fact-checked</h3><p><code>/rnd</code> writes books, reports and
-    research papers chapter by chapter. Every fact is quoted from a saved source, code samples compile and pass
-    their tests, and an independent editor checks each section for five readers: a chief executive, a senior
-    banker, a professor, a consultant and a fresh graduate.</p></article>
-  <article class="card"><h3>Answers you can act on</h3><p>Chat in Telegram, Open WebUI or the terminal. Web search
-    through a private search engine, documents and knowledge bases, and a calculator the model must use for any
+  <article class="card"><h3>Software, end to end</h3><p>Describe a product on Telegram. Agents write a proposal
+    and a plan you approve, build it ticket by ticket, test the running product as a black box every round, fix
+    what QA finds and hand over a document with real screenshots. After every ticket LAW runs the project's own
+    build and tests itself: the agent's word is never taken for it.</p></article>
+  <article class="card"><h3>A coding agent on call</h3><p><code>/code</code> or <code>law code</code> works in any
+    project folder: new features, fixes and refactors, kept honest by the project's build, lint and tests.
+    <code>/bugfix</code> reports a bug; the coder fixes it and QA retests the product.</p></article>
+  <article class="card"><h3>Answers and research with sources</h3><p>Chat in Telegram, Open WebUI or the terminal,
+    with private web search, your documents and knowledge bases, and a calculator the model must use for any
     figure. Replies show the model's live reasoning.</p></article>
-  <article class="card"><h3>Images, video, speech and music</h3><p>Generate and edit images, animate a still, make a
-    short film with shots, score and cut, speak text in natural voices, transcribe audio, and compose full songs,
-    all on the same Mac.</p></article>
+  <article class="card"><h3>Proposals, reports and books</h3><p><code>/proposal</code> researches and writes a
+    consultant-grade proposal as a PDF. <code>/rnd</code> writes reports, research papers and books chapter by
+    chapter: every fact quoted from a saved source, code samples that compile, and an independent editor.</p></article>
+  <article class="card"><h3>An agent that uses your Mac</h3><p>The operator opens apps, plays music, changes the
+    volume and settings, runs Shortcuts and takes screenshots to check its own work: "play calm jazz on Spotify at
+    25% volume" just happens.</p></article>
+  <article class="card"><h3>Images, video, speech and music</h3><p>Generate and edit images, animate a still, make
+    a short film with planned shots, a score and cuts, compose full songs with lyrics, speak text in natural voices
+    and transcribe recordings.</p></article>
+  <article class="card"><h3>A team of specialists</h3><p>Architect, analyst, designer, researcher, writer,
+    translator, coder, reviewer and QA: each role has its own instructions, tools and model, and you can call any
+    of them directly with <code>/agent</code>.</p></article>
+  <article class="card"><h3>Your Mac as an AI server</h3><p>OpenAI- and Anthropic-compatible APIs for VS Code,
+    Claude Code, scripts and apps on every device on your network, and it keeps working without internet once the
+    models are downloaded.</p></article>
   <article class="card"><h3>You stay in charge</h3><p>Plans and key changes wait for your Go on Telegram. When an
     agent is stuck, a lead developer drafts a note and you approve, edit or drop it. <code>/note</code> steers a
-    running agent at its next step.</p></article>
-  <article class="card"><h3>Everywhere you work</h3><p>Telegram on your phone, the <code>law</code> command line, Open
-    WebUI and the live Console in any browser, and OpenAI- and Anthropic-compatible APIs for VS Code, Claude Code,
-    scripts and other tools on your network.</p></article>
+    running agent at its next step; the Console shows every agent live.</p></article>
 </div>
 ```
 
@@ -100,31 +108,46 @@ Each figure below was measured on the Mac LAW runs on, and each links to the rec
 ```
 
 A single Mac holds one large model at a time, so the scheduler swaps 30–45 GB models in and out as jobs need them:
-a reasoning model with speculative decoding for writing and code, a fast coder, a fast assistant, an independent
-judge, a document editor, and media models for images, video, speech and music. The full picture, with every
+a reasoning model with speculative decoding for planning, writing and code, a fast coder, a fast assistant and
+operator, an independent judge, a document editor, and media models for images, video, speech and music. The full picture, with every
 component and port, is in [Architecture](#architecture).
 
 # Screenshots {#screenshots}
 
 ```{=html}
+<p class="lede">The LAW Console runs at <code>http://127.0.0.1:8100</code> on the Mac (and at the Mac's address on
+your network). Every tab, as it looks on a working day:</p>
 <div class="gallery">
-  <figure class="wide"><img src="docs/images/screenshots/console-projects.png" alt="LAW Console project board with tickets in To do, In progress and Completed">
-    <figcaption><strong>Project board.</strong> A book written by the agents, ticket by ticket, with estimates that
-    recalibrate to the real pace and a live countdown on the running ticket.</figcaption></figure>
-  <figure class="wide"><img src="docs/images/screenshots/console-agents.png" alt="LAW Console agents view showing the model, the running step and the agent's to-do list">
-    <figcaption><strong>Agents, live.</strong> What the model is generating, the agent's current step, its last
-    action and its progress through the plan.</figcaption></figure>
-  <figure><img src="docs/images/screenshots/console-overview.png" alt="LAW Console overview with CPU, memory, GPU, storage, models and queue">
-    <figcaption><strong>Console overview.</strong> CPU, memory, GPU and storage, the models in memory and the job
-    queue.</figcaption></figure>
-  <figure><img src="docs/images/screenshots/dashboard.png" alt="Dashboard linking every LAW service with its response time">
-    <figcaption><strong>Dashboard.</strong> Every service on one page, each with its live response time.</figcaption></figure>
+  <figure class="wide"><img src="docs/images/screenshots/console-overview.png" alt="Console overview: CPU, memory, GPU, storage, models in memory and the queue">
+    <figcaption><strong>Overview.</strong> CPU, memory, GPU and storage of the Mac, the models in memory and the job
+    queue, live.</figcaption></figure>
+  <figure class="wide"><img src="docs/images/screenshots/console-agents.png" alt="Agents: the model's current generation, the running agent's step, last action and progress">
+    <figcaption><strong>Agents.</strong> What the model is generating, each agent's current step, its last action and
+    how far it is through its plan, with a Cancel button.</figcaption></figure>
+  <figure class="wide"><img src="docs/images/screenshots/console-projects.png" alt="Projects: a project board with To do, In progress, Waiting for approval, Completed and Failed columns">
+    <figcaption><strong>Projects.</strong> Every project, software or document, as a board of tickets, with estimates
+    that recalibrate to the real pace and a live countdown on the running ticket.</figcaption></figure>
+  <figure><img src="docs/images/screenshots/console-services.png" alt="Services: every LAW service with its live response time">
+    <figcaption><strong>Services.</strong> Chat, the image studio, web search, the LLM endpoint, the job API and
+    Docker, each with its live response time.</figcaption></figure>
+  <figure><img src="docs/images/screenshots/console-jobs.png" alt="Jobs: running jobs with status, progress and Cancel">
+    <figcaption><strong>Jobs.</strong> Every job in the queue with its status and latest progress; cancel any of
+    them.</figcaption></figure>
+  <figure><img src="docs/images/screenshots/console-storage.png" alt="Storage: every cache with its size, what clearing it costs and a Clear button">
+    <figcaption><strong>Storage.</strong> Every cache with its size and what clearing it costs, cleared with one
+    button.</figcaption></figure>
+  <figure><img src="docs/images/screenshots/console-personas.png" alt="Personas: the agent roles and the coder role's editable instructions">
+    <figcaption><strong>Personas.</strong> Each role's instructions, model, reasoning and tools, editable; saving
+    regenerates the agents.</figcaption></figure>
+  <figure><img src="docs/images/screenshots/console-settings.png" alt="Settings: the Telegram bot, allowed users and the report email">
+    <figcaption><strong>Settings.</strong> The Telegram bot and who may use it, and where finished documents are
+    emailed. Secrets are stored only in <code>~/LAW/state/.env</code>.</figcaption></figure>
 </div>
 
-<h3 class="gallery-title">Pages from a book the agents wrote</h3>
+<h3 class="gallery-title">One example of agent output: a technical book with working Go and Java code</h3>
 <div class="gallery pages">
   <figure><img src="docs/images/screenshots/book-data-model.png" alt="A book page with an entity-relationship diagram and the SQL that creates it">
-    <figcaption><strong>A book page: the data model.</strong> Diagram and schema, both from the same agent-built
+    <figcaption><strong>The data model.</strong> Diagram and database schema, both from the same agent-built
     project.</figcaption></figure>
   <figure><img src="docs/images/screenshots/book-go-code.png" alt="A book page of Go source code with explanatory comments">
     <figcaption><strong>Code that compiles.</strong> Every sample builds and its tests pass on the stated versions

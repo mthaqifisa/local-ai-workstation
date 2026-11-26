@@ -16,9 +16,11 @@ is a different model family from the writer, so the system never grades its own 
 | **Browser** (on the Mac; from other devices use the Mac's address, printed by `law doctor`) | Open WebUI chat `http://127.0.0.1:3000` · LAW Console `http://127.0.0.1:8100` (live stats, agents, project boards, services, jobs, personas, settings) · dashboard `http://127.0.0.1:3010` · Docker (Portainer, user `admin`, password `PORTAINER_ADMIN_PASSWORD` in `~/LAW/state/.env`) `http://127.0.0.1:9000` |
 | **Any OpenAI/Anthropic client** | `http://127.0.0.1:8000/v1` |
 
-**Projects** are built by agents ticket by ticket from a plan you approve on Telegram: software (`/project`,
-`/code`) or documents (`/rnd`: books, reports and research papers, written chapter by chapter with verified sources,
-compiling code samples and an independent editor). Progress shows on the Console's project board.
+**Agents do the work, end to end.** Describe a product and a team of agents writes the proposal and a plan you
+approve on Telegram, builds it ticket by ticket, tests the running product, fixes what QA finds and hands it over
+(`/project`, or `/code` for code only). The same team writes consultant-grade proposals (`/proposal`), reports,
+research papers and books (`/rnd`), operates apps on your Mac (`/agent operator`), and makes images, video, songs
+and short films. Every project's progress shows live on the Console's board.
 
 Every request goes through one durable job queue with a scheduler that knows how much memory each model needs.
 Big models are swapped in and out as needed, so you can use 30–45 GB models one at a time on 64 GB.
@@ -183,12 +185,10 @@ Exact repos and pinned revisions: `settings/registry.yaml`. Decisions and trade-
   only what you approve reaches the agent, and a draft waits for your answer however long it takes.
 - **LAW does the bookkeeping**: after each ticket LAW runs the project's gate itself, then commits, ticks the ticket
   and records progress; the agent's word is never taken for it. A gate step that never ran (an unknown command) fails.
-- **Books are written for five readers**: a bank's chief executive, a senior banker, a professor, a seasoned
-  consultant and a fresh graduate. Every section opens with an "In short" summary; every term is explained where the
-  reader first meets it; facts come from saved, quoted sources; code samples compile and their tests pass. The book
-  kit's checker fails long sentences, heavy dashes, long quotations and unreadable diagrams in the text a ticket
-  writes, and an editor of another model family checks every section against its sources and the five readers
-  (`docs/adr/0031-book-reader-panel-and-readability-gate.md`).
+- **Documents are written for their readers** (reports, papers and books from `/rnd`): facts come from saved,
+  quoted sources, code samples compile and pass their tests, every term is explained where the reader first meets
+  it, and a checker fails long sentences and unreadable diagrams. An editor of another model family checks every
+  section against its sources and its intended readers (`docs/adr/0031-book-reader-panel-and-readability-gate.md`).
 - **Measured claims**: agents that benchmark LAW itself run with no other request on the model and check
   `~/LAW/logs/omlx.log`; documents are checked as a reader sees them (text extraction and page images).
 - **Safe updates**: `law install` never restarts the worker mid-step; it restarts between steps.

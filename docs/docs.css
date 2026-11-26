@@ -95,6 +95,7 @@ a { color: var(--accent); }
 .gallery figcaption { padding: 12px 16px 14px; font-size: .9rem; color: var(--muted); }
 .gallery figcaption strong { color: var(--text); }
 .gallery-title { margin: 2rem 0 .2rem; }
+.lede { color: var(--muted); }
 .gallery.pages { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .gallery.pages img { aspect-ratio: 210 / 297; object-fit: cover; object-position: top; }
 
