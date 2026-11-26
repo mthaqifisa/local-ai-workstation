@@ -11,10 +11,14 @@ is a different model family from the writer, so the system never grades its own 
 
 | Use it from | How |
 |---|---|
-| **Telegram** (main channel) | Message your bot: text, voice notes, photos; `/help` lists every command (`/image`, `/video`, `/music`, `/code`, `/project`, `/bugfix`, `/qa`, `/note`, …). Replies show live thinking |
+| **Telegram** (main channel) | Message your bot: text, voice notes, photos; `/help` lists every command (`/image`, `/video`, `/music`, `/code`, `/project`, `/rnd`, `/bugfix`, `/qa`, `/note`, …). Replies show live thinking |
 | **Terminal** | `law ask "…"`, `law code "…"`, `law image "…"`, `law tts "…"`, `law stt file.wav`, `law music "…"`, `law jobs`, `law api <Class>`, `law qa <project>`, `law bugfix <project> [bug]`, `law board show <project>`, `law send <file>` |
 | **Browser** (any device) | Open WebUI chat `http://<mac>.local:3000` · LAW Console `http://<mac>.local:8100` (live stats, agents, project boards, services, jobs, personas, settings) · dashboard `http://<mac>.local:3010` · Docker (Portainer, user `admin`, password `PORTAINER_ADMIN_PASSWORD` in `~/LAW/state/.env`) `http://<mac>.local:9000` |
 | **Any OpenAI/Anthropic client** | `http://<mac>.local:8000/v1` |
+
+**Projects** are built by agents ticket by ticket from a plan you approve on Telegram: software (`/project`,
+`/code`) or documents (`/rnd`: books, reports and research papers, written chapter by chapter with verified sources,
+compiling code samples and an independent editor). Progress shows on the Console's project board.
 
 Every request goes through one durable job queue with a scheduler that knows how much memory each model needs.
 Big models are swapped in and out as needed, so you can use 30–45 GB models one at a time on 64 GB.
@@ -143,13 +147,14 @@ LAW creates it directly under `~/SourceCode/`.
 
 | Role | Model | Loaded size |
 |---|---|---|
-| Reasoning, writing, vision, coding agent (default) | Qwen3.8-27B, 8-bit | 28 GB |
+| Reasoning, writing, vision, coding agent (default) | Qwen3.8-27B, 8-bit, with DFlash 2 speculative decoding (2.6–2.8× faster on code) | 28 GB + 4 GB draft |
 | Fast coder for short tasks (32k context) | Qwen3-Coder-Next 80B MoE, 4-bit | 41 GB |
 | Fast / operator | Qwen3.6-35B-A3B, 8-bit | 36 GB |
-| Independent judge | Gemma 4 31B, 8-bit (different family → no self-grading) | 34 GB |
+| Independent judge, reviewer and QA | Gemma 4 31B, 8-bit (different family → no self-grading) | 34 GB |
+| Document editor and fact-checker (`/rnd`) | Inkling 2 Mini (caught 7 of 7 planted errors where Gemma caught none) | 20 GB |
 | Embeddings / rerank | Qwen3-Embedding-4B · Qwen3-Reranker-0.6B | 3 GB |
 | Images | Qwen-Image 2.1 (8-bit) | ~40 GB |
-| Video | Wan 2.2 A14B T2V / I2V (8-bit) | ~42 GB |
+| Video | Wan 2.2 A14B T2V / I2V (8-bit) | ~46 GB |
 | Speech / music | Kokoro · Whisper large-v3-turbo · Chatterbox fp16 · ACE-Step 1.5 | small – 20 GB |
 
 Exact repos and pinned revisions: `settings/registry.yaml`. Decisions and trade-offs: `docs/adr/0002-model-roster.md`.
@@ -173,7 +178,17 @@ Exact repos and pinned revisions: `settings/registry.yaml`. Decisions and trade-
   budget), reads library internals (jars, `node_modules`, a library's source on GitHub), or reads LAW's own source or
   state (secrets) is stopped and pointed to the supported way. Coders print the exact data when a test fails on data,
   and search an unfamiliar error's text before guessing.
-- **You can steer a running agent**: `/note <project> <text>` reaches it at its next action.
+- **You can steer a running agent**: `/note <project> <text>` reaches it at its next action. When an agent stays
+  stuck, a lead developer (the agent's own model) drafts a note and Tony sends it to you with Approve / Edit / Drop;
+  only what you approve reaches the agent, and a draft waits for your answer however long it takes.
+- **LAW does the bookkeeping**: after each ticket LAW runs the project's gate itself, then commits, ticks the ticket
+  and records progress; the agent's word is never taken for it. A gate step that never ran (an unknown command) fails.
+- **Books are written for five readers**: a bank's chief executive, a senior banker, a professor, a seasoned
+  consultant and a fresh graduate. Every section opens with an "In short" summary; every term is explained where the
+  reader first meets it; facts come from saved, quoted sources; code samples compile and their tests pass. The book
+  kit's checker fails long sentences, heavy dashes, long quotations and unreadable diagrams in the text a ticket
+  writes, and an editor of another model family checks every section against its sources and the five readers
+  (`docs/adr/0031-book-reader-panel-and-readability-gate.md`).
 - **Measured claims**: agents that benchmark LAW itself run with no other request on the model and check
   `~/LAW/logs/omlx.log`; documents are checked as a reader sees them (text extraction and page images).
 - **Safe updates**: `law install` never restarts the worker mid-step; it restarts between steps.
@@ -418,3 +433,4 @@ No secrets are ever stored in the repo. To reset everything machine-local: `law 
 - [Runbook](docs/RUNBOOK.md): operate, update, troubleshoot
 - [Architecture](docs/ARCHITECTURE.md) and [decision records](docs/adr/)
 - [Research](RESEARCH.md): why these models and tools
+- [Documentation page](docs/index.html): all of the above on one page (open it in a browser)
