@@ -40,3 +40,10 @@ def test_each_source_is_one_top_level_section() -> None:
     for anchor in ("why-law", "proof", "capabilities", "how-it-works", "screenshots", "get-started"):
         assert f"{{#{anchor}}}" in text  # the product page's sections come first, in the side menu
     assert "\n# Models" not in text  # the README's own sections moved one level down
+
+
+def test_every_diagram_is_an_image_not_mermaid_source() -> None:
+    """Seen 2026-11-26: the architecture section showed Mermaid source as text, since only GitHub draws it."""
+    text = build_docs.combined()
+    assert "```mermaid" not in text, "a Mermaid block has no rendered image: run python3 scripts/build_docs.py"
+    assert build_docs.diagram_path("flowchart LR\n a --> b\n").startswith("docs/images/diagrams/")

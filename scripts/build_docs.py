@@ -66,6 +66,8 @@ def relink(text: str, source: str) -> str:
 
 # GitHub draws the README's Mermaid diagrams; a browser opening this file would show their source, so each one is
 # replaced by the static copy the README links right after it.
+MERMAID = re.compile(r"```mermaid\n(.*?)```", re.DOTALL)
+DIAGRAMS = "docs/images/diagrams"  # Mermaid blocks with no static copy, rendered here by build() and committed
 MERMAID_WITH_STATIC = re.compile(r"```mermaid\n.*?```\s*\n\s*\*\(Static image: \[[^\]]*\]\(([^)\s]+)\)\)\*",
                                  re.DOTALL)
 
@@ -74,7 +76,7 @@ def combined(repo: Path = REPO) -> str:
     parts = [(repo / LANDING).read_text()]
     for name, anchor in SOURCES:
         raw = MERMAID_WITH_STATIC.sub(lambda m: f"![]({m.group(1)})", (repo / name).read_text())
-        text = relink(raw, name)
+        text = MERMAID.sub(lambda m: _rendered(repo, m.group(1)), relink(raw, name))  # paths from the repo root
         lines = text.splitlines()
         title = TITLES.get(name) or (lines[0].lstrip("# ").strip() if lines and lines[0].startswith("# ") else name)
         body = "\n".join(lines[1:] if lines and lines[0].startswith("# ") else lines)
@@ -82,7 +84,48 @@ def combined(repo: Path = REPO) -> str:
     return "\n".join(parts)
 
 
+def diagram_path(source: str) -> str:
+    """Where a Mermaid block's rendered image lives: named by its source, so an edited diagram gets a new image."""
+    return f"{DIAGRAMS}/{hashlib.sha256(source.encode()).hexdigest()[:16]}.png"
+
+
+def _rendered(repo: Path, source: str) -> str:
+    image = diagram_path(source)
+    return f"![]({image})" if (repo / image).is_file() else f"```mermaid\n{source}```"  # code until rendered
+
+
+def render_diagrams(repo: Path = REPO) -> list[str]:
+    """Render every Mermaid block without a static copy to a PNG (mmdc, via LAW's headless Chrome), and remove
+    images no block uses any more. Returns the images written."""
+    wanted: dict[str, str] = {}
+    for name, _ in SOURCES:
+        text = MERMAID_WITH_STATIC.sub("", (repo / name).read_text())
+        for m in MERMAID.finditer(text):
+            wanted[diagram_path(m.group(1))] = m.group(1)
+    folder = repo / DIAGRAMS
+    folder.mkdir(parents=True, exist_ok=True)
+    for old in folder.glob("*.png"):
+        if f"{DIAGRAMS}/{old.name}" not in wanted:
+            old.unlink()
+    written = []
+    puppeteer = Path.home() / "LAW" / "config" / "puppeteer.json"
+    config = repo / "templates" / "rnd" / "tools" / "mermaid.json"
+    for image, source in wanted.items():
+        if (repo / image).is_file():
+            continue
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "diagram.mmd"
+            src.write_text(source)
+            cmd = ["mmdc", "-i", str(src), "-o", str(repo / image), "-s", "2", "-b", "white", "-q", "-c", str(config)]
+            if puppeteer.is_file():
+                cmd += ["-p", str(puppeteer)]
+            subprocess.run(cmd, check=True)
+        written.append(image)
+    return written
+
+
 def build(repo: Path = REPO) -> Path:
+    render_diagrams(repo)  # first: the page's hash covers the images it embeds
     out = repo / OUT
     scratch = Path.home() / "LAW" / "cache" / "tmp"  # LAW's temp folder when this Mac runs LAW, else the system's
     with tempfile.TemporaryDirectory(dir=scratch if scratch.is_dir() else None) as tmp:
