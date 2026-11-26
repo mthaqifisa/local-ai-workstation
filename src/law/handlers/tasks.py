@@ -935,6 +935,25 @@ LOOKUP_NUDGE = ("You have looked up enough APIs. Write the code for the current 
                 "showed. Then compile and run the tests, and look up only a symbol the compiler reports as wrong. "
                 "Small steps: write one file, build, fix, continue.")
 DOC_ROLES = {"writer", "researcher", "designer", "analyst", "architect"}
+# A code ticket in a document project (a book's Go service, its Java client) runs as the coder, with the book's rules
+# still in its brief: as the writer, such tickets took ~3 h each (DBTC-8, DBTC-16) and DBTC-22.1 wrote no code in 2.5 h,
+# planning in long replies, re-reading after each compaction and nudged to "write the next section of the document"
+# (2026-11-26). The coder's guards are made for code: draft in the file, run the build, the lookup budget.
+CODE_TICKET = re.compile(r"\b(?:compil\w*|tests? pass\w*|code/|the code\b|(?:Go|Java|Python|Kotlin|TypeScript|Rust)\b"
+                         r"[^()]{0,40}\b(?:service|client|job|app|module|library|cli)\b|mvn |go test|gradle)",
+                         re.IGNORECASE)
+TEXT_TICKET = re.compile(r"\b(?:prose|chapter subsection|research|recipe|failure modes|diagram|decision record|"
+                         r"cross-check|metadata|cover art)\b", re.IGNORECASE)
+
+
+def ticket_role(role: str, ticket: str | None) -> str:
+    """The role for one ticket: the stage's role, except that a writer's code ticket goes to the coder."""
+    if role != "writer" or not ticket:
+        return role
+    title = re.split(r"\(acceptance", ticket, maxsplit=1, flags=re.IGNORECASE)[0]
+    if TEXT_TICKET.search(title):
+        return role
+    return "coder" if CODE_TICKET.search(ticket) else role
 
 
 def made_progress(output: str, is_work: Callable[[str], bool] | None = None) -> bool:
@@ -1570,7 +1589,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
 
             before = head(folder)
             try:
-                text = await _agent(ctx, p["role"], prompt, folder, memory=memory,
+                text = await _agent(ctx, ticket_role(str(p["role"]), ticket[1] if ticket else None), prompt, folder,
+                                    memory=memory,
                                     timeout_s=min(left, float(p.get("timeout_s", 4 * 3600))),
                                     finished=ticket_done, ticket=ticket[1] if ticket else None)
             except TimeoutError:

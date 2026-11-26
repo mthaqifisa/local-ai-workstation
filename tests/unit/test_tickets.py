@@ -1034,3 +1034,22 @@ def test_a_ticket_id_never_matches_its_split_parts(tmp_path: Path) -> None:
     assert plan.read_text().count("- [ ]") == 3
     assert tasks.tick(project, "B-22.1") and "- [x] B-22.1" in plan.read_text()
     assert not lead.ticket_done(project, "B-22 batch job") and lead.ticket_done(project, "B-22.1 batch code")
+
+
+@pytest.mark.parametrize(("ticket", "want"), [
+    ("DBTC-8 Go ledger service (acceptance: compilable Go service with its file structure, tests pass)", "coder"),
+    ("DBTC-16 Java Spring Boot client (acceptance: compilable Spring Boot client with tests passing)", "coder"),
+    ("DBTC-22.1 Java end-of-day batch job, the code (acceptance: test-first EodBatchTest, mvn test)", "coder"),
+    ("DBTC-29 Add the missing gate tooling (acceptance: Spotless and Checkstyle on code/ledger-client)", "coder"),
+    ("DBTC-22.2 7.3 The close in Java, chapter subsection (acceptance: walks code/eod-batch)", "writer"),
+    ("DBTC-12 7.2 prose, balances holds idempotency (acceptance: claims footnoted)", "writer"),
+    ("DBTC-11 7.2 research (acceptance: .law/RESEARCH.md records every fact)", "writer"),
+    ("DBTC-14 hold-sequence diagram (acceptance: diagrams/hold-sequence.mmd)", "writer"),
+    ("DBTC-26 Cross-check diagrams (acceptance: every figure fits A4)", "writer"),
+])
+def test_a_books_code_tickets_go_to_the_coder(ticket: str, want: str) -> None:
+    """Seen 2026-11-26: as the writer, a book's code tickets took ~3 h each and one wrote no code in 2.5 h."""
+    from law.handlers.tasks import ticket_role
+
+    assert ticket_role("writer", ticket) == want
+    assert ticket_role("coder", ticket) == "coder" and ticket_role("writer", None) == "writer"
