@@ -320,6 +320,7 @@ Owner's Telegram chat 10-23/24: a BCG-level PDF report request ran 24 + 31 min i
 - [x] E3 fast-lane 4-bit: rejected (tool calls wrong in 6/6 runs), stays 8-bit; E4 coder-fast unchanged (no drafter) — ADR-0002
 - [x] Chapter-1 trial of the Digital Bank book (/rnd): scrapped by the owner 2026-11-25, replaced by the tech-chapter trial (ch.7, ~/RnD/digital-bank-tech-trial)
 - [ ] Tech-chapter trial (ch.7 core ledger, Go + Java), verified before the full book
+- [ ] Book code in its own repo (ADR-0032): ~/SourceCode/<book>/services/<name>, compose.yaml + `just check` run only to verify, snippets included from the repo, GitHub link at the end, PDF/HTML moved in on completion; acceptance = migrate the trial's code. After the trial, before the full book.
 - [ ] Digital Bank book via Tony (/rnd, ~/RnD/digital-bank) LAST: after all pending items, the HTML page, cache and model cleanup; stop-fix-restart on any issue; monitored every 2 h
 - [x] E8 lead-note approval: drafts on the 2nd stall, Telegram Approve/Edit/Drop, 60 min = drop, rate every 10 (ADR-0026)
 - [x] E5 judge A/B (Gemma stays, ADR-0007), E6 OpenCode 2 (deferred, ADR-0028)
