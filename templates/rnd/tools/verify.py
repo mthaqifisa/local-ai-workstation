@@ -13,8 +13,8 @@
    no self-message (its label sits on the lifeline; use a Note) and no label over LABEL_MAX characters.
    The limits suit most books and reports; a document sets its own in book.md's front matter (`sentence-max`,
    `sentence-average`, `dashes-per-1000`, `quote-max`), e.g. a research paper with longer sentences.
-   The gate checks the text and diagrams this change adds or edits (`git diff HEAD`), so a ticket answers for its
-   own writing; `--all` checks the whole book (the editor's view).
+   The gate checks the sentences and diagrams this change adds (`git diff HEAD`; a sentence that is mostly an old one,
+   e.g. with one number updated, is old), so a ticket answers for its own writing and old prose stays the editor's; `--all` checks the whole book (the editor's view).
 Usage: python3 tools/verify.py [--all]
 """
 
@@ -194,6 +194,22 @@ def limits(root: Path) -> dict[str, int]:
     return values
 
 
+def committed_sentences(root: Path, path: Path) -> list[set[str]]:
+    """The sentences of `path` as last committed, each as its set of words (empty when it is new or there is no git)."""
+    shown = subprocess.run(["git", "show", f"HEAD:{path.relative_to(root)}"], cwd=root, capture_output=True,
+                           text=True)
+    if shown.returncode != 0:
+        return []
+    return [set(s.lower().split()) for _, _, prose in paragraphs(shown.stdout) for s in sentences(prose)]
+
+
+def is_old(sentence: str, old: list[set[str]]) -> bool:
+    """Mostly a sentence already committed: at least 80% of its words, either way (seen 2026-11-27: updating "23
+    tests" to "32 tests" made the gate demand a rewrite of the whole old paragraph)."""
+    words = set(sentence.lower().split())
+    return any(len(words & o) >= 0.8 * max(len(words), len(o)) for o in old if o)
+
+
 def check_style(root: Path, part: Path, whole: bool) -> list[str]:
     """Rule 7 for one chapter file: the paragraphs this change touched, or all of them with --all."""
     text = part.read_text()
@@ -204,12 +220,17 @@ def check_style(root: Path, part: Path, whole: bool) -> list[str]:
     if changed is not None and not changed:
         return []
     paras = [p for p in paragraphs(text) if changed is None or any(p[0] <= n <= p[1] for n in changed)]
+    old = [] if whole or changed is None else committed_sentences(root, part)
     problems, lengths, words, dashes = [], [], 0, 0
     heads = [(n, line.lstrip("#").strip()) for n, line in enumerate(text.splitlines(), start=1)
              if re.match(r"^#{1,2} ", line)]
     long_by_section: dict[str, list[int]] = {}
     for first, _, prose in paras:
+        new_text = []
         for sent in sentences(prose):
+            if old and is_old(sent, old):
+                continue  # the editor's job, not this change's
+            new_text.append(sent)
             size = len(sent.split())
             lengths.append(size)
             if size > longest and whole:  # the editor's view: one line per section
@@ -218,9 +239,10 @@ def check_style(root: Path, part: Path, whole: bool) -> list[str]:
             elif size > longest:
                 problems.append(f"line {first}: a {size}-word sentence (at most {longest}; split it): "
                                 f"\"{' '.join(sent.split()[:12])} ...\"")
-        words += len(prose.split())
-        dashes += prose.count("—") + prose.count(" – ")
-        for q in QUOTED.finditer(prose):
+        mine = " ".join(new_text)
+        words += len(mine.split())
+        dashes += mine.count("—") + mine.count(" – ")
+        for q in QUOTED.finditer(mine):
             quote = q.group(1) or q.group(2) or ""
             if len(quote.split()) > quote_max:
                 problems.append(f"line {first}: a {len(quote.split())}-word quotation (at most {quote_max}): "

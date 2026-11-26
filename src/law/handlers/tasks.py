@@ -1280,7 +1280,11 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         work = is_code_change if code_only else is_file_change
         while True:
             try:
-                env = {**agent_env(rt, role, ctx.job.payload.get("effort")), **project_env(workdir),
+                # the project's "thinking" is how hard the coder thinks; other roles keep their own tuned level
+                # (seen 2026-11-27: the writer, tuned to low, ran at the template's medium: ~6 of a ticket's 9.5 h
+                # were thinking)
+                effort = ctx.job.payload.get("effort") if role == "coder" else None
+                env = {**agent_env(rt, role, effort), **project_env(workdir),
                        **read_limits(role, deny_read)}
                 out = await run_cmd(ctx, cmd, cwd=workdir, env=env, describe=describe,
                                     timeout_s=max(1.0, deadline - time.monotonic()),

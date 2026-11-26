@@ -246,3 +246,17 @@ def test_a_document_sets_its_own_readability_limits(tmp_path: Path) -> None:
     chapter.write_text("# One\n\n" + " ".join(["word"] * 50) + ".\n")
     assert verify.limits(tmp_path)["sentence-max"] == 55
     assert not any("sentences over" in p for p in verify.check_style(tmp_path, chapter, whole=True))
+
+
+def test_updating_a_number_in_an_old_sentence_is_not_new_writing(tmp_path: Path) -> None:
+    """Seen 2026-11-27: changing "23 tests" to "32 tests" made the gate demand a rewrite of the old long sentence."""
+    install(KIT, tmp_path, "Kit Test")
+    chapter = tmp_path / "chapters" / "01-one.md"
+    old = "The suite's 23 tests split into two modes " + " ".join(["word"] * 40) + "."
+    chapter.write_text(f"# One\n\n{old}\n")
+    for args in (["init", "-q"], ["config", "user.email", "law@example.com"], ["config", "user.name", "LAW"],
+                 ["add", "-A"], ["commit", "-q", "-m", "start"]):
+        subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
+    chapter.write_text(f"# One\n\n{old.replace('23 tests', '32 tests')}\n")
+    assert verify.check_style(tmp_path, chapter, whole=False) == []
+    assert any("sentences over" in p for p in verify.check_style(tmp_path, chapter, whole=True))  # the editor sees it
