@@ -48,6 +48,23 @@ async def test_submit_returns_queued_job_with_resolved_resource(client):
     assert [j.id for j in await store.queued()] == [body["id"]]
 
 
+async def test_a_long_live_job_stays_in_the_live_list(client):
+    """Seen 2026-11-27: a day-old project pipeline fell out of the newest 50 jobs behind hundreds of agent searches,
+    so Telegram never saw it stop. With `live`, every live job is listed whatever its age."""
+    http, store = client
+    old = (await http.post("/jobs", json={"kind": "ask"})).json()["id"]
+    for _ in range(60):
+        done = (await http.post("/jobs", json={"kind": "search"})).json()["id"]
+        job = await store.get(done)
+        assert job is not None
+        await store.claim(job)
+        await store.finish(job, Status.DONE)
+    newest = [j["id"] for j in (await http.get("/jobs", params={"limit": 50})).json()]
+    assert old not in newest
+    with_live = [j["id"] for j in (await http.get("/jobs", params={"limit": 50, "live": "true"})).json()]
+    assert old in with_live and len(with_live) == 51
+
+
 async def test_unknown_kind_is_422_not_500(client):
     http, _ = client
     r = await http.post("/jobs", json={"kind": "nope"})

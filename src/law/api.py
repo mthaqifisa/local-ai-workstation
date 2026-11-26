@@ -165,8 +165,14 @@ def create_app(
         return await store.submit(job)
 
     @app.get("/jobs", response_model=list[Job])
-    async def list_jobs(store: StoreDep, limit: Annotated[int, Query(ge=1, le=1000)] = 20) -> list[Job]:
-        return await store.history(limit=limit)
+    async def list_jobs(store: StoreDep, limit: Annotated[int, Query(ge=1, le=1000)] = 20,
+                        live: bool = False) -> list[Job]:
+        """The newest jobs; with `live`, also every live job older than those (a long pipeline stays visible)."""
+        recent = await store.history(limit=limit)
+        if not live:
+            return recent
+        seen = {j.id for j in recent}
+        return recent + [j for j in await store.live() if j.id not in seen]
 
     @app.get("/jobs/{job_id}", response_model=Job)
     async def get_job(job_id: str, store: StoreDep) -> Job:

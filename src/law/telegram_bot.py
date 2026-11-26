@@ -810,10 +810,18 @@ class LawBot:
     async def watch_other_jobs(self, poll_s: float = 5.0) -> None:
         """Report jobs started outside Telegram (CLI, Console, API) to every allowed user: start and result."""
         started_at = time.time() - 60
+        tracked: set[str] = set()  # live Telegram pipelines, followed until they end even when they leave the list
         while True:
             try:
                 async with httpx.AsyncClient(timeout=15) as client:
-                    jobs = (await client.get(f"{self.api}/jobs", params={"limit": 50})).json()
+                    jobs = (await client.get(f"{self.api}/jobs", params={"limit": 50, "live": "true"})).json()
+                    listed = {j["id"] for j in jobs}
+                    for jid in sorted(tracked - listed):  # ended since the last round: check it once more
+                        r = await client.get(f"{self.api}/jobs/{jid}")
+                        if r.status_code == 200:
+                            jobs.append(r.json())
+                tracked = {j["id"] for j in jobs if j.get("source") == "telegram" and j.get("parent") is None
+                           and j["status"] in LIVE}
                 for job in reversed(jobs):
                     await self._reattach(job)
                     if (job.get("parent") is None and job.get("source") in self.notify_sources
@@ -823,6 +831,8 @@ class LawBot:
                         await self._report_stopped(job)
             except (httpx.HTTPError, ValueError):
                 pass  # API restarting; try again next round
+            except Exception:  # a Telegram hiccup (502, flood control) once ended this watcher for good
+                log.exception("job watcher round failed")
             await asyncio.sleep(poll_s)
 
     def _stopped_unreported(self, job: dict[str, Any], since: float) -> bool:

@@ -76,6 +76,15 @@ class JobStore:
     async def running_ids(self) -> list[str]:
         return [str(x) for x in await self.r.zrange(f"{P}running", 0, -1)]
 
+    async def live(self) -> list[Job]:
+        """Every queued, running and waiting job, however old: a project's pipeline can run for days while hundreds
+        of newer jobs push it out of the recent history."""
+        ids = {str(x) for x in await self.r.zrange(f"{P}queued", 0, -1)}
+        ids |= set(await self.running_ids())
+        ids |= {str(x) for x in await self.r.smembers(f"{P}waiting")}
+        jobs = [await self.get(i) for i in sorted(ids)]
+        return [j for j in jobs if j is not None]
+
     async def claim(self, job: Job) -> bool:
         """Move a job from queued to running. False if another claimer won or it vanished."""
         removed = await self.r.zrem(f"{P}queued", job.id)
