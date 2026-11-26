@@ -48,7 +48,9 @@ STOPPED = {Status.FAILED, Status.DEAD, Status.CANCELLED}
 DECISIONS = {"go": "Go", "nogo": "No go", "changes": "Needs changes", "allgood": "All good", "resume": "Resumed"}
 LOG_LIMIT = 300
 
-TICKET = re.compile(r"^(\s*)- \[([ xX])\]\s*([A-Z][A-Z0-9]*-\d+(?:\.\d+)?)\b[:.]?\s*(.*)$")
+# IDs like P-6, DBTC-22.1 and T-ENV-3 (a task section's own prefix)
+TICKET = re.compile(r"^(\s*)- \[([ xX])\]\s*([A-Z][A-Z0-9]*(?:-[A-Z][A-Z0-9]*)*-\d+(?:\.\d+)?)\b[:.]?\s*(.*)$")
+TASK_SECTION = re.compile(r"^## +(?!Build version\b)(.+?)\s*$", re.MULTILINE)
 MILESTONE = re.compile(r"^ {0,3}#{3,}\s+(.+?)\s*$")
 STAMP = re.compile(r"(\d{4}-\d\d-\d\d)(?:[ T](\d\d:\d\d))?")
 
@@ -458,6 +460,40 @@ async def _plan_tickets(store: JobStore, project: Project, tickets: dict[str, Ti
                 clock = t.finished
 
 
+def task_sections(plan: str) -> list[tuple[str, str]]:
+    """The PLAN.md sections other than the build's ("## Task 2026-11-25 Environment check"), with their text."""
+    heads = list(TASK_SECTION.finditer(plan))
+    out = []
+    for m in heads:
+        end = plan.find("\n## ", m.end())
+        out.append((m.group(1), plan[m.end(): end if end >= 0 else len(plan)]))
+    return out
+
+
+def _task_tickets(project: Project, tickets: dict[str, Ticket]) -> None:
+    """Tickets of the plan's other sections (an environment check, a one-off task) show under their section, ticked
+    or open (seen 2026-11-27: the tech trial's T-ENV-1..7 were on no board; only the stage card was)."""
+    folder = Path(project.dir)
+    try:
+        plan = (folder / ".law" / "PLAN.md").read_text()
+    except OSError:
+        return
+    commits = _commits(folder)
+    base = min((t.order for t in tickets.values() if t.kind == "setup"), default=0.0)
+    for s_n, (title, text) in enumerate(task_sections(plan)):
+        for n, item in enumerate(plan_tickets(text)):
+            tid = item["id"]
+            if tid in tickets:
+                continue
+            t = tickets[tid] = Ticket(tid, item["title"], "setup", title, base + (s_n + 1) / 100 + n / 10_000)
+            t.details = item["details"]
+            mine = [c for c in commits if re.search(rf"\b{re.escape(tid)}{ID_END}", c[2])]
+            for ct, sha, subject in mine:
+                t.log(ct, "commit", f"{sha} {subject}")
+            if item["done"]:
+                t.column, t.finished = "done", mine[-1][0] if mine else None
+
+
 def _attach_notes(paths: LawPaths, project: Project, tickets: dict[str, Ticket]) -> list[dict[str, Any]]:
     """Each note on its ticket; a note without one goes to the ticket in progress when it was written."""
     general = []
@@ -507,6 +543,7 @@ async def build(paths: LawPaths, store: JobStore, pid: str) -> dict[str, Any]:
     dev_order: dict[int, float] = {}
     await _stage_tickets(store, project, roots, tickets, dev_jobs, dev_order)
     await _plan_tickets(store, project, tickets, dev_jobs, dev_order)
+    _task_tickets(project, tickets)
     _bug_tickets(project, tickets)
     if project.state == "awaiting_go" and not any(t.column == "approval" for t in tickets.values()):
         gate = Ticket(f"approve-plan-v{project.version}", f"Go / no go: plan v{project.version}", "approval",

@@ -225,3 +225,15 @@ async def test_delete_never_trashes_a_folder_outside_the_projects_root(sandbox: 
     with pytest.raises(ValueError, match="not a project folder"):
         await board.delete_project(paths, store, "x", code=True)
     assert outside.is_dir() and Projects(paths).get("x").id == "x"
+
+
+def test_a_plans_other_sections_show_their_tickets() -> None:
+    """Seen 2026-11-27: the environment check's T-ENV-1..7 sat in PLAN.md under their own section and on no board."""
+    from law.board import plan_tickets, task_sections
+
+    plan = ("## Build version 1\n### M1 Core\n- [x] DB-1 Schema\n\n## Task 2026-11-25 Environment check\n"
+            "- [x] T-ENV-1 Record tool versions\n- [ ] T-ENV-3 Only if a tool failed: install it\n")
+    sections = task_sections(plan)
+    assert [title for title, _ in sections] == ["Task 2026-11-25 Environment check"]
+    found = plan_tickets(sections[0][1])
+    assert [(t["id"], t["done"]) for t in found] == [("T-ENV-1", True), ("T-ENV-3", False)]
