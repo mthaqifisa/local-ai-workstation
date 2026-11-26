@@ -25,3 +25,13 @@ diagrams had labels over their lifelines and a clipped box, and nothing in LAW m
 ## Consequences
 Fix rounds will rewrite much of the trial's existing prose (182 long sentences): slower this time, readable after.
 Thresholds are deliberately those of clear professional writing, not of a children's book; revisit after the trial.
+
+## Addendum 2026-11-26: readers per document, limits per document, roles per ticket (owner: "don't limit LAW")
+- The reader panel is no longer the banking panel. Each plan names its document's readers (**Readers**: 3 to 5,
+  from the brief); LAW copies them into .law/STYLE.md when the build starts (`book_kit.adopt_readers`). With no
+  readers named, a neutral default applies: a decision-maker, a domain expert, a scholar, a practitioner and a
+  newcomer. Writer, editor, reviewer and rubric all refer to "the readers .law/STYLE.md names".
+- The readability limits are defaults; a document sets its own in book.md's front matter (`sentence-max`,
+  `sentence-average`, `dashes-per-1000`, `quote-max`), e.g. a research paper.
+- Any ticket can name its role, `[role <name>]` (a user guide in a software project for the writer, visuals for the
+  designer, a data study for the analyst); the code-ticket rule for document projects is only the fallback.

@@ -103,6 +103,9 @@ Work like a team on a Jira board, in .law/PLAN.md:
   list small tickets as checkboxes with an ID and acceptance criteria, e.g.
   "- [ ] {key}-3 Join rejects a second username from the same device (acceptance: unit + integration test) [est 40m]"
   ([est …]: your honest wall-clock estimate in m, h or d; the board's countdown uses it).
+  A ticket another specialist should do carries its role, e.g. "[role writer]" for a user guide in a software
+  project, "[role coder]" for a service in a document project, "[role designer]" for visuals, "[role analyst]" for a
+  data study; LAW runs it with that role's instructions, tools and model. Untagged tickets use this stage's role.
   A ticket is one focused change and one commit; a milestone ends with a passing build and tests.
 - A design document or reference (docs/design/) is a requirement: every screen and component it names gets a ticket.
   A UI ticket is done when you have run the product, opened the screen at a phone viewport (390 x 844) with real data,
@@ -188,6 +191,8 @@ home section that the others refer back to.
 **Milestones**: 3 to 8 parts in writing order, each ending with a PDF and HTML build that passes .law/check.sh.
 Each chapter starts with a research ticket (primary sources read, every fact recorded with its source in
 .law/RESEARCH.md); its writing tickets follow. LAW's book kit is already installed: plan no tooling or template work.
+**Readers**: 3 to 5 kinds of reader the document must serve, from the request (who they are and what each needs
+from it), one per line starting with "- "; if the request names none, choose them from its subject and purpose.
 **Style**: voice, depth, diagram and citation conventions (kept in .law/STYLE.md).
 **Assumptions**: the defaults you chose where the request is silent.
 **Out of scope**: what the document will not cover.
@@ -293,11 +298,10 @@ features:
 - State each fact once, in the section it belongs to. Before writing a section, list the headings of the chapter
   so far (`rg -n "^#" chapters/<file>`) and search it for the facts you will use: refer back to a fact already
   stated ("see <section>") instead of restating it.
-- Five readers judge every chapter: a bank's chief executive, a senior banker, a professor, a seasoned consultant
-  and a fresh graduate; .law/STYLE.md ("Readers and voice") says what each needs and how to write for all five at
-  once. Open each `##` section with an "In short" paragraph, keep sentences short (verify.py fails one over 40
-  words, an average over 22, heavy use of dashes, a quotation over 30 words and a self-message in a sequence
-  diagram, for the text your ticket writes), and run `python3 tools/verify.py --all` before you finish.
+- The readers in .law/STYLE.md ("Readers and voice") judge every chapter: write so each of them is served. Open
+  each `##` section with an "In short" paragraph, keep sentences short (verify.py checks sentence length, dashes,
+  long quotations and sequence-diagram labels in the text your ticket writes, against the limits of the document's
+  kind), and run `python3 tools/verify.py --all` before you finish.
 - Write for a reader meeting each idea for the first time. Before you use a term, product, acronym or idea (a
   database, double-entry, an idempotency key), search the whole book in reading order for it
   (`rg -n -i -w --sort path "<term>" book.md chapters/ | head -5`). If this is its first appearance, explain it here
@@ -324,12 +328,10 @@ passes, record the versions of pandoc, typst, mmdc and dot in .law/ENVIRONMENT.m
 fix only the tool it names (install it with Homebrew), run it again, then record and commit as above."""
 
 DOC_RUBRIC = """You are reviewing a chapter of a book for a demanding professional reader. Score it 1-5:
-5 = accurate, complete for its scope, every claim cited, and impressive to all five readers it is written for (a
-bank's chief executive: the decision and why, from the "In short"; a senior banker: banking, risk and regulation
-exact; a professor: every claim sourced, every term defined; a seasoned consultant: trade-offs and a usable recipe;
-a fresh graduate: every step followable), short clear sentences (`python3 tools/verify.py --all` reports none over 40
-words), diagrams correct and readable within the page; 4 = solid, cosmetic issues only; 3 = one material gap, error,
-uncited claim or unreadable diagram; 2 = several; 1 = wrong or missing.
+5 = accurate, complete for its scope, every claim cited, and convincing to every reader .law/STYLE.md names, each
+in the terms that reader cares about, with short clear sentences (`python3 tools/verify.py --all` reports nothing for
+the chapter), diagrams correct and readable within the page; 4 = solid, cosmetic issues only; 3 = one material gap,
+error, uncited claim or unreadable diagram; 2 = several; 1 = wrong or missing.
 Check facts and numbers against the cited sources, consistency with .law/STYLE.md and the outline, that each term,
 tool or idea is explained where the reader first meets it in the whole book (search the book in reading order:
 `rg -n -i -w --sort path "<term>" book.md chapters/ | head -5`; an unexplained first use, or one explained only later,

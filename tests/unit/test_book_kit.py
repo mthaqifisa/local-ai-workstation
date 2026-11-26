@@ -220,3 +220,29 @@ def test_upgrade_replaces_only_what_is_still_laws(tmp_path: Path) -> None:
     assert "tools/book.css" not in changed and "agent fixed" in (book / "tools" / "book.css").read_text()
     assert "tools/mermaid.json" in changed
     assert book_kit.upgrade(KIT, book) == []  # nothing left to do
+
+
+def test_the_plans_readers_replace_the_default_list_once(tmp_path: Path) -> None:
+    """Readers come from each document's plan (a cookbook's are not a bank's); the kit's list is only a default."""
+    from law import book_kit
+
+    install(KIT, tmp_path, "Kit Test")
+    (tmp_path / ".law" / "PROMPT.md").write_text(
+        "**What I'll write**: a cookbook.\n**Readers**:\n- a home cook, who wants recipes that work first time\n"
+        "- a chef, who checks technique\n**Style**: warm.\n")
+    assert book_kit.adopt_readers(tmp_path)
+    style = (tmp_path / ".law" / "STYLE.md").read_text()
+    assert "- a home cook, who wants recipes that work first time" in style and "- a chef" in style
+    assert "decision-maker" not in style and book_kit.READERS_MARK not in style
+    assert not book_kit.adopt_readers(tmp_path)  # once: the project's own list stays
+
+
+def test_a_document_sets_its_own_readability_limits(tmp_path: Path) -> None:
+    install(KIT, tmp_path, "Kit Test")
+    assert verify.limits(tmp_path)["sentence-max"] == verify.SENTENCE_MAX
+    book = tmp_path / "book.md"
+    book.write_text(book.read_text().replace("---\n", "---\nsentence-max: 55\n", 1))
+    chapter = tmp_path / "chapters" / "01-one.md"
+    chapter.write_text("# One\n\n" + " ".join(["word"] * 50) + ".\n")
+    assert verify.limits(tmp_path)["sentence-max"] == 55
+    assert not any("sentences over" in p for p in verify.check_style(tmp_path, chapter, whole=True))

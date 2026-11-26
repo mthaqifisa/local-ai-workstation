@@ -8,10 +8,11 @@
 5. No code line is long enough to run off the page.
 6. Every figure reference (@fig:<name>) names a figure, and no text is raw Typst or HTML, which shows in one format
    only (seen 2026-11-24: `@fig:x`{=typst} read "drawn in : the ..." in the HTML).
-7. Readable by every reader the book is for (a bank's chief executive, a senior banker, a professor, a consultant
-   and a fresh graduate): no sentence over SENTENCE_MAX words, a section's sentences average at most SENTENCE_AVG,
+7. Readable by every reader the document is for (.law/STYLE.md names them): no sentence over SENTENCE_MAX words, a section's sentences average at most SENTENCE_AVG,
    dashes stay rare, a quotation over QUOTE_MAX words is paraphrased and cited instead, and a sequence diagram has
    no self-message (its label sits on the lifeline; use a Note) and no label over LABEL_MAX characters.
+   The limits suit most books and reports; a document sets its own in book.md's front matter (`sentence-max`,
+   `sentence-average`, `dashes-per-1000`, `quote-max`), e.g. a research paper with longer sentences.
    The gate checks the text and diagrams this change adds or edits (`git diff HEAD`), so a ticket answers for its
    own writing; `--all` checks the whole book (the editor's view).
 Usage: python3 tools/verify.py [--all]
@@ -178,9 +179,27 @@ def sentences(prose: str) -> list[str]:
     return [x for x in SENT_SPLIT.split(clean) if len(x.split()) >= 3]
 
 
+def limits(root: Path) -> dict[str, int]:
+    """Rule 7's limits: the defaults, or the document's own from book.md's front matter."""
+    values = {"sentence-max": SENTENCE_MAX, "sentence-average": SENTENCE_AVG,
+              "dashes-per-1000": DASHES_PER_1000, "quote-max": QUOTE_MAX}
+    try:
+        head = (root / "book.md").read_text().split("\n---", 1)[0]
+    except OSError:
+        return values
+    for key in values:
+        found = re.search(rf"^{key}:\s*(\d+)\s*$", head, re.MULTILINE)
+        if found:
+            values[key] = int(found.group(1))
+    return values
+
+
 def check_style(root: Path, part: Path, whole: bool) -> list[str]:
     """Rule 7 for one chapter file: the paragraphs this change touched, or all of them with --all."""
     text = part.read_text()
+    lim = limits(root)
+    longest, average, dash_rate, quote_max = (lim["sentence-max"], lim["sentence-average"], lim["dashes-per-1000"],
+                                              lim["quote-max"])
     changed = None if whole else changed_lines(root, part)
     if changed is not None and not changed:
         return []
@@ -193,28 +212,28 @@ def check_style(root: Path, part: Path, whole: bool) -> list[str]:
         for sent in sentences(prose):
             size = len(sent.split())
             lengths.append(size)
-            if size > SENTENCE_MAX and whole:  # the editor's view: one line per section
+            if size > longest and whole:  # the editor's view: one line per section
                 section = next((h for n, h in reversed(heads) if n <= first), "(before the first heading)")
                 long_by_section.setdefault(section, []).append(first)
-            elif size > SENTENCE_MAX:
-                problems.append(f"line {first}: a {size}-word sentence (at most {SENTENCE_MAX}; split it): "
+            elif size > longest:
+                problems.append(f"line {first}: a {size}-word sentence (at most {longest}; split it): "
                                 f"\"{' '.join(sent.split()[:12])} ...\"")
         words += len(prose.split())
         dashes += prose.count("—") + prose.count(" – ")
         for q in QUOTED.finditer(prose):
             quote = q.group(1) or q.group(2) or ""
-            if len(quote.split()) > QUOTE_MAX:
-                problems.append(f"line {first}: a {len(quote.split())}-word quotation (at most {QUOTE_MAX}): "
+            if len(quote.split()) > quote_max:
+                problems.append(f"line {first}: a {len(quote.split())}-word quotation (at most {quote_max}): "
                                 "quote the key phrase and paraphrase the rest, with its footnote")
     for section, lines in long_by_section.items():
         shown = ", ".join(str(n) for n in sorted(set(lines))[:12]) + (" ..." if len(set(lines)) > 12 else "")
-        problems.append(f'"{section}": {len(lines)} sentences over {SENTENCE_MAX} words (paragraphs at lines {shown})')
-    if len(lengths) >= 10 and sum(lengths) / len(lengths) > SENTENCE_AVG:
-        problems.append(f"sentences average {sum(lengths) / len(lengths):.0f} words (at most {SENTENCE_AVG}): "
+        problems.append(f'"{section}": {len(lines)} sentences over {longest} words (paragraphs at lines {shown})')
+    if len(lengths) >= 10 and sum(lengths) / len(lengths) > average:
+        problems.append(f"sentences average {sum(lengths) / len(lengths):.0f} words (at most {average}): "
                         "one idea per sentence")
-    if words >= 300 and dashes * 1000 / words > DASHES_PER_1000:
+    if words >= 300 and dashes * 1000 / words > dash_rate:
         problems.append(f"{dashes} dashes in {words} words ({dashes * 1000 / words:.0f} per 1,000; at most "
-                        f"{DASHES_PER_1000}): use full stops, commas or brackets")
+                        f"{dash_rate}): use full stops, commas or brackets")
     return problems
 
 

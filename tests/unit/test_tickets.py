@@ -1053,3 +1053,13 @@ def test_a_books_code_tickets_go_to_the_coder(ticket: str, want: str) -> None:
 
     assert ticket_role("writer", ticket) == want
     assert ticket_role("coder", ticket) == "coder" and ticket_role("writer", None) == "writer"
+
+
+def test_a_plan_can_name_any_tickets_role() -> None:
+    from law.handlers.tasks import ticket_role
+
+    known = frozenset({"coder", "writer", "designer", "analyst"})
+    assert ticket_role("coder", "LC-9 User guide (acceptance: guide in docs/) [role writer] [est 1h]", known) == "writer"
+    assert ticket_role("writer", "DB-3 Cover and figures [role designer]", known) == "designer"
+    assert ticket_role("coder", "LC-2 Login page [role astronaut]", known) == "coder"  # unknown: the stage's role
+    assert ticket_role("writer", "DB-8 Go ledger service (acceptance: compilable Go service)", known) == "coder"

@@ -1,4 +1,4 @@
-# ADR-0032: A book's code lives in its own repo, by system; the book quotes it and links to it
+# ADR-0032: A document's code lives in its own repo, by system; the document quotes it and links to it
 
 Date: 2026-11-26. Status: accepted (owner), to build after the tech-chapter trial and before the full book.
 
@@ -25,3 +25,7 @@ were pasted text, so a fix in the code left the book showing the old version. Th
 About 30-60 minutes more per book for the compose file and smoke test; Docker memory is used only during checks.
 Acceptance test: migrate the tech-chapter trial's code into `~/SourceCode/digital-bank-tech-trial/` before the full
 book starts.
+
+## Scope
+Any /rnd document whose subject includes working code (a book, a report, a research paper with its experiments, a
+proposal with a prototype), not only books; "book" above stands for any of them.

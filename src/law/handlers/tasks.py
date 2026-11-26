@@ -657,7 +657,7 @@ and every change the owner asked for in {folder}/.law/REQUESTS.md. The findings 
    need is explained where it first appears (search the whole document in reading order with `rg -n -i -w`), or
    points to where it is. An unexplained first use, an explanation that comes only later, or a topic with no link to
    what came before is a finding (Severity: major). Run `python3 tools/verify.py --all` when the document has the
-   book kit, and read it as its five readers (.law/STYLE.md, "Readers and voice"); a reader it fails is a finding.
+   book kit, and read it as each reader .law/STYLE.md names ("Readers and voice"); a reader it fails is a finding.
    For each new finding append:
    ## BUG-<next number> · open · editor · {now}
    <one-line title of what is wrong>
@@ -714,11 +714,10 @@ relies on (the ten or so a newcomer would need; not everyday words), search the 
 when it first appears: what it is and why it comes up here? A first use with no explanation, an explanation that
 comes only later, or a topic that appears with no link to what came before is a finding (Severity: major); Correct
 says what to explain at the first use, or where to point back to.
-Last, read the section as each of its five readers (.law/STYLE.md, "Readers and voice"): a bank's chief executive
-(does an "In short" say what is decided and why?), a senior banker (are banking, risk and regulation exact?), a
-professor (is each claim sourced, each term defined?), a seasoned consultant (are the trade-offs and the recipe
-usable?), a fresh graduate (can every step be followed?). Each reader the section fails is a finding (Severity: major)
-that names the reader, the passage and what would serve them.
+Last, read the section as each reader .law/STYLE.md names ("Readers and voice"; search it), asking what that reader
+needs from it (a decision-maker: does an "In short" say what is decided and why? an expert: is the subject exact? a
+newcomer: can every step be followed?). Each reader the section fails is a finding (Severity: major) that names the
+reader, the passage and what would serve them.
 For each finding append to {folder}/.law/BUGS.md (read its last lines first for the next number):
    ## BUG-<next number> · open · editor · {now}
    <one-line title of what is wrong>
@@ -946,9 +945,19 @@ TEXT_TICKET = re.compile(r"\b(?:prose|chapter subsection|research|recipe|failure
                          r"cross-check|metadata|cover art)\b", re.IGNORECASE)
 
 
-def ticket_role(role: str, ticket: str | None) -> str:
-    """The role for one ticket: the stage's role, except that a writer's code ticket goes to the coder."""
-    if role != "writer" or not ticket:
+ROLE_TAG = re.compile(r"\[role[:\s]+([a-z_]+)\]", re.IGNORECASE)
+
+
+def ticket_role(role: str, ticket: str | None, known: frozenset[str] | set[str] | None = None) -> str:
+    """The role for one ticket. A plan can name it, `[role <name>]` (a user guide in a software project for the
+    writer, a visual for the designer, a market study for the analyst); otherwise the stage's role, except that a
+    writer's code ticket goes to the coder."""
+    if not ticket:
+        return role
+    tagged = ROLE_TAG.search(ticket)
+    if tagged and (known is None or tagged.group(1).lower() in known):
+        return tagged.group(1).lower()
+    if role != "writer":
         return role
     title = re.split(r"\(acceptance", ticket, maxsplit=1, flags=re.IGNORECASE)[0]
     if TEXT_TICKET.search(title):
@@ -1537,6 +1546,8 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
         """A document project's copy of LAW's book kit takes the kit's improvements between stages (book_kit.upgrade
         keeps any file an agent changed)."""
         changed = book_kit.upgrade(rt.paths.repo / "templates" / "rnd", folder)
+        if book_kit.adopt_readers(folder) and ".law/STYLE.md" not in changed:  # the plan's readers, not the default
+            changed.append(".law/STYLE.md")
         if not changed or not (folder / ".git").exists():
             return
         await ctx.progress(f"📚 LAW book kit updated: {', '.join(changed)}")
@@ -1589,7 +1600,9 @@ def make_handlers(rt: Runtime) -> dict[str, Any]:
 
             before = head(folder)
             try:
-                text = await _agent(ctx, ticket_role(str(p["role"]), ticket[1] if ticket else None), prompt, folder,
+                known = frozenset(getattr(rt.roles, "roles", None) or ()) or None  # None: accept the plan's tag
+                text = await _agent(ctx, ticket_role(str(p["role"]), ticket[1] if ticket else None, known), prompt,
+                                    folder,
                                     memory=memory,
                                     timeout_s=min(left, float(p.get("timeout_s", 4 * 3600))),
                                     finished=ticket_done, ticket=ticket[1] if ticket else None)

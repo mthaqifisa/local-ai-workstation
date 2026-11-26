@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 import time
@@ -93,6 +94,32 @@ def upgrade(kit: Path, folder: Path) -> list[str]:
     (folder / MANIFEST).parent.mkdir(parents=True, exist_ok=True)
     (folder / MANIFEST).write_text(json.dumps(manifest, indent=1, sort_keys=True) + "\n")
     return changed
+
+
+READERS_MARK = "<!-- readers: LAW replaces this list"
+READERS_PART = re.compile(r"\*\*Readers\*\*:?\s*(.*?)(?=\n\*\*[A-Z][^*]{0,40}\*\*|\Z)", re.DOTALL)
+
+
+def adopt_readers(folder: Path) -> bool:
+    """Put the approved plan's **Readers** (.law/PROMPT.md) into .law/STYLE.md in place of the kit's default list,
+    once: a list already written for the project stays. True when STYLE.md changed."""
+    style, plan = folder / ".law" / "STYLE.md", folder / ".law" / "PROMPT.md"
+    try:
+        text, agreed = style.read_text(), plan.read_text()
+    except OSError:
+        return False
+    found = READERS_PART.search(agreed)
+    if READERS_MARK not in text or not found:
+        return False
+    readers = [ln.strip() for ln in found.group(1).splitlines() if ln.strip().startswith(("- ", "* "))]
+    if not readers:
+        return False
+    start = text.index(READERS_MARK)
+    end = text.index("\n\n", text.index("\n- ", start)) if "\n- " in text[start:] else len(text)
+    block = ("The readers this document is written for, and what each needs (from the approved plan):\n"
+             + "\n".join("- " + r[2:].strip() for r in readers))
+    style.write_text(text[:start] + block + text[end:])
+    return True
 
 
 def _digest(path: Path) -> str:
