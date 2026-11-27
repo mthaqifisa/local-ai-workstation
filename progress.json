@@ -1,9 +1,9 @@
 {
   "stage": "E-enhance-v6.1",
-  "task": "Tech-chapter trial: DBTC-22.1 (Java EOD batch) now as the coder; docs page live; ADR-0032 queued",
+  "task": "Tech-chapter trial: build nearly done (DBTC-29 running as the coder); then the editor/QA round",
   "status": "in_progress",
-  "next_step": "Compile DBTC-22.1 (JDK 27, PostgreSQL 19); watch 22.2-29 and the editor round (reader panel, verify --all); fix rounds; then build ADR-0032 and migrate the trial's code; Apple fm comparison; refresh TEST-REPORT",
-  "timestamp": "2026-11-26T21:45:54",
+  "next_step": "Handover for the next session: (1) watch build job b74385a0d83d (project digital-bank-tech-trial, ~/RnD/digital-bank-tech-trial): DBTC-29 then qa-v1-1 (Inkling editor: reader panel, first-use, verify --all) and fix rounds; (2) on DBTC-29's commit, rebuild and test both Java projects with JAVA_HOME=/opt/homebrew/opt/openjdk (JDK 27) and LEDGER_CLIENT_TEST_DSN on a postgres:19 container (127.0.0.1:55432), and the Go service with LEDGER_TEST_ADMIN_DSN; (3) check the editor reports the known gaps (PostgreSQL/goose first use, long sentences, the Spring Batch vs client-batch mismatch); (4) show the owner the final PDF; (5) after the trial: build ADR-0032 and migrate the trial's code, refresh docs screenshots and TEST-REPORT, Apple fm comparison, writer 'verify forever' fix with evidence. Owner's pending ask: resend the screenshot for 'Fix this' (it did not come through).",
+  "timestamp": "2026-11-27T14:27:32",
   "files_touched": [
     "templates/rnd/tools/verify.py",
     "templates/rnd/tools/prepare.py",
